@@ -37,7 +37,8 @@ export class ViewInstrumentation extends BaseInstrumentation {
   }
 
   initialize(): void {
-    this.metaUnsubscribe = this.metas.addListener(this.sendViewChangedEvent.bind(this));
+    const unsubscribe = this.metas.addListener(this.sendViewChangedEvent.bind(this));
+    this.metaUnsubscribe = typeof unsubscribe === 'function' ? unsubscribe : undefined;
     this.logInfo('View instrumentation initialized');
   }
 

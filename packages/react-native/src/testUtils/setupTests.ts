@@ -80,11 +80,15 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 // Ensure Platform.Version is properly mocked
 // The react-native preset mocks Platform, but we need to ensure Version is accessible
-jest.mock('react-native/Libraries/Utilities/Platform', () => ({
-  OS: 'ios',
-  Version: '16.0',
-  select: jest.fn((obj) => obj.ios || obj.default),
-}), { virtual: true });
+jest.mock(
+  'react-native/Libraries/Utilities/Platform',
+  () => ({
+    OS: 'ios',
+    Version: '16.0',
+    select: jest.fn((obj) => obj.ios || obj.default),
+  }),
+  { virtual: true }
+);
 
 // Mock fetch API globals for HTTP instrumentation tests
 if (typeof global.Response === 'undefined') {

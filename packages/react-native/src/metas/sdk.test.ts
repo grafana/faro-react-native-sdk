@@ -1,5 +1,5 @@
 import { initializeFaro, VERSION } from '@grafana/faro-core';
-import { mockConfig } from '@grafana/faro-core/src/testUtils';
+import { mockConfig } from '@grafana/faro-test-utils';
 
 import { getSdkMeta } from './sdk';
 
@@ -76,9 +76,7 @@ describe('SDK meta', () => {
       const sdkMeta = getSdkMeta();
       const meta = sdkMeta();
 
-      expect(meta.sdk.integrations).toEqual([
-        { name: 'test-instrumentation', version: '1.0.0' },
-      ]);
+      expect(meta.sdk.integrations).toEqual([{ name: 'test-instrumentation', version: '1.0.0' }]);
       expect(meta.sdk.integrations[0]).not.toHaveProperty('initialize');
       expect(meta.sdk.integrations[0]).not.toHaveProperty('otherProperty');
       expect(meta.sdk.integrations[0]).not.toHaveProperty('anotherProperty');
@@ -128,9 +126,7 @@ describe('SDK meta', () => {
       const sdkMeta = getSdkMeta();
       const meta = sdkMeta();
 
-      expect(meta.sdk.integrations).toEqual([
-        { name: 'minimal-instrumentation', version: '1.0.0' },
-      ]);
+      expect(meta.sdk.integrations).toEqual([{ name: 'minimal-instrumentation', version: '1.0.0' }]);
     });
 
     it('maps multiple instrumentations preserving order', () => {

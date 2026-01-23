@@ -20,6 +20,7 @@ import type { FaroErrorBoundaryProps } from './types';
  * });
  * ```
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic HOC must accept any component props
 export function withFaroErrorBoundary<P extends Record<string, any> = {}>(
   WrappedComponent: ComponentType<P>,
   errorBoundaryProps: FaroErrorBoundaryProps

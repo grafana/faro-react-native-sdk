@@ -34,6 +34,7 @@ FARO_COLLECTOR_URL=https://faro-collector-prod-YOUR-REGION.grafana.net/collect/Y
 This demo app demonstrates:
 
 ### Core Instrumentations ✅
+
 - **Console Instrumentation**: Captures console logs, warnings, and errors
 - **Errors Instrumentation**: Captures unhandled errors and promise rejections using React Native's ErrorUtils
 - **Session Tracking**: Generates and tracks user sessions
@@ -42,6 +43,7 @@ This demo app demonstrates:
 - **User Actions Instrumentation**: Automatic tracking of user interactions via HOC
 
 ### Faro APIs ✅
+
 - **Custom Events**: `faro.api.pushEvent()` - Track custom user actions
 - **Performance Measurements**: `faro.api.pushMeasurement()` - Track performance metrics
 - **User Identification**: `faro.api.setUser()` - Associate telemetry with users
@@ -50,6 +52,7 @@ This demo app demonstrates:
 - **User Action Tracking**: `withFaroUserAction()` HOC and `trackUserAction()` helper
 
 ### Platform-Specific ✅
+
 - **Device Meta**: Collects device information (model, OS version, etc.)
 - **Screen Meta**: Tracks screen dimensions
 - **Transport**: Sends telemetry data to Grafana Cloud via fetch
@@ -58,24 +61,28 @@ This demo app demonstrates:
 - **Startup Instrumentation**: Automatic app startup time tracking
 
 ### Not Yet Implemented ⏳
+
 - **OpenTelemetry Tracing**: Distributed tracing support
 - **Performance Navigation Timing**: Enhanced navigation performance tracking
 
 ## Testing
 
 ### Home Screen
+
 - **🚀 Send Test Logs** - Sends console logs and custom events. Click counter shows number of events sent. Automatically tracked with user action name `test_logs_button`.
 - **👤 Set User Info** - Demonstrates user identification. All subsequent telemetry will be associated with the demo user. Automatically tracked with user action name `set_user_button`.
 - **🎯 Manual User Action** - Demonstrates manual user action tracking API using `trackUserAction()` for complex workflows. Shows counter of tracked actions.
 - **Navigation Buttons** - All navigation buttons (Error Demo, Performance Demo, About) are wrapped with the `withFaroUserAction` HOC and automatically track user interactions with custom action names and context.
 
 ### Error Demo Screen
+
 - **Throw Sync Error** - Tests synchronous error capture
 - **Throw Async Error** - Tests asynchronous error capture
 - **Unhandled Rejection** - Tests promise rejection tracking
 - **Console Error** - Tests console.error capture
 
 ### Performance Demo Screen
+
 - **Run Heavy Computation** - Tracks and reports computation time as a measurement
 - **Simulate Slow Render** - Tracks and reports render timing
 
@@ -102,12 +109,14 @@ To view your telemetry data:
 ### User Actions in Grafana Cloud
 
 User actions are tracked with the following data:
+
 - **Action name**: e.g., `test_logs_button`, `navigate_to_error_demo`, `complex_workflow`
 - **Trigger type**: `press` for HOC-wrapped components, `manual` for `trackUserAction()` calls
 - **Context data**: Additional metadata passed via `faroContext` prop (e.g., `destination`, `eventCount`)
 - **Duration**: Time from start to end of the action
 
 Example query to see all user actions:
+
 ```logql
 {app_name="React Native Test", kind="user_action"}
 ```

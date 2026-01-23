@@ -11,6 +11,14 @@ import {
 import { faro } from '@grafana/faro-react-native';
 
 /**
+ * Custom error with additional properties
+ */
+interface CustomError extends Error {
+  code?: string;
+  statusCode?: number;
+}
+
+/**
  * Console Instrumentation Test Screen
  *
  * Tests all enhanced console instrumentation features:
@@ -79,7 +87,7 @@ export default function ConsoleTestScreen() {
   // Test 4: Complex Error Objects
   const testComplexErrors = () => {
     // Error with custom properties
-    const error = new Error('Error with custom properties') as any;
+    const error = new Error('Error with custom properties') as CustomError;
     error.code = 'AUTH_FAILED';
     error.statusCode = 401;
     console.error('Authentication error:', error);
@@ -171,12 +179,16 @@ export default function ConsoleTestScreen() {
     // Get the console instrumentation and unpatch it
     const consoleInstrumentation =
       faro.instrumentations?.instrumentations?.find(
-        (i: any) =>
+        (i: { name: string }) =>
           i.name === '@grafana/faro-react-native:instrumentation-console',
       );
 
-    if (consoleInstrumentation && 'unpatch' in consoleInstrumentation) {
-      (consoleInstrumentation as any).unpatch();
+    if (
+      consoleInstrumentation &&
+      'unpatch' in consoleInstrumentation &&
+      typeof consoleInstrumentation.unpatch === 'function'
+    ) {
+      consoleInstrumentation.unpatch();
       console.log('❌ This should NOT be captured - AFTER unpatch');
       console.error('❌ This error should NOT be captured - AFTER unpatch');
 

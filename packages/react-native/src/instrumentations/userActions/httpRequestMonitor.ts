@@ -1,5 +1,3 @@
-import { Observable } from '@grafana/faro-core';
-
 export interface HttpRequestMessagePayload {
   requestId: string;
   url: string;
@@ -9,56 +7,87 @@ export interface HttpRequestMessagePayload {
   status?: number;
 }
 
+// Declare global HTTP monitor interface
+declare global {
+  var __FARO_HTTP_MONITOR__:
+    | {
+        notifyStart?: (request: HttpRequestMessagePayload) => void;
+        notifyEnd?: (request: HttpRequestMessagePayload) => void;
+      }
+    | undefined;
+}
+
 export type HttpRequestMessage =
   | { type: 'http_request_start'; request: HttpRequestMessagePayload }
   | { type: 'http_request_end'; request: HttpRequestMessagePayload };
+
+interface Subscription {
+  unsubscribe: () => void;
+}
+
+interface Subscriber {
+  next: (msg: HttpRequestMessage) => void;
+}
+
+interface HttpRequestObservable {
+  subscribe: (subscriber: Subscriber) => Subscription;
+}
 
 /**
  * Monitor for HTTP requests happening during user actions
  * Tracks fetch requests to correlate with user actions
  */
-export function monitorHttpRequests(): Observable<HttpRequestMessage> {
-  return new Observable<HttpRequestMessage>((subscriber) => {
-    // Access the global fetch monitoring state
-    // This assumes HttpInstrumentation has already patched fetch
-    const global = globalThis as any;
+export function monitorHttpRequests(): HttpRequestObservable {
+  interface GlobalWithMonitor {
+    __FARO_HTTP_MONITOR__?: {
+      subscribers: Array<Subscriber>;
+      notifyStart: (request: HttpRequestMessagePayload) => void;
+      notifyEnd: (request: HttpRequestMessagePayload) => void;
+    };
+  }
+  const global = globalThis as GlobalWithMonitor;
 
-    if (!global.__FARO_HTTP_MONITOR__) {
-      // Initialize the monitoring array if it doesn't exist
-      global.__FARO_HTTP_MONITOR__ = {
-        subscribers: [],
-        notifyStart: (request: HttpRequestMessagePayload) => {
-          global.__FARO_HTTP_MONITOR__.subscribers.forEach((sub: any) => {
-            try {
-              sub.next({ type: 'http_request_start', request });
-            } catch (_err) {
-              // Ignore subscriber errors
-            }
-          });
-        },
-        notifyEnd: (request: HttpRequestMessagePayload) => {
-          global.__FARO_HTTP_MONITOR__.subscribers.forEach((sub: any) => {
-            try {
-              sub.next({ type: 'http_request_end', request });
-            } catch (_err) {
-              // Ignore subscriber errors
-            }
-          });
+  if (!global.__FARO_HTTP_MONITOR__) {
+    // Initialize the monitoring array if it doesn't exist
+    global.__FARO_HTTP_MONITOR__ = {
+      subscribers: [],
+      notifyStart: (request: HttpRequestMessagePayload) => {
+        global.__FARO_HTTP_MONITOR__?.subscribers.forEach((sub) => {
+          try {
+            sub.next({ type: 'http_request_start', request });
+          } catch (_err) {
+            // Ignore subscriber errors
+          }
+        });
+      },
+      notifyEnd: (request: HttpRequestMessagePayload) => {
+        global.__FARO_HTTP_MONITOR__?.subscribers.forEach((sub) => {
+          try {
+            sub.next({ type: 'http_request_end', request });
+          } catch (_err) {
+            // Ignore subscriber errors
+          }
+        });
+      },
+    };
+  }
+
+  return {
+    subscribe: (subscriber: Subscriber): Subscription => {
+      // Add this subscriber to the list
+      global.__FARO_HTTP_MONITOR__?.subscribers.push(subscriber);
+
+      // Return subscription with cleanup function
+      return {
+        unsubscribe: () => {
+          const index = global.__FARO_HTTP_MONITOR__?.subscribers.indexOf(subscriber);
+          if (index !== undefined && index > -1) {
+            global.__FARO_HTTP_MONITOR__?.subscribers.splice(index, 1);
+          }
         },
       };
-    }
-
-    // Add this subscriber to the list
-    global.__FARO_HTTP_MONITOR__.subscribers.push(subscriber);
-
-    // Return cleanup function
-    return () => {
-      const index = global.__FARO_HTTP_MONITOR__.subscribers.indexOf(subscriber);
-      if (index > -1) {
-        global.__FARO_HTTP_MONITOR__.subscribers.splice(index, 1);
-      }
-    };
-  });
+    },
+  };
 }
 
 /**
@@ -66,8 +95,7 @@ export function monitorHttpRequests(): Observable<HttpRequestMessage> {
  * Should be called from HttpInstrumentation
  */
 export function notifyHttpRequestStart(request: HttpRequestMessagePayload): void {
-  const global = globalThis as any;
-  global.__FARO_HTTP_MONITOR__?.notifyStart?.(request);
+  globalThis.__FARO_HTTP_MONITOR__?.notifyStart?.(request);
 }
 
 /**
@@ -75,6 +103,5 @@ export function notifyHttpRequestStart(request: HttpRequestMessagePayload): void
  * Should be called from HttpInstrumentation
  */
 export function notifyHttpRequestEnd(request: HttpRequestMessagePayload): void {
-  const global = globalThis as any;
-  global.__FARO_HTTP_MONITOR__?.notifyEnd?.(request);
+  globalThis.__FARO_HTTP_MONITOR__?.notifyEnd?.(request);
 }

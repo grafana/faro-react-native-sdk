@@ -274,7 +274,6 @@ function App() {
     <FaroErrorBoundary
       // Static fallback UI
       fallback={<ErrorScreen />}
-
       // OR: Dynamic fallback with error details and reset function
       fallback={(error, resetError) => (
         <View>
@@ -282,22 +281,18 @@ function App() {
           <Button title="Try Again" onPress={resetError} />
         </View>
       )}
-
       // Modify error before it's sent to Faro
       beforeCapture={(error) => {
         console.log('About to capture:', error);
       }}
-
       // React to errors
       onError={(error) => {
         console.error('Error caught:', error);
       }}
-
       // Lifecycle hooks
       onMount={() => console.log('Error boundary mounted')}
       onUnmount={(error) => console.log('Unmounting, had error:', error)}
       onReset={(error) => console.log('Resetting from error:', error)}
-
       // Pass additional options to faro.api.pushError
       pushErrorOptions={{
         context: {
@@ -313,16 +308,16 @@ function App() {
 
 **Error Boundary Props:**
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `fallback` | `ReactElement \| (error, reset) => ReactElement` | UI to show when an error occurs. Can be static or a render function. |
-| `beforeCapture` | `(error: Error) => void` | Called before error is sent to Faro. Use to modify or inspect the error. |
-| `onError` | `(error: Error) => void` | Called after error is caught. Use for logging or analytics. |
-| `onMount` | `() => void` | Called when error boundary mounts. |
-| `onReset` | `(error: Error \| null) => void` | Called when error boundary is reset (via `resetError` function). |
-| `onUnmount` | `(error: Error \| null) => void` | Called when error boundary unmounts. Receives error if one was caught. |
-| `pushErrorOptions` | `PushErrorOptions` | Additional options passed to `faro.api.pushError()`. |
-| `children` | `ReactNode \| () => ReactNode` | Component(s) to wrap with error boundary. |
+| Prop               | Type                                             | Description                                                              |
+| ------------------ | ------------------------------------------------ | ------------------------------------------------------------------------ |
+| `fallback`         | `ReactElement \| (error, reset) => ReactElement` | UI to show when an error occurs. Can be static or a render function.     |
+| `beforeCapture`    | `(error: Error) => void`                         | Called before error is sent to Faro. Use to modify or inspect the error. |
+| `onError`          | `(error: Error) => void`                         | Called after error is caught. Use for logging or analytics.              |
+| `onMount`          | `() => void`                                     | Called when error boundary mounts.                                       |
+| `onReset`          | `(error: Error \| null) => void`                 | Called when error boundary is reset (via `resetError` function).         |
+| `onUnmount`        | `(error: Error \| null) => void`                 | Called when error boundary unmounts. Receives error if one was caught.   |
+| `pushErrorOptions` | `PushErrorOptions`                               | Additional options passed to `faro.api.pushError()`.                     |
+| `children`         | `ReactNode \| () => ReactNode`                   | Component(s) to wrap with error boundary.                                |
 
 **Features:**
 
@@ -336,6 +331,7 @@ function App() {
 **Best Practices:**
 
 1. **Wrap your entire app** for global error catching:
+
    ```tsx
    <FaroErrorBoundary fallback={<GlobalErrorScreen />}>
      <App />
@@ -343,6 +339,7 @@ function App() {
    ```
 
 2. **Wrap critical sections** for granular error handling:
+
    ```tsx
    <FaroErrorBoundary fallback={<CheckoutError />}>
      <CheckoutFlow />
@@ -350,6 +347,7 @@ function App() {
    ```
 
 3. **Use dynamic fallback** for better UX:
+
    ```tsx
    fallback={(error, resetError) => (
      <ErrorView error={error} onRetry={resetError} />
@@ -656,21 +654,21 @@ Every telemetry event automatically includes default session attributes with dev
 
 **Automatically Collected Attributes:**
 
-| Attribute | Description | iOS Example | Android Example |
-|-----------|-------------|-------------|-----------------|
-| `faro_sdk_version` | SDK version | `2.0.2` | `2.0.2` |
-| `react_native_version` | React Native version | `0.75.1` | `0.75.1` |
-| `device_os` | Operating system | `iOS` | `Android` |
-| `device_os_version` | OS version | `17.0` | `15` |
-| `device_os_detail` | Detailed OS info | `iOS 17.0` | `Android 15 (SDK 35)` |
-| `device_manufacturer` | Manufacturer | `apple` | `samsung` |
-| `device_model` | Raw model identifier | `iPhone16,1` | `SM-A155F` |
-| `device_model_name` | Human-readable model | `iPhone 15 Pro` | `SM-A155F`* |
-| `device_brand` | Device brand | `iPhone` | `samsung` |
-| `device_is_physical` | Physical or emulator | `true` | `true` |
-| `device_id` | Unique device ID | `uuid` | `uuid` |
+| Attribute              | Description          | iOS Example     | Android Example       |
+| ---------------------- | -------------------- | --------------- | --------------------- |
+| `faro_sdk_version`     | SDK version          | `2.0.2`         | `2.0.2`               |
+| `react_native_version` | React Native version | `0.75.1`        | `0.75.1`              |
+| `device_os`            | Operating system     | `iOS`           | `Android`             |
+| `device_os_version`    | OS version           | `17.0`          | `15`                  |
+| `device_os_detail`     | Detailed OS info     | `iOS 17.0`      | `Android 15 (SDK 35)` |
+| `device_manufacturer`  | Manufacturer         | `apple`         | `samsung`             |
+| `device_model`         | Raw model identifier | `iPhone16,1`    | `SM-A155F`            |
+| `device_model_name`    | Human-readable model | `iPhone 15 Pro` | `SM-A155F`\*          |
+| `device_brand`         | Device brand         | `iPhone`        | `samsung`             |
+| `device_is_physical`   | Physical or emulator | `true`          | `true`                |
+| `device_id`            | Unique device ID     | `uuid`          | `uuid`                |
 
-*Android does not provide a mapping from model codes to marketing names, so `device_model_name` equals `device_model`.
+\*Android does not provide a mapping from model codes to marketing names, so `device_model_name` equals `device_model`.
 
 **How It Works:**
 
@@ -774,7 +772,7 @@ The SDK automatically emits `app_state_changed` events when the app state transi
 | avg
 ```
 
-For a complete example of app state tracking in action, see the [demo-react-native](../../demo-react-native) application.
+For a complete example of app state tracking in action, see the [demo](../../demo) application.
 
 ### Performance Instrumentation Configuration
 
@@ -785,10 +783,12 @@ The Performance Instrumentation provides comprehensive performance monitoring fo
 The SDK automatically monitors system resources using **native OS-level APIs** for accurate metrics:
 
 **iOS Implementation:**
+
 - **CPU**: Uses `host_statistics()` with differential calculation for precise CPU percentage
 - **Memory**: Uses `task_info()` to measure RSS (Resident Set Size) in kilobytes
 
 **Android Implementation:**
+
 - **CPU**: Parses `/proc/[pid]/stat` with differential calculation
 - **Memory**: Parses `/proc/[pid]/status` for VmRSS in kilobytes
 
@@ -862,10 +862,12 @@ initializeFaro({
 ```
 
 **Platform Requirements:**
+
 - **iOS**: Requires iOS 13.4+
 - **Android**: Requires API 21+ (Lollipop) for CPU monitoring, any version for memory
 
 **No Manual Setup Required!**
+
 - Native modules are automatically linked via CocoaPods (iOS) and Gradle (Android)
 - OS-level APIs are used - no permissions needed
 - Works out of the box with default configuration
@@ -887,6 +889,7 @@ initializeFaro({
 ```
 
 **Startup Metric** (`faro.startup` event):
+
 - `appStartDuration` - Time from process start to Faro init (milliseconds)
 - Measured using native OS APIs:
   - **iOS**: `sysctl()` with `KERN_PROC` to get process start time
@@ -906,23 +909,25 @@ initializeFaro({
 #### Performance Best Practices
 
 **For Production:**
+
 ```tsx
 getRNInstrumentations({
   trackPerformance: true,
   memoryUsageVitals: true,
   cpuUsageVitals: true,
   fetchVitalsInterval: 30000, // 30 seconds - good balance
-})
+});
 ```
 
 **For Debugging/Testing:**
+
 ```tsx
 getRNInstrumentations({
   trackPerformance: true,
   memoryUsageVitals: true,
   cpuUsageVitals: true,
   fetchVitalsInterval: 5000, // 5 seconds - more frequent for testing
-})
+});
 ```
 
 **Use Cases:**
@@ -936,6 +941,7 @@ getRNInstrumentations({
 **Feature Parity with Flutter SDK:**
 
 This implementation provides complete feature parity with the [Grafana Faro Flutter SDK](https://github.com/grafana/faro-flutter-sdk):
+
 - Same native OS-level APIs
 - Same differential CPU calculation approach
 - Same memory measurement (RSS/VmRSS)
@@ -1107,7 +1113,7 @@ import type { ReactNativeConfig, WithFaroUserActionProps } from '@grafana/faro-r
 
 ## Examples
 
-See the [demo-react-native](../../demo-react-native) directory for a complete example application.
+See the [demo](../../demo) directory for a complete example application.
 
 ## API Reference
 
@@ -1218,6 +1224,7 @@ console.debug('New event', {
 React Native Next (upcoming version) will include native `PerformanceObserver` support, which will enable greater feature parity with the web SDK's performance monitoring capabilities.
 
 **Planned Enhancements:**
+
 - Implement `PerformanceObserver`-based instrumentation similar to web SDK
 - Support for performance entry types: `mark`, `measure`, `event`, `longtask`
 - Real-time performance monitoring via observer callbacks
@@ -1225,6 +1232,7 @@ React Native Next (upcoming version) will include native `PerformanceObserver` s
 - Enhanced performance timeline tracking
 
 **References:**
+
 - [React Native PerformanceObserver API Documentation](https://reactnative.dev/docs/next/global-PerformanceObserver)
 - Web SDK Performance Instrumentation: `packages/web-sdk/src/instrumentations/performance/`
 

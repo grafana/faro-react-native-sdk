@@ -1,3 +1,4 @@
+import type { ContextAPI, TraceAPI } from '@opentelemetry/api';
 import { SpanStatusCode } from '@opentelemetry/api';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
@@ -11,7 +12,26 @@ import {
   View,
 } from 'react-native';
 
+import type { Faro } from '@grafana/faro-react-native';
 import { faro, trackUserAction } from '@grafana/faro-react-native';
+
+/**
+ * Extended Faro type with OpenTelemetry APIs
+ * Added by TracingInstrumentation
+ */
+interface FaroWithOtel extends Faro {
+  otel?: {
+    trace: TraceAPI;
+    context: ContextAPI;
+  };
+}
+
+/**
+ * Custom error with type property
+ */
+interface ErrorWithType extends Error {
+  type?: string;
+}
 
 import { useFaroUser } from '../hooks/useFaroUser';
 import type { RootStackParamList } from '../navigation/AppNavigator';
@@ -322,8 +342,7 @@ export function ShowcaseScreen(_props: Props) {
       !selectedEndpoint.query
     ) {
       // Add random ID to path
-      const randomId =
-        Math.floor(Math.random() * selectedEndpoint.idRange) + 1;
+      const randomId = Math.floor(Math.random() * selectedEndpoint.idRange) + 1;
       url = `${url}/${randomId}`;
     } else if (selectedEndpoint.query) {
       // Add query parameters
@@ -443,8 +462,8 @@ export function ShowcaseScreen(_props: Props) {
     );
 
     // Push error to Faro
-    const error = new Error(randomError.message);
-    (error as any).type = randomError.type;
+    const error = new Error(randomError.message) as ErrorWithType;
+    error.type = randomError.type;
     faro.api.pushError(error);
 
     faro.api.pushEvent('error_occurred', {
@@ -464,7 +483,7 @@ export function ShowcaseScreen(_props: Props) {
   const handleCreateTrace = async () => {
     if (!currentUser) return;
 
-    const otel = (faro as any).otel;
+    const otel = (faro as FaroWithOtel).otel;
     if (!otel) {
       Alert.alert('Error', 'OTEL not available');
       return;
@@ -913,8 +932,8 @@ export function ShowcaseScreen(_props: Props) {
     }
 
     // Complete the journey
-    if (action) {
-      (action as any).end?.();
+    if (action && 'end' in action && typeof action.end === 'function') {
+      action.end();
     }
 
     setActionCounts(prev => ({

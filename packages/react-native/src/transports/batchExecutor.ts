@@ -1,4 +1,5 @@
 import { AppState } from 'react-native';
+import type { EmitterSubscription } from 'react-native';
 
 import type { TransportItem } from '@grafana/faro-core';
 
@@ -21,7 +22,7 @@ export class RNBatchExecutor {
   private sendFn: SendFn;
   private paused: boolean;
   private flushInterval?: ReturnType<typeof setInterval>;
-  private appStateSubscription?: any;
+  private appStateSubscription?: EmitterSubscription;
 
   constructor(sendFn: SendFn, options?: BatchExecutorOptions) {
     this.itemLimit = options?.itemLimit ?? DEFAULT_BATCH_ITEM_LIMIT;

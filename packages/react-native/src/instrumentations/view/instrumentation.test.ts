@@ -1,5 +1,5 @@
 import { EventEvent, initializeFaro, TransportItem } from '@grafana/faro-core';
-import { mockConfig, MockTransport } from '@grafana/faro-core/src/testUtils';
+import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import { ViewInstrumentation } from './index';
 

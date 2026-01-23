@@ -1,6 +1,6 @@
 import { initializeFaro as initializeFaroCore, stringifyExternalJson, TransportItem } from '@grafana/faro-core';
 import type { ExceptionEvent, LogEvent } from '@grafana/faro-core';
-import { mockConfig, MockTransport } from '@grafana/faro-core/src/testUtils';
+import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import { ConsoleInstrumentation } from './index';
 
@@ -225,10 +225,10 @@ describe('ConsoleInstrumentation', () => {
     // excluded by default
     console.log(excludedLogMessage);
     const excludedTraceLogMessage = "trace isn't logged by default";
-    // eslint-disable-next-line no-console
+
     console.trace(excludedTraceLogMessage);
     const excludedDebugMessage = "debug isn't logged by default";
-    // eslint-disable-next-line no-console
+
     console.debug(excludedDebugMessage);
 
     expect(mockTransport.items).toHaveLength(3);

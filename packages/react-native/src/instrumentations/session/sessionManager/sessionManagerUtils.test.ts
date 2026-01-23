@@ -1,15 +1,15 @@
 import * as faroCore from '@grafana/faro-core';
 import { initializeFaro } from '@grafana/faro-core';
-import { mockConfig } from '@grafana/faro-core/src/testUtils';
+import { mockConfig } from '@grafana/faro-test-utils';
 
 import * as samplingModule from './sampling';
 import { SESSION_EXPIRATION_TIME, SESSION_INACTIVITY_TIME } from './sessionConstants';
 import {
   addSessionMetadataToNextSession,
   createUserSessionObject,
+  getSessionMetaUpdateHandler,
   getUserSessionUpdater,
   isUserSessionValid,
-  getSessionMetaUpdateHandler,
 } from './sessionManagerUtils';
 import type { FaroUserSession } from './types';
 
@@ -292,7 +292,7 @@ describe('sessionManagerUtils', () => {
         },
       });
 
-      const faro = initializeFaro(config);
+      const _faro = initializeFaro(config);
 
       const mockFetchUserSession = jest.fn().mockResolvedValue(null);
       const mockStoreUserSession = jest.fn().mockResolvedValue(undefined);
@@ -353,7 +353,7 @@ describe('sessionManagerUtils', () => {
         },
       });
 
-      const faro = initializeFaro(config);
+      const _faro = initializeFaro(config);
 
       const existingSession: FaroUserSession = {
         sessionId: 'old-session',

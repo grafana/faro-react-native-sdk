@@ -1,3 +1,4 @@
+import type { ContextAPI, TraceAPI } from '@opentelemetry/api';
 import { SpanStatusCode } from '@opentelemetry/api';
 import React, { useState } from 'react';
 import {
@@ -11,7 +12,19 @@ import {
 } from 'react-native';
 
 import { UserActionImportance } from '@grafana/faro-core';
+import type { Faro } from '@grafana/faro-react-native';
 import { faro } from '@grafana/faro-react-native';
+
+/**
+ * Extended Faro type with OpenTelemetry APIs
+ * Added by TracingInstrumentation
+ */
+interface FaroWithOtel extends Faro {
+  otel?: {
+    trace: TraceAPI;
+    context: ContextAPI;
+  };
+}
 
 /**
  * Comprehensive Tracing Demo Screen
@@ -31,7 +44,7 @@ export default function TracingDemoScreen() {
 
   // Helper to capture and display trace ID from active span
   const captureTraceId = (testName: string) => {
-    const otel = (faro as any).otel;
+    const otel = (faro as FaroWithOtel).otel;
     if (otel) {
       const { trace } = otel;
       const span = trace.getActiveSpan();
@@ -198,7 +211,7 @@ export default function TracingDemoScreen() {
 
   // Test 6: Simple manual span
   const testManualSpan = async () => {
-    const otel = (faro as any).otel;
+    const otel = (faro as FaroWithOtel).otel;
     if (!otel) {
       Alert.alert(
         'Error',
@@ -257,7 +270,7 @@ export default function TracingDemoScreen() {
 
   // Test 7: Nested spans - parent/child relationship
   const testNestedSpans = async () => {
-    const otel = (faro as any).otel;
+    const otel = (faro as FaroWithOtel).otel;
     if (!otel) {
       Alert.alert('Error', 'OTEL not available.');
       return;
@@ -336,7 +349,7 @@ export default function TracingDemoScreen() {
 
   // Test 8: Span with events - adding timestamped events to a span
   const testSpanWithEvents = async () => {
-    const otel = (faro as any).otel;
+    const otel = (faro as FaroWithOtel).otel;
     if (!otel) {
       Alert.alert('Error', 'OTEL not available.');
       return;
@@ -398,7 +411,7 @@ export default function TracingDemoScreen() {
 
   // Test 9: Trace with Faro user action
   const testTraceWithUserAction = async () => {
-    const otel = (faro as any).otel;
+    const otel = (faro as FaroWithOtel).otel;
     if (!otel) {
       Alert.alert('Error', 'OTEL not available.');
       return;
@@ -439,7 +452,7 @@ export default function TracingDemoScreen() {
 
   // Test 10: Manual span with Faro log
   const testTraceWithLog = () => {
-    const otel = (faro as any).otel;
+    const otel = (faro as FaroWithOtel).otel;
     if (!otel) {
       Alert.alert('Error', 'OTEL not available.');
       return;

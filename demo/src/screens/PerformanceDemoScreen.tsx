@@ -96,7 +96,7 @@ export function PerformanceDemoScreen({ navigation }: Props) {
 
     const startTime = Date.now();
     const testDuration = 20000; // 20 seconds
-    const memoryHogs: any[] = [];
+    const memoryHogs: number[][] = [];
     let allocationCount = 0;
 
     // Allocate memory in smaller chunks less frequently

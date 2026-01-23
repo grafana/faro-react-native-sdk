@@ -1,6 +1,15 @@
-import type { Span } from '@opentelemetry/api';
 import { SpanStatusCode } from '@opentelemetry/api';
+import type { Span } from '@opentelemetry/api';
 import type { FetchCustomAttributeFunction } from '@opentelemetry/instrumentation-fetch';
+
+/**
+ * FetchError interface matching OpenTelemetry's internal type
+ * Note: FetchError is not exported from @opentelemetry/instrumentation-fetch
+ */
+interface FetchError {
+  status?: number;
+  message: string;
+}
 
 /**
  * Set span status to ERROR when fetch fails
@@ -16,6 +25,13 @@ export function setSpanStatusOnFetchError(span: Span, error: Error | string): vo
 }
 
 /**
+ * Type guard to check if result is a FetchError
+ */
+function isFetchError(result: Response | FetchError): result is FetchError {
+  return 'message' in result && typeof (result as FetchError).message === 'string';
+}
+
+/**
  * Custom attribute function for fetch instrumentation with defaults
  *
  * Combines user-provided custom attributes with default handling.
@@ -26,16 +42,20 @@ export function setSpanStatusOnFetchError(span: Span, error: Error | string): vo
 export function fetchCustomAttributeFunctionWithDefaults(
   userFunction?: FetchCustomAttributeFunction
 ): FetchCustomAttributeFunction {
-  const fn: any = (span: Span, request: Request | RequestInit, result: Response | any) => {
+  const fn: FetchCustomAttributeFunction = (
+    span: Span,
+    request: Request | RequestInit,
+    result: Response | FetchError
+  ) => {
     // Call user function first if provided
     if (userFunction) {
       userFunction(span, request, result);
     }
 
     // Add default error handling
-    // Check if result is an Error (FetchError extends Error)
-    if (result && result instanceof Error) {
-      setSpanStatusOnFetchError(span, result);
+    // Check if result is a FetchError
+    if (isFetchError(result)) {
+      setSpanStatusOnFetchError(span, result.message);
     }
   };
   return fn;

@@ -1,5 +1,5 @@
 import { initializeFaro, type MeasurementEvent, type TransportItem } from '@grafana/faro-core';
-import { mockConfig, MockTransport } from '@grafana/faro-core/src/testUtils';
+import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import { HttpInstrumentation } from './index';
 
@@ -52,7 +52,9 @@ describe('HttpInstrumentation', () => {
       // Should have measurements
       expect(transport.items.length).toBeGreaterThanOrEqual(2);
 
-      const measurements = transport.items.filter((item) => item.type === 'measurement') as TransportItem<MeasurementEvent>[];
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
 
       // Find http_request_start measurement
       const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
@@ -82,7 +84,9 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data', { method: 'POST' });
 
-      const measurements = transport.items.filter((item) => item.type === 'measurement') as TransportItem<MeasurementEvent>[];
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
       const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
 
       expect(startMeasurement).toBeDefined();
@@ -106,7 +110,9 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data').catch(() => {});
 
-      const measurements = transport.items.filter((item) => item.type === 'measurement') as TransportItem<MeasurementEvent>[];
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
 
       // Should have request_start
       const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
@@ -139,7 +145,9 @@ describe('HttpInstrumentation', () => {
       const url = new URL('https://api.example.com/data');
       await fetch(url);
 
-      const measurements = transport.items.filter((item) => item.type === 'measurement') as TransportItem<MeasurementEvent>[];
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
       const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
 
       expect(startMeasurement).toBeDefined();
@@ -162,7 +170,9 @@ describe('HttpInstrumentation', () => {
       const request = new Request('https://api.example.com/data', { method: 'POST' });
       await fetch(request);
 
-      const measurements = transport.items.filter((item) => item.type === 'measurement') as TransportItem<MeasurementEvent>[];
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
       const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
 
       expect(startMeasurement).toBeDefined();
@@ -188,7 +198,9 @@ describe('HttpInstrumentation', () => {
       await fetch('https://faro.grafana.net/collect');
 
       // Should not have http measurements for collector URL
-      const measurements = transport.items.filter((item) => item.type === 'measurement') as TransportItem<MeasurementEvent>[];
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
       const httpMeasurements = measurements.filter(
         (m) => m.payload.type === 'http_request_start' || m.payload.type === 'http_request'
       );
@@ -216,7 +228,9 @@ describe('HttpInstrumentation', () => {
       await fetch('http://127.0.0.1:8080/data');
       await fetch('https://api.example.com/internal-api/users');
 
-      const measurements = transport.items.filter((item) => item.type === 'measurement') as TransportItem<MeasurementEvent>[];
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
       const httpMeasurements = measurements.filter(
         (m) => m.payload.type === 'http_request_start' || m.payload.type === 'http_request'
       );
@@ -242,7 +256,9 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data');
 
-      const measurements = transport.items.filter((item) => item.type === 'measurement') as TransportItem<MeasurementEvent>[];
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
       const httpMeasurements = measurements.filter(
         (m) => m.payload.type === 'http_request_start' || m.payload.type === 'http_request'
       );
@@ -279,7 +295,9 @@ describe('HttpInstrumentation', () => {
       resolvePromise!(mockResponse);
       await request;
 
-      const measurements = transport.items.filter((item) => item.type === 'measurement') as TransportItem<MeasurementEvent>[];
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
       const requestMeasurement = measurements.find((m) => m.payload.type === 'http_request');
 
       expect(requestMeasurement?.payload.values?.duration).toBeDefined();
@@ -364,7 +382,9 @@ describe('HttpInstrumentation', () => {
         fetch('https://api.example.com/data3'),
       ]);
 
-      const measurements = transport.items.filter((item) => item.type === 'measurement') as TransportItem<MeasurementEvent>[];
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
       const startMeasurements = measurements.filter((m) => m.payload.type === 'http_request_start');
       const requestMeasurements = measurements.filter((m) => m.payload.type === 'http_request');
 
@@ -373,9 +393,7 @@ describe('HttpInstrumentation', () => {
       expect(requestMeasurements).toHaveLength(3);
 
       // Each should have a unique requestId
-      const requestIds = startMeasurements
-        .map((m) => m.payload.context?.requestId)
-        .filter((id) => id !== undefined);
+      const requestIds = startMeasurements.map((m) => m.payload.context?.requestId).filter((id) => id !== undefined);
       const uniqueIds = new Set(requestIds);
       expect(uniqueIds.size).toBe(3);
 

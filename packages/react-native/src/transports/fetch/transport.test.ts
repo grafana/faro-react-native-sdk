@@ -6,7 +6,7 @@ import {
   TransportItem,
   TransportItemType,
 } from '@grafana/faro-core';
-import { mockConfig, mockInternalLogger } from '@grafana/faro-core/src/testUtils';
+import { mockConfig, mockInternalLogger } from '@grafana/faro-test-utils';
 
 import { FetchTransport } from './transport';
 
@@ -65,6 +65,11 @@ describe('FetchTransport', () => {
         },
       })
     );
+  });
+
+  afterEach(() => {
+    // Ensure all pending timers are cleared between tests
+    jest.clearAllTimers();
   });
 
   afterAll(() => {
@@ -569,6 +574,7 @@ describe('FetchTransport', () => {
     });
 
     it('handles buffer full errors silently', async () => {
+      jest.useFakeTimers();
       const consoleSpy = jest.spyOn(console, 'error');
 
       const transport = new FetchTransport({
@@ -604,12 +610,15 @@ describe('FetchTransport', () => {
         promises.push(transport.send([item]));
       }
 
+      // Run all timers to resolve the delayed promises
+      jest.runAllTimers();
       await Promise.all(promises);
 
       // Should not log buffer full errors to console
       expect(consoleSpy).not.toHaveBeenCalled();
 
       consoleSpy.mockRestore();
+      jest.useRealTimers();
     });
 
     it('continues to respect rate limiting during circuit breaker recovery', async () => {

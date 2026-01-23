@@ -1,5 +1,5 @@
 import { initializeFaro } from '@grafana/faro-core';
-import { mockConfig } from '@grafana/faro-core/src/testUtils';
+import { mockConfig } from '@grafana/faro-test-utils';
 
 import { isSampled } from './sampling';
 

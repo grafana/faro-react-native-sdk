@@ -129,7 +129,7 @@ export function ErrorDemoScreen() {
 
       <FaroErrorBoundary
         key={boundaryKey}
-        fallback={(error, resetError) => (
+        fallback={(error: Error, resetError: () => void) => (
           <ErrorFallback error={error} resetError={resetError} />
         )}
         onReset={handleReset}

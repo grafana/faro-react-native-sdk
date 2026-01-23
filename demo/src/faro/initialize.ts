@@ -28,7 +28,10 @@ function getDemoVersion(): string {
 export function initFaro() {
   console.log('[FARO DEBUG] Starting Faro initialization...');
   console.log('[FARO DEBUG] FARO_COLLECTOR_URL value:', FARO_COLLECTOR_URL);
-  console.log('[FARO DEBUG] FARO_COLLECTOR_URL type:', typeof FARO_COLLECTOR_URL);
+  console.log(
+    '[FARO DEBUG] FARO_COLLECTOR_URL type:',
+    typeof FARO_COLLECTOR_URL,
+  );
 
   if (!FARO_COLLECTOR_URL) {
     console.warn(
@@ -53,10 +56,10 @@ export function initFaro() {
     trackPerformance: true,
     // Performance monitoring configuration - set to 2 seconds for demo
     fetchVitalsInterval: 2000, // Collect metrics every 2 seconds (default is 30s)
-  } as any);
+  });
   console.log(
     `[FARO DEBUG] Created ${instrumentations.length} instrumentations:`,
-    instrumentations.map((i: any) => i.name),
+    instrumentations.map((i: { name: string }) => i.name),
   );
 
   const faro = initializeFaro({
@@ -82,7 +85,7 @@ export function initFaro() {
         level: 'info', // Use string literal instead of enum value
       }),
     ],
-  } as any); // Type cast to avoid config validation issues
+  });
 
   // Test that Faro is working by sending a test event
   faro.api.pushEvent('faro_initialized', {

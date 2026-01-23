@@ -27,6 +27,7 @@ Traditional approaches require capturing timestamps manually in native code (e.g
 Both iOS and Android track process start time at the kernel level. We simply query the OS when needed:
 
 **iOS** (all versions):
+
 ```swift
 var kinfo = kinfo_proc()
 var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
@@ -35,6 +36,7 @@ let processStartTime = kinfo.kp_proc.p_starttime
 ```
 
 **Android** (API 24+):
+
 ```kotlin
 val processStartTime = Process.getStartElapsedRealtime()
 val currentTime = SystemClock.elapsedRealtime()
@@ -99,9 +101,7 @@ initializeFaro({
 To disable startup tracking:
 
 ```typescript
-instrumentations: [
-  ...getRNInstrumentations({ trackStartup: false }),
-]
+instrumentations: [...getRNInstrumentations({ trackStartup: false })];
 ```
 
 You can also use the instrumentation directly:
@@ -116,19 +116,19 @@ initializeFaro({
     name: 'your-app-name',
     version: '1.0.0',
   },
-  instrumentations: [
-    new StartupInstrumentation({ enabled: true }),
-  ],
+  instrumentations: [new StartupInstrumentation({ enabled: true })],
 });
 ```
 
 ## Requirements
 
 ### iOS
+
 - **iOS 13.4+** (any iOS version that supports React Native)
 - Works on all iOS devices
 
 ### Android
+
 - **Android API 24+ (Android 7.0 Nougat)**
 - Covers ~99% of Android devices as of 2025
 - Returns `0` on older Android versions (gracefully degraded)
@@ -171,16 +171,19 @@ The implementation consists of three layers:
 ### Native Module Configuration
 
 **iOS Podspec** (`FaroReactNative.podspec`):
+
 - Forces Old Architecture mode (`RCT_NEW_ARCH_ENABLED = 0`)
 - Compatible with New Architecture apps
 - No TurboModule/Fabric registration (prevents crashes)
 
 **Android Gradle** (`android/build.gradle`):
+
 - Namespace: `com.grafana.faro.reactnative`
 - Min SDK: 21 (Android 5.0)
 - Target SDK: 33 (Android 13)
 
 **Autolinking** (`react-native.config.js`):
+
 - Enables automatic discovery by React Native CLI
 - No manual linking required
 
@@ -189,6 +192,7 @@ The implementation consists of three layers:
 Both platforms expose a synchronous method for immediate access:
 
 **iOS**:
+
 ```objc
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getAppStartDuration)
 {
@@ -197,6 +201,7 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getAppStartDuration)
 ```
 
 **Android**:
+
 ```kotlin
 @ReactMethod(isBlockingSynchronousMethod = true)
 fun getAppStartDuration(): Double {
@@ -222,24 +227,27 @@ The instrumentation includes extensive debug logging (can be removed in producti
 ```
 
 If you see "Native module not available", ensure you've:
+
 1. Installed pods: `cd ios && pod install`
 2. Rebuilt the app: `yarn ios`
 3. Checked that autolinking is enabled in your project
 
 ## Platform Status
 
-| Platform | Native Code | Build | Runtime | Status |
-|----------|-------------|-------|---------|---------|
-| iOS | ✅ Complete | ✅ Working | ✅ Working | **Production Ready** |
-| Android | ✅ Complete | ⚠️ Workspace Issue | ⏳ Untested | **Code Ready** |
+| Platform | Native Code | Build              | Runtime     | Status               |
+| -------- | ----------- | ------------------ | ----------- | -------------------- |
+| iOS      | ✅ Complete | ✅ Working         | ✅ Working  | **Production Ready** |
+| Android  | ✅ Complete | ⚠️ Workspace Issue | ⏳ Untested | **Code Ready**       |
 
 ### iOS Status: ✅ Production Ready
+
 - Native implementation complete and tested
 - Build succeeds via CocoaPods autolinking
 - App launches and captures metrics correctly
 - Verified with artificial delays
 
 ### Android Status: ⚠️ Code Ready, Workspace Issue
+
 - Native implementation complete (ported from Flutter SDK)
 - Code follows React Native best practices
 - Blocked by Yarn workspace gradle path resolution
@@ -249,20 +257,24 @@ If you see "Native module not available", ensure you've:
 ## Troubleshooting
 
 ### iOS: "Native module not available"
+
 1. Run `cd ios && pod install`
 2. Clean build folder in Xcode (Cmd+Shift+K)
 3. Rebuild: `yarn ios`
 
 ### iOS: Build fails with "FaroReactNative.h not found"
+
 1. Clean pods: `cd ios && rm -rf Pods Podfile.lock`
 2. Reinstall: `pod install`
 3. Clean Xcode derived data
 4. Rebuild
 
 ### Android: Gradle build fails (Workspace Issue)
+
 This is a known issue with the demo app's Yarn workspace configuration. The native Android code is complete and ready to work once gradle path resolution is fixed.
 
 **Error**:
+
 ```
 Error: Cannot find module '/path/to/node_modules/@react-native/codegen/...'
 ```
@@ -273,6 +285,7 @@ The Android code will work fine in standalone React Native projects that aren't 
 ## Credits
 
 This implementation is ported from the [Faro Flutter SDK](https://github.com/grafana/faro-flutter-sdk):
+
 - iOS: Ported from `ios/Classes/AppStart.swift`
 - Android: Ported from `android/src/main/java/com/grafana/faro_flutter_plugin/FaroPlugin.java`
 

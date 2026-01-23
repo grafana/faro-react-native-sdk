@@ -11,7 +11,7 @@ import { setCurrentScreen } from '../metas/screen';
 export function getCurrentRoute(
   state: NavigationState | PartialState<NavigationState> | undefined
 ): Route<string> | undefined {
-  if (!state || !state.routes) {
+  if (!state || !state.routes || state.routes.length === 0) {
     return undefined;
   }
 
@@ -22,7 +22,12 @@ export function getCurrentRoute(
     return getCurrentRoute(route.state as NavigationState);
   }
 
-  return route;
+  // Only return if route has all required properties
+  if (route && 'key' in route && 'name' in route && route.key && route.name) {
+    return route as Route<string>;
+  }
+
+  return undefined;
 }
 
 /**

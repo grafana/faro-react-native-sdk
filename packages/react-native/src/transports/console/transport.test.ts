@@ -1,5 +1,5 @@
 import { getTransportBody, LogEvent, LogLevel, TransportItem, TransportItemType } from '@grafana/faro-core';
-import { mockInternalLogger } from '@grafana/faro-core/src/testUtils';
+import { mockInternalLogger } from '@grafana/faro-test-utils';
 
 import { ConsoleTransport } from './transport';
 

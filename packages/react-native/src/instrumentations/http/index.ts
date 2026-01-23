@@ -4,7 +4,7 @@ import { notifyHttpRequestEnd, notifyHttpRequestStart } from '../userActions/htt
 
 export interface HttpRequestPayload {
   url: string;
-  method?: string;
+  method: string;
   requestId: string;
   startTime: number;
   endTime?: number;
@@ -77,12 +77,14 @@ export class HttpInstrumentation extends BaseInstrumentation {
 
     // Check config ignore URLs (includes transport URLs)
     const configIgnoreUrls = this.config?.ignoreUrls || [];
-    if (configIgnoreUrls.some((pattern) => {
-      if (typeof pattern === 'string') {
-        return url.includes(pattern);
-      }
-      return pattern.test(url);
-    })) {
+    if (
+      configIgnoreUrls.some((pattern) => {
+        if (typeof pattern === 'string') {
+          return url.includes(pattern);
+        }
+        return pattern.test(url);
+      })
+    ) {
       return true;
     }
 

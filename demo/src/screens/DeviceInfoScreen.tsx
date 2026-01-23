@@ -11,9 +11,10 @@ import { PerformanceMetricsCard } from '../components/PerformanceMetricsCard';
  */
 export default function DeviceInfoScreen() {
   // Get synchronous device info from Faro's browser meta
-  const browserMeta = (faro?.metas?.value?.browser as any) || {};
+  const metasValue = faro?.metas?.value as Record<string, unknown> | undefined;
+  const browserMeta = (metasValue?.browser as Record<string, unknown>) || {};
 
-  const renderMetaField = (label: string, value: any) => {
+  const renderMetaField = (label: string, value: unknown) => {
     if (value === undefined || value === null) {
       return null;
     }

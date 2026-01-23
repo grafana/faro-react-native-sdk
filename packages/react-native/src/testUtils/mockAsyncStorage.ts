@@ -22,9 +22,7 @@ export function mockAsyncStorage(): {
       return Promise.resolve();
     }),
     getAllKeys: jest.fn(() => Promise.resolve(Object.keys(storage))),
-    multiGet: jest.fn((keys: string[]) =>
-      Promise.resolve(keys.map((key) => [key, storage[key] ?? null]))
-    ),
+    multiGet: jest.fn((keys: string[]) => Promise.resolve(keys.map((key) => [key, storage[key] ?? null]))),
     multiSet: jest.fn((keyValuePairs: Array<[string, string]>) => {
       keyValuePairs.forEach(([key, value]) => {
         storage[key] = value;

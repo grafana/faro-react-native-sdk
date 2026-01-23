@@ -1,6 +1,11 @@
 import { Platform } from 'react-native';
 
-import type { StackFrame } from '@grafana/faro-core';
+import type { ExceptionStackFrame as StackFrame } from '@grafana/faro-core';
+
+// Declare global Hermes runtime
+declare global {
+  var HermesInternal: object | undefined;
+}
 
 /**
  * Parse React Native stack traces into structured stack frames
@@ -48,7 +53,7 @@ export function parseStackTraceLine(line: string): ParsedStackFrame | null {
 
   // Try standard React Native format: at functionName (file.js:123:45)
   let match = trimmedLine.match(REACT_NATIVE_STACK_REGEX);
-  if (match) {
+  if (match && match[2] && match[3] && match[4]) {
     return {
       function: match[1] || '<anonymous>',
       filename: match[2],
@@ -59,7 +64,7 @@ export function parseStackTraceLine(line: string): ParsedStackFrame | null {
 
   // Try Metro bundler format: at Object.functionName (/path/to/file.js:123:456)
   match = trimmedLine.match(METRO_BUNDLER_REGEX);
-  if (match) {
+  if (match && match[2] && match[3] && match[4]) {
     return {
       function: match[1] || '<anonymous>',
       filename: match[2],
@@ -70,7 +75,7 @@ export function parseStackTraceLine(line: string): ParsedStackFrame | null {
 
   // Try anonymous format: at anonymous (file.js:123:45)
   match = trimmedLine.match(REACT_NATIVE_ANONYMOUS_REGEX);
-  if (match) {
+  if (match && match[1] && match[2] && match[3]) {
     return {
       function: '<anonymous>',
       filename: match[1],
@@ -91,7 +96,7 @@ export function parseStackTraceLine(line: string): ParsedStackFrame | null {
 
   // Try release/minified format: functionName@123:456
   match = trimmedLine.match(REACT_NATIVE_RELEASE_REGEX);
-  if (match) {
+  if (match && match[2] && match[3]) {
     return {
       function: match[1] || '<anonymous>',
       filename: '<unknown>',
@@ -161,7 +166,7 @@ export function getPlatformErrorContext(): Record<string, string> {
   return {
     platform: Platform.OS,
     platformVersion: Platform.Version?.toString() || 'unknown',
-    isHermes: !!(global as any).HermesInternal ? 'true' : 'false',
+    isHermes: typeof global.HermesInternal !== 'undefined' ? 'true' : 'false',
   };
 }
 

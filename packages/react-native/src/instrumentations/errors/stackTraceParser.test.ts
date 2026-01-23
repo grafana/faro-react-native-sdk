@@ -1,4 +1,11 @@
-import { parseStackTrace, parseStackTraceLine, toFaroStackFrames, getStackFramesFromError, getPlatformErrorContext, enhanceErrorWithContext } from './stackTraceParser';
+import {
+  enhanceErrorWithContext,
+  getPlatformErrorContext,
+  getStackFramesFromError,
+  parseStackTrace,
+  parseStackTraceLine,
+  toFaroStackFrames,
+} from './stackTraceParser';
 
 describe('Stack Trace Parser', () => {
   describe('parseStackTraceLine', () => {
@@ -31,7 +38,7 @@ describe('Stack Trace Parser', () => {
       const frame = parseStackTraceLine(line);
 
       expect(frame).toEqual({
-        function: 'anonymous',  // 'anonymous' matches the REACT_NATIVE_STACK_REGEX first
+        function: 'anonymous', // 'anonymous' matches the REACT_NATIVE_STACK_REGEX first
         filename: 'file.js',
         lineno: 123,
         colno: 45,

@@ -1,17 +1,12 @@
 import type { NavigationState, PartialState, Route } from '@react-navigation/native';
 
 import { initializeFaro } from '@grafana/faro-core';
-import { mockConfig } from '@grafana/faro-core/src/testUtils';
+import { mockConfig } from '@grafana/faro-test-utils';
 
 import { getCurrentPage } from '../metas/page';
 import { getCurrentScreen } from '../metas/screen';
 
-import {
-  createNavigationStateChangeHandler,
-  getCurrentRoute,
-  getRouteName,
-  onNavigationStateChange,
-} from './utils';
+import { createNavigationStateChangeHandler, getCurrentRoute, getRouteName, onNavigationStateChange } from './utils';
 
 describe('navigation utils', () => {
   let faro: ReturnType<typeof initializeFaro>;

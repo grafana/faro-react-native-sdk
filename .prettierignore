@@ -1,0 +1,15 @@
+# Demo vendor and bundle directories
+demo/vendor/
+demo/bundle/
+
+# Build outputs
+**/dist/
+**/build/
+**/coverage/
+
+# Dependencies
+**/node_modules/
+
+# Lock files
+yarn.lock
+package-lock.json

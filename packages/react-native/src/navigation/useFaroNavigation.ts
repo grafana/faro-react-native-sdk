@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
 import type { NavigationContainerRef, NavigationState } from '@react-navigation/native';
+import { useEffect, useRef } from 'react';
 
 import { onNavigationStateChange } from './utils';
 
@@ -28,6 +28,7 @@ import { onNavigationStateChange } from './utils';
  * }
  * ```
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- ParamList is app-specific, using any for flexibility
 export function useFaroNavigation(navigationRef: { current: NavigationContainerRef<any> | null }): void {
   const unsubscribeRef = useRef<(() => void) | null>(null);
 

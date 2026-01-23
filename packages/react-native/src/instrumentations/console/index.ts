@@ -20,7 +20,7 @@ export class ConsoleInstrumentation extends BaseInstrumentation {
   static defaultDisabledLevels: LogLevel[] = [LogLevel.DEBUG, LogLevel.TRACE, LogLevel.LOG];
   static consoleErrorPrefix = 'console.error: ';
 
-  private originalConsole: Record<string, any> = {};
+  private originalConsole: Partial<Console> = {};
   private errorSerializer: LogArgsSerializer = reactNativeLogArgsSerializer;
   private patchedLevels: LogLevel[] = [];
 
@@ -46,7 +46,7 @@ export class ConsoleInstrumentation extends BaseInstrumentation {
 
     // Patch console methods
     this.patchedLevels.forEach((level) => {
-      console[level] = (...args: any[]) => {
+      console[level] = (...args: unknown[]) => {
         try {
           if (level === LogLevel.ERROR && !instrumentationOptions?.consoleErrorAsLog) {
             // Handle console.error as an error with advanced serialization

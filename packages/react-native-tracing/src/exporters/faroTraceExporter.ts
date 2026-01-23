@@ -7,8 +7,9 @@ import { createInternalLogger } from '@grafana/faro-core';
 
 const internalLogger = createInternalLogger();
 
-import { sendFaroEvents } from './faroTraceExporter.utils';
 import type { FaroTraceExporterConfig } from '../types';
+
+import { sendFaroEvents } from './faroTraceExporter.utils';
 
 /**
  * FaroTraceExporter for React Native

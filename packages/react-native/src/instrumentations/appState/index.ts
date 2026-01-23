@@ -1,6 +1,9 @@
 import { AppState, type AppStateStatus } from 'react-native';
 
-import { BaseInstrumentation, dateNow, EVENT_APP_STATE_CHANGED, VERSION } from '@grafana/faro-core';
+import { BaseInstrumentation, dateNow, VERSION } from '@grafana/faro-core';
+
+// Define app state changed event constant - exported for testing
+export const EVENT_APP_STATE_CHANGED = 'app_state_changed';
 
 /**
  * AppState instrumentation for React Native

@@ -96,7 +96,10 @@ function getErrorDetails(error: Error): [string | undefined, string | undefined,
   } else if (isObject(error)) {
     // Handle error-like objects
     value = String(error);
-    type = error.constructor?.name;
+    type =
+      error && typeof error === 'object' && 'constructor' in error
+        ? (error.constructor as { name?: string })?.name
+        : undefined;
   }
 
   return [value, type, stackFrames];
@@ -106,7 +109,7 @@ function getErrorDetails(error: Error): [string | undefined, string | undefined,
  * Extracts error details from an array of arguments
  * Similar to web SDK's getDetailsFromErrorArgs but adapted for React Native
  */
-export function getDetailsFromErrorArgs(args: [any?, ...any[]]): ErrorDetails {
+export function getDetailsFromErrorArgs(args: [unknown?, ...unknown[]]): ErrorDetails {
   const [firstArg] = args;
 
   let value: string | undefined;
@@ -133,7 +136,10 @@ export function getDetailsFromErrorArgs(args: [any?, ...any[]]): ErrorDetails {
  * If first argument is an Error, extracts error details with stack frames
  * Otherwise, uses the provided serializer to stringify the arguments
  */
-export function getDetailsFromConsoleErrorArgs(args: [any?, ...any[]], serializer: LogArgsSerializer): ErrorDetails {
+export function getDetailsFromConsoleErrorArgs(
+  args: [unknown?, ...unknown[]],
+  serializer: LogArgsSerializer
+): ErrorDetails {
   if (isError(args[0])) {
     return getDetailsFromErrorArgs(args);
   } else {

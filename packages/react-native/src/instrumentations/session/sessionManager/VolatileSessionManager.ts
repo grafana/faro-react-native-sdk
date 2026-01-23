@@ -1,4 +1,4 @@
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import { faro } from '@grafana/faro-core';
 
@@ -48,12 +48,13 @@ export class VolatileSessionsManager {
     this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
 
     // Users can call the setSession() method, so we need to sync this with the in-memory session
-    this.metaUnsubscribe = faro.metas.addListener(
+    const unsubscribe = faro.metas.addListener(
       getSessionMetaUpdateHandler({
         fetchUserSession: VolatileSessionsManager.fetchUserSession,
         storeUserSession: VolatileSessionsManager.storeUserSession,
       })
     );
+    this.metaUnsubscribe = typeof unsubscribe === 'function' ? unsubscribe : null;
   }
 
   /**

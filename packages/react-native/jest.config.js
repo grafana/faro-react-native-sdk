@@ -4,6 +4,7 @@ module.exports = {
   ...jestBaseConfig,
   preset: 'react-native',
   displayName: 'react-native',
+  testEnvironment: 'node', // Override jsdom from base config - react-native preset handles environment
   testMatch: ['<rootDir>/packages/react-native/src/**/*.test.ts'],
   transform: {
     '^.+\\.(js|ts|tsx)$': [
@@ -17,6 +18,7 @@ module.exports = {
     'node_modules/(?!(react-native|@react-native|react-native-device-info|@react-native-async-storage)/)',
   ],
   moduleNameMapper: {
+    '^@grafana/faro-core/testUtils$': '<rootDir>/node_modules/@grafana/faro-core/dist/esm/testUtils/index.js',
     ...jestBaseConfig.moduleNameMapper,
   },
   setupFiles: ['<rootDir>/packages/react-native/src/testUtils/setupTests.ts'],

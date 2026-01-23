@@ -45,17 +45,20 @@ That's it! HTTP requests via `fetch()` are now automatically traced and sent to 
 ## Features
 
 ### 🚀 **Automatic Tracing**
+
 - **Fetch Instrumentation**: HTTP requests are automatically traced with no code changes
 - **Session Correlation**: Traces are correlated with Faro sessions for complete user journey tracking
 - **User Context**: User information is automatically added to span attributes
 - **Device Metadata**: Device and platform information included in traces (device model, OS, locale, etc.)
 
 ### 🔗 **Distributed Tracing**
+
 - **W3C Trace Context**: Standards-compliant trace propagation via HTTP headers
 - **Context Propagation**: Seamlessly connect frontend traces to backend services
 - **Configurable CORS**: Control which APIs receive trace headers
 
 ### 🎯 **Manual Span Creation**
+
 - **OTEL API Access**: Full OpenTelemetry API available via `faro.otel`
 - **Custom Spans**: Create spans for critical business operations
 - **Nested Spans**: Build complex trace hierarchies with parent-child relationships
@@ -63,12 +66,14 @@ That's it! HTTP requests via `fetch()` are now automatically traced and sent to 
 - **Span Events**: Add timestamped checkpoints within spans
 
 ### 🔍 **Faro Integration**
+
 - **User Action Correlation**: Spans are correlated with Faro user actions
 - **Log Correlation**: Connect traces with logs using trace/span IDs
 - **Error Correlation**: Errors are automatically linked to active spans
 - **Measurement Correlation**: Performance metrics tied to traces
 
 ### 🛡️ **Infinite Loop Prevention**
+
 The tracing instrumentation is carefully designed to prevent infinite loops that can occur when tracing causes logging, which causes more tracing:
 
 - **Automatic URL Filtering**: Collector URLs are automatically excluded from tracing
@@ -93,10 +98,7 @@ new TracingInstrumentation({
   // Optional: Configure trace header propagation
   instrumentationOptions: {
     // URLs that should receive trace context headers
-    propagateTraceHeaderCorsUrls: [
-      /https:\/\/api\.example\.com/,
-      'https://other-api.com',
-    ],
+    propagateTraceHeaderCorsUrls: [/https:\/\/api\.example\.com/, 'https://other-api.com'],
 
     // Optional: Customize fetch instrumentation
     fetchInstrumentationOptions: {
@@ -122,14 +124,11 @@ import { FaroTraceExporter, FaroMetaAttributesSpanProcessor } from '@grafana/far
 new TracingInstrumentation({
   // Optional: Custom span processor (advanced)
   spanProcessor: new FaroMetaAttributesSpanProcessor(
-    new BatchSpanProcessor(
-      new FaroTraceExporter({ api: faro.api }),
-      {
-        scheduledDelayMillis: 1000,
-        maxExportBatchSize: 30,
-        maxQueueSize: 100,
-      }
-    ),
+    new BatchSpanProcessor(new FaroTraceExporter({ api: faro.api }), {
+      scheduledDelayMillis: 1000,
+      maxExportBatchSize: 30,
+      maxQueueSize: 100,
+    }),
     faro.metas
   ),
 
@@ -160,6 +159,7 @@ const data = await response.json();
 ```
 
 **Trace includes:**
+
 - `http.method`: `GET`
 - `http.url`: `https://api.example.com/users`
 - `http.status_code`: `200`
@@ -238,7 +238,6 @@ async function checkoutFlow(cartId: string) {
   try {
     // Use context.with() to make this span the active parent
     await context.with(trace.setSpan(context.active(), parentSpan), async () => {
-
       // Child span 1: Validate cart
       const validateSpan = tracer.startSpan('validate-cart');
       await validateCart(cartId);
@@ -400,21 +399,25 @@ function performOperation() {
 Every span includes these attributes:
 
 **Standard OTEL Attributes:**
+
 - `http.method` - HTTP method (GET, POST, etc.)
 - `http.url` - Full URL
 - `http.status_code` - HTTP status code
 - `http.target` - URL path
 
 **Faro Session Attributes:**
+
 - `session.id` - Faro session ID
 - `session.attributes.*` - Custom session attributes
 
 **User Attributes (if set):**
+
 - `enduser.id` - User ID
 - `enduser.username` - Username
 - `enduser.email` - Email
 
 **Device Attributes:**
+
 - `device.model` - Device model (e.g., "iPhone 15 Pro")
 - `device.brand` - Device manufacturer (e.g., "Apple")
 - `device.platform` - OS name (e.g., "iOS")
@@ -422,12 +425,14 @@ Every span includes these attributes:
 - `device.locale` - Device locale (e.g., "en-US")
 
 **App Attributes:**
+
 - `service.name` - App name from config
 - `service.version` - App version
 - `service.namespace` - App namespace (if set)
 - `deployment.environment.name` - Environment (production, staging, etc.)
 
 **User Action Attributes (if active):**
+
 - `faro.action.user.name` - Name of user action
 - `faro.action.user.parentId` - Parent action ID
 
@@ -457,6 +462,7 @@ provider.register({
 ```
 
 When configured correctly:
+
 1. Frontend creates a span for the HTTP request
 2. Frontend adds `traceparent` and `tracestate` headers to the request
 3. Backend extracts trace context from headers
@@ -481,6 +487,7 @@ Trace: abc123-def456-ghi789
 ### No traces appearing in Grafana Cloud
 
 **Check session sampling:**
+
 ```typescript
 const session = faro.api.getSession();
 console.log('Session:', session);
@@ -499,6 +506,7 @@ initializeFaro({
 ```
 
 **Verify collector URL:**
+
 ```typescript
 // Check that URL is correctly formatted
 console.log('Collector URL:', faro.config.url);
@@ -510,6 +518,7 @@ Open React Native debugger → Network tab → Look for POST requests to `/colle
 ### Infinite loops / exponential requests
 
 **Symptoms:**
+
 - App sends exponentially growing requests
 - App becomes unresponsive
 - Dev tools crash
@@ -531,6 +540,7 @@ console.log('Ignored URLs:', ignoredUrls);
 ### OTEL is not available error
 
 **Error:**
+
 ```
 OTEL is not available. Make sure tracing is initialised
 ```
@@ -542,9 +552,7 @@ OTEL is not available. Make sure tracing is initialised
 ```typescript
 // ✅ Correct: Initialize tracing first
 const faro = initializeFaro({
-  instrumentations: [
-    new TracingInstrumentation(),
-  ],
+  instrumentations: [new TracingInstrumentation()],
 });
 
 // Then use faro.otel
@@ -573,10 +581,7 @@ const { trace } = faro.otel; // Error!
 import { FaroMetaAttributesSpanProcessor } from '@grafana/faro-react-native-tracing';
 
 new TracingInstrumentation({
-  spanProcessor: new FaroMetaAttributesSpanProcessor(
-    yourCustomSpanProcessor,
-    faro.metas
-  ),
+  spanProcessor: new FaroMetaAttributesSpanProcessor(yourCustomSpanProcessor, faro.metas),
 });
 ```
 
@@ -587,6 +592,7 @@ new TracingInstrumentation({
 **Solutions:**
 
 1. **Enable W3C propagator on backend:**
+
 ```javascript
 // Node.js + OpenTelemetry
 const { W3CTraceContextPropagator } = require('@opentelemetry/core');
@@ -596,14 +602,18 @@ provider.register({
 ```
 
 2. **Configure CORS to allow trace headers:**
+
 ```javascript
 // Express
-app.use(cors({
-  allowedHeaders: ['traceparent', 'tracestate'],
-}));
+app.use(
+  cors({
+    allowedHeaders: ['traceparent', 'tracestate'],
+  })
+);
 ```
 
 3. **Add backend URL to propagation list:**
+
 ```typescript
 new TracingInstrumentation({
   instrumentationOptions: {
@@ -679,12 +689,11 @@ class FaroTraceExporter implements SpanExporter {
 Returns default OpenTelemetry instrumentations for React Native.
 
 ```typescript
-function getDefaultOTELInstrumentations(
-  options?: DefaultInstrumentationsOptions
-): Instrumentation[];
+function getDefaultOTELInstrumentations(options?: DefaultInstrumentationsOptions): Instrumentation[];
 ```
 
 Currently returns:
+
 - `FetchInstrumentation` - Automatic HTTP tracing
 
 ### faro.otel
@@ -693,8 +702,8 @@ Access OpenTelemetry APIs for manual tracing.
 
 ```typescript
 interface FaroOTEL {
-  trace: TraceAPI;  // OpenTelemetry trace API
-  context: ContextAPI;  // OpenTelemetry context API
+  trace: TraceAPI; // OpenTelemetry trace API
+  context: ContextAPI; // OpenTelemetry context API
 }
 
 // Usage
@@ -729,8 +738,9 @@ const span = tracer.startSpan('operation');
 ## Examples
 
 See the demo app for complete examples:
-- [TracingDemoScreen.tsx](../../demo-react-native/src/screens/TracingDemoScreen.tsx) - 10 comprehensive tracing scenarios
-- [initialize.ts](../../demo-react-native/src/faro/initialize.ts) - Faro initialization with tracing
+
+- [TracingDemoScreen.tsx](../../demo/src/screens/TracingDemoScreen.tsx) - 10 comprehensive tracing scenarios
+- [initialize.ts](../../demo/src/faro/initialize.ts) - Faro initialization with tracing
 
 ## Performance Considerations
 
@@ -743,6 +753,7 @@ See the demo app for complete examples:
 ### Optimization Tips
 
 1. **Sample sessions** - Don't trace every session:
+
 ```typescript
 sessionTracking: {
   samplingRate: 0.1, // 10% of sessions
@@ -750,14 +761,16 @@ sessionTracking: {
 ```
 
 2. **Increase batch size** - Reduce network requests:
+
 ```typescript
 new BatchSpanProcessor(exporter, {
   maxExportBatchSize: 50, // Default: 30
   scheduledDelayMillis: 2000, // Default: 1000
-})
+});
 ```
 
 3. **Filter spans** - Don't trace everything:
+
 ```typescript
 fetchInstrumentationOptions: {
   applyCustomAttributesOnSpan: (span, request) => {
@@ -792,5 +805,5 @@ See the main repository [CONTRIBUTING.md](../../CONTRIBUTING.md) for contributio
 ## Support
 
 - 📖 [Documentation](https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/)
-- 💬 [GitHub Discussions](https://github.com/grafana/faro-web-sdk/discussions)
-- 🐛 [Issue Tracker](https://github.com/grafana/faro-web-sdk/issues)
+- 💬 [GitHub Discussions](https://github.com/grafana/faro-react-native-sdk/discussions)
+- 🐛 [Issue Tracker](https://github.com/grafana/faro-react-native-sdk/issues)

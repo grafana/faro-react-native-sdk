@@ -2,7 +2,7 @@ import { context, trace } from '@opentelemetry/api';
 import type { Attributes } from '@opentelemetry/api';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { BatchSpanProcessor, BasicTracerProvider as ReactNativeTracerProvider } from '@opentelemetry/sdk-trace-base';
 import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base';
 import {
   ATTR_SERVICE_NAME,
@@ -10,32 +10,31 @@ import {
   SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
 } from '@opentelemetry/semantic-conventions';
 
-import { BaseInstrumentation, VERSION, getInternalFaroFromGlobalObject } from '@grafana/faro-core';
+import { BaseInstrumentation, getInternalFaroFromGlobalObject, VERSION } from '@grafana/faro-core';
 import type { Transport } from '@grafana/faro-core';
 
-import { FaroMetaAttributesSpanProcessor } from './processors/faroMetaAttributesSpanProcessor';
 import { FaroTraceExporter } from './exporters/faroTraceExporter';
 import { getDefaultOTELInstrumentations } from './instrumentations/getDefaultOTELInstrumentations';
-import { getSamplingDecision } from './utils/sampler';
+import { FaroMetaAttributesSpanProcessor } from './processors/faroMetaAttributesSpanProcessor';
 import {
-  ATTR_DEVICE_MODEL,
-  ATTR_DEVICE_BRAND,
-  ATTR_DEVICE_PLATFORM,
-  ATTR_DEVICE_OS_VERSION,
-  ATTR_DEVICE_LOCALE,
   ATTR_APP_VERSION,
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_DEVICE_BRAND,
+  ATTR_DEVICE_LOCALE,
+  ATTR_DEVICE_MODEL,
+  ATTR_DEVICE_OS_VERSION,
+  ATTR_DEVICE_PLATFORM,
+  ATTR_PROCESS_RUNTIME_NAME,
+  ATTR_PROCESS_RUNTIME_VERSION,
   ATTR_SERVICE_NAMESPACE,
   ATTR_TELEMETRY_DISTRO_NAME,
   ATTR_TELEMETRY_DISTRO_VERSION,
-  ATTR_PROCESS_RUNTIME_NAME,
-  ATTR_PROCESS_RUNTIME_VERSION,
 } from './semconv';
 import type { TracingInstrumentationOptions } from './types';
+import { getSamplingDecision } from './utils/sampler';
 
 // Import React Native TracerProvider
 // Note: We use the base provider since React Native doesn't have a specific one
-import { BasicTracerProvider as ReactNativeTracerProvider } from '@opentelemetry/sdk-trace-base';
 
 /**
  * TracingInstrumentation for React Native
@@ -105,7 +104,7 @@ export class TracingInstrumentation extends BaseInstrumentation {
 
     // Device/Platform attributes from React Native
     // Note: metas.value contains all meta providers, we need to check if device meta exists
-    const allMetas = this.metas.value as Record<string, any>;
+    const allMetas = this.metas.value as Record<string, unknown>;
     const deviceMeta = allMetas['device'];
 
     if (deviceMeta?.model) {
@@ -185,6 +184,7 @@ export class TracingInstrumentation extends BaseInstrumentation {
     // This allows users to access trace and context APIs via faro.otel
     const globalFaroInstance = getInternalFaroFromGlobalObject();
     if (globalFaroInstance) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Extending Faro instance with OTEL API
       (globalFaroInstance as any).otel = {
         trace,
         context,
@@ -204,7 +204,7 @@ export class TracingInstrumentation extends BaseInstrumentation {
 
     // Create regex patterns that match both with and without trailing slashes
     // This is critical because fetch() might add trailing slashes
-    const regexPatterns = transportUrls.map(url => {
+    const regexPatterns = transportUrls.map((url) => {
       if (typeof url === 'string') {
         // Escape special regex characters and make trailing slash optional
         const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -1,0 +1,20 @@
+{
+  "name": "@grafana/faro-test-utils",
+  "version": "1.0.0",
+  "description": "Test utilities for Grafana Faro packages",
+  "keywords": [
+    "testing",
+    "test-utils",
+    "faro"
+  ],
+  "license": "Apache-2.0",
+  "author": "Grafana Labs",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@grafana/faro-core": "2.0.2"
+  }
+}

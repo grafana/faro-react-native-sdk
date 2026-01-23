@@ -2,7 +2,7 @@ import { ExportResultCode } from '@opentelemetry/core';
 import { BasicTracerProvider, ReadableSpan } from '@opentelemetry/sdk-trace-base';
 
 import { initializeFaro } from '@grafana/faro-core';
-import { mockConfig, MockTransport } from '@grafana/faro-core/src/testUtils';
+import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import { FaroTraceExporter } from './faroTraceExporter';
 
@@ -32,7 +32,7 @@ describe('FaroTraceExporter', () => {
     const span = tracer.startSpan('test-span');
     span.end();
 
-    const readableSpan = (span as any) as ReadableSpan;
+    const readableSpan = span as any as ReadableSpan;
 
     exporter.export([readableSpan], (result) => {
       expect(result.code).toBe(ExportResultCode.SUCCESS);
@@ -48,7 +48,7 @@ describe('FaroTraceExporter', () => {
     const span = tracer.startSpan('test-span');
     span.end();
 
-    const readableSpan = (span as any) as ReadableSpan;
+    const readableSpan = span as any as ReadableSpan;
 
     exporter.export([readableSpan], (result) => {
       expect(pushTracesSpy).toHaveBeenCalled();
@@ -66,7 +66,7 @@ describe('FaroTraceExporter', () => {
     const span = tracer.startSpan('test-span');
     span.end();
 
-    const readableSpan = (span as any) as ReadableSpan;
+    const readableSpan = span as any as ReadableSpan;
 
     exporter.export([readableSpan], (result) => {
       expect(result.code).toBe(ExportResultCode.FAILED);
@@ -84,7 +84,7 @@ describe('FaroTraceExporter', () => {
     const span = tracer.startSpan('test-span');
     span.end();
 
-    const readableSpan = (span as any) as ReadableSpan;
+    const readableSpan = span as any as ReadableSpan;
 
     exporter.export([readableSpan], (result) => {
       expect(result.code).toBe(ExportResultCode.FAILED);

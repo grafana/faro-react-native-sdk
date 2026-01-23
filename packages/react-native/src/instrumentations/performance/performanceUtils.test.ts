@@ -1,6 +1,10 @@
-import { Platform } from 'react-native';
-
-import { getPlatformInfo, now, PerformanceMarker, performanceStore, toPerformanceTimingString } from './performanceUtils';
+import {
+  getPlatformInfo,
+  now,
+  PerformanceMarker,
+  performanceStore,
+  toPerformanceTimingString,
+} from './performanceUtils';
 
 // Mock Platform
 jest.mock('react-native', () => ({

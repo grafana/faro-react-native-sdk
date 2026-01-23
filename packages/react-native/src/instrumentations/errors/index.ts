@@ -7,11 +7,11 @@ import { enhanceErrorWithContext } from './stackTraceParser';
 // Access the global ErrorUtils
 declare const global: {
   ErrorUtils: ErrorUtils;
-  addEventListener?: (event: string, handler: any) => void;
-  removeEventListener?: (event: string, handler: any) => void;
+  addEventListener?: (event: string, handler: (event: Event | PromiseRejectionEvent) => void) => void;
+  removeEventListener?: (event: string, handler: (event: Event | PromiseRejectionEvent) => void) => void;
 };
 
-type ErrorHandlerCallback = (error: any, isFatal?: boolean) => void;
+type ErrorHandlerCallback = (error: Error | unknown, isFatal?: boolean) => void;
 
 export interface ErrorsInstrumentationOptions {
   /**
@@ -199,7 +199,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
     };
 
     // Add the listener
-    global.addEventListener?.('unhandledrejection', this.unhandledRejectionListener as any);
+    global.addEventListener?.('unhandledrejection', this.unhandledRejectionListener);
   }
 
   /**
@@ -267,7 +267,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
 
     // Remove unhandled rejection listener
     if (this.unhandledRejectionListener) {
-      global.removeEventListener?.('unhandledrejection', this.unhandledRejectionListener as any);
+      global.removeEventListener?.('unhandledrejection', this.unhandledRejectionListener);
     }
 
     // Clear deduplication tracking
