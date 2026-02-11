@@ -15,7 +15,7 @@ This is the Grafana Faro React Native SDK - a monorepo containing packages for r
 
 **Critical Dependencies:**
 
-- `@grafana/faro-core@2.0.2` - Pinned, not using `^2.0.2`. Do not upgrade without testing extensively.
+- `@grafana/faro-core@^2.2.3` - Using caret versioning for minor/patch updates.
 - React Native 0.82.1+
 - Yarn Berry 4.12.0
 

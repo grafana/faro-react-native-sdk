@@ -7,8 +7,8 @@ import { enhanceErrorWithContext } from './stackTraceParser';
 // Access the global ErrorUtils
 declare const global: {
   ErrorUtils: ErrorUtils;
-  addEventListener?: (event: string, handler: (event: Event | PromiseRejectionEvent) => void) => void;
-  removeEventListener?: (event: string, handler: (event: Event | PromiseRejectionEvent) => void) => void;
+  addEventListener?: (event: string, handler: (event: PromiseRejectionEvent) => void) => void;
+  removeEventListener?: (event: string, handler: (event: PromiseRejectionEvent) => void) => void;
 };
 
 type ErrorHandlerCallback = (error: Error | unknown, isFatal?: boolean) => void;

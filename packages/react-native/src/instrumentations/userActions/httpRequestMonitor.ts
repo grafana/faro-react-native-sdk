@@ -17,21 +17,13 @@ declare global {
     | undefined;
 }
 
+import { Observable } from '@grafana/faro-core';
+
 export type HttpRequestMessage =
   | { type: 'http_request_start'; request: HttpRequestMessagePayload }
   | { type: 'http_request_end'; request: HttpRequestMessagePayload };
 
-interface Subscription {
-  unsubscribe: () => void;
-}
-
-interface Subscriber {
-  next: (msg: HttpRequestMessage) => void;
-}
-
-interface HttpRequestObservable {
-  subscribe: (subscriber: Subscriber) => Subscription;
-}
+type HttpRequestObservable = Observable<HttpRequestMessage>;
 
 /**
  * Monitor for HTTP requests happening during user actions
@@ -40,7 +32,7 @@ interface HttpRequestObservable {
 export function monitorHttpRequests(): HttpRequestObservable {
   interface GlobalWithMonitor {
     __FARO_HTTP_MONITOR__?: {
-      subscribers: Array<Subscriber>;
+      observable: Observable<HttpRequestMessage>;
       notifyStart: (request: HttpRequestMessagePayload) => void;
       notifyEnd: (request: HttpRequestMessagePayload) => void;
     };
@@ -48,46 +40,28 @@ export function monitorHttpRequests(): HttpRequestObservable {
   const global = globalThis as GlobalWithMonitor;
 
   if (!global.__FARO_HTTP_MONITOR__) {
-    // Initialize the monitoring array if it doesn't exist
+    // Initialize the monitoring observable if it doesn't exist
+    const observable = new Observable<HttpRequestMessage>();
     global.__FARO_HTTP_MONITOR__ = {
-      subscribers: [],
+      observable,
       notifyStart: (request: HttpRequestMessagePayload) => {
-        global.__FARO_HTTP_MONITOR__?.subscribers.forEach((sub) => {
-          try {
-            sub.next({ type: 'http_request_start', request });
-          } catch (_err) {
-            // Ignore subscriber errors
-          }
-        });
+        try {
+          observable.notify({ type: 'http_request_start', request });
+        } catch (_err) {
+          // Ignore notification errors
+        }
       },
       notifyEnd: (request: HttpRequestMessagePayload) => {
-        global.__FARO_HTTP_MONITOR__?.subscribers.forEach((sub) => {
-          try {
-            sub.next({ type: 'http_request_end', request });
-          } catch (_err) {
-            // Ignore subscriber errors
-          }
-        });
+        try {
+          observable.notify({ type: 'http_request_end', request });
+        } catch (_err) {
+          // Ignore notification errors
+        }
       },
     };
   }
 
-  return {
-    subscribe: (subscriber: Subscriber): Subscription => {
-      // Add this subscriber to the list
-      global.__FARO_HTTP_MONITOR__?.subscribers.push(subscriber);
-
-      // Return subscription with cleanup function
-      return {
-        unsubscribe: () => {
-          const index = global.__FARO_HTTP_MONITOR__?.subscribers.indexOf(subscriber);
-          if (index !== undefined && index > -1) {
-            global.__FARO_HTTP_MONITOR__?.subscribers.splice(index, 1);
-          }
-        },
-      };
-    },
-  };
+  return global.__FARO_HTTP_MONITOR__.observable;
 }
 
 /**

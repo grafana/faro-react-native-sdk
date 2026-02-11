@@ -3,9 +3,13 @@ package com.grafana.faro.reactnative
 import android.os.Build
 import android.os.Process
 import android.os.SystemClock
+import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.WritableNativeMap
+import com.facebook.react.modules.core.DeviceEventManagerModule
 
 /**
  * Faro React Native native module for performance monitoring
@@ -31,6 +35,8 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     companion object {
         const val NAME = "FaroReactNativeModule"
     }
+
+    private var anrTracker: ANRTracker? = null
 
     override fun getName(): String = NAME
 
@@ -79,5 +85,163 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     @ReactMethod(isBlockingSynchronousMethod = true)
     fun getCpuUsage(): Double? {
         return CPUInfo.getCpuInfo()
+    }
+
+    /**
+     * Start frame monitoring with configuration
+     *
+     * @param config Configuration map with targetFps, frozenFrameThresholdMs, normalizedRefreshRate
+     */
+    @ReactMethod
+    fun startFrameMonitoring(config: ReadableMap) {
+        val targetFps = if (config.hasKey("targetFps")) config.getDouble("targetFps") else 60.0
+        val frozenFrameThresholdMs = if (config.hasKey("frozenFrameThresholdMs")) config.getDouble("frozenFrameThresholdMs") else 100.0
+        val normalizedRefreshRate = if (config.hasKey("normalizedRefreshRate")) config.getDouble("normalizedRefreshRate") else 60.0
+
+        FrameMonitor.configure(
+            targetFps = targetFps,
+            frozenFrameThresholdMs = frozenFrameThresholdMs,
+            normalizedRefreshRate = normalizedRefreshRate
+        )
+
+        // Set up event callbacks to emit events to JavaScript
+        FrameMonitor.setCallbacks(
+            onSlowFrames = { count -> sendEvent("onSlowFrames", count) },
+            onFrozenFrame = { count -> sendEvent("onFrozenFrame", count) },
+            onRefreshRate = { rate -> sendEvent("onRefreshRate", rate) }
+        )
+
+        FrameMonitor.start()
+    }
+
+    /**
+     * Stop frame monitoring
+     */
+    @ReactMethod
+    fun stopFrameMonitoring() {
+        FrameMonitor.stop()
+    }
+
+    /**
+     * Get current refresh rate
+     *
+     * @param promise Promise to resolve with the refresh rate
+     */
+    @ReactMethod
+    fun getRefreshRate(promise: Promise) {
+        val refreshRate = FrameMonitor.getRefreshRate()
+        if (refreshRate > 0) {
+            promise.resolve(refreshRate)
+        } else {
+            promise.resolve(null)
+        }
+    }
+
+    /**
+     * Get frame metrics (refresh rate, slow frames, frozen frames)
+     *
+     * @param promise Promise to resolve with the metrics map
+     */
+    @ReactMethod
+    fun getFrameMetrics(promise: Promise) {
+        val metrics = WritableNativeMap().apply {
+            putDouble("refreshRate", FrameMonitor.getRefreshRate())
+            putInt("slowFrames", FrameMonitor.getAndResetSlowFrames())
+            putInt("frozenFrames", FrameMonitor.getAndResetFrozenFrames())
+        }
+        promise.resolve(metrics)
+    }
+
+    /**
+     * Start ANR (Application Not Responding) tracking
+     *
+     * @param config Configuration map with timeout (default 5000ms)
+     */
+    @ReactMethod
+    fun startANRTracking(config: ReadableMap) {
+        // Stop existing tracker if running
+        anrTracker?.stopTracking()
+        
+        // Configure timeout
+        val timeout = if (config.hasKey("timeout")) config.getDouble("timeout").toLong() else 5000L
+        ANRTracker.timeout = timeout
+        
+        // Start new tracker
+        anrTracker = ANRTracker()
+        anrTracker?.start()
+    }
+
+    /**
+     * Stop ANR tracking
+     */
+    @ReactMethod
+    fun stopANRTracking() {
+        anrTracker?.stopTracking()
+        anrTracker = null
+    }
+
+    /**
+     * Get ANR status (list of detected ANRs)
+     *
+     * @param promise Promise to resolve with the ANR list
+     */
+    @ReactMethod
+    fun getANRStatus(promise: Promise) {
+        val anrList = ANRTracker.getANRStatus()
+        ANRTracker.resetANR()
+        
+        if (anrList != null) {
+            val writableArray = com.facebook.react.bridge.Arguments.createArray()
+            for (anr in anrList) {
+                writableArray.pushString(anr)
+            }
+            promise.resolve(writableArray)
+        } else {
+            promise.resolve(null)
+        }
+    }
+
+    /**
+     * Get crash reports from previous app sessions
+     *
+     * Uses Android's ApplicationExitInfo API (Android 11+) to retrieve
+     * crash and ANR information from previous sessions.
+     *
+     * @param promise Promise to resolve with the crash reports list
+     */
+    @ReactMethod
+    fun getCrashReport(promise: Promise) {
+        val crashReports = CrashReporter.getCrashReports(reactApplicationContext)
+        
+        if (crashReports != null) {
+            val writableArray = com.facebook.react.bridge.Arguments.createArray()
+            for (report in crashReports) {
+                writableArray.pushString(report)
+            }
+            promise.resolve(writableArray)
+        } else {
+            promise.resolve(null)
+        }
+    }
+
+    /**
+     * Clear processed crash reports
+     */
+    @ReactMethod
+    fun clearCrashReports() {
+        CrashReporter.clearCrashReports(reactApplicationContext)
+    }
+
+    /**
+     * Send an event to JavaScript
+     */
+    private fun sendEvent(eventName: String, data: Any) {
+        try {
+            reactApplicationContext
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                .emit(eventName, data)
+        } catch (_: Exception) {
+            // Ignore errors when sending events
+        }
     }
 }

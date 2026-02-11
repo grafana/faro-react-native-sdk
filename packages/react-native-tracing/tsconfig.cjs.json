@@ -4,9 +4,9 @@
     "declarationDir": "./dist/types",
     "outDir": "./dist/cjs",
     "rootDir": "./src",
-    "tsBuildInfoFile": "../../.cache/tsc/webTracing.cjs.tsbuildinfo"
+    "tsBuildInfoFile": "../../.cache/tsc/reactNativeTracing.cjs.tsbuildinfo"
   },
   "include": ["./src"],
   "exclude": ["**/*.test.ts"],
-  "references": [{ "path": "../core/tsconfig.cjs.json" }, { "path": "../web-sdk/tsconfig.cjs.json" }]
+  "references": [{ "path": "../react-native/tsconfig.cjs.json" }]
 }

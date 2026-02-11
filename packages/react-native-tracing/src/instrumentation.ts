@@ -105,7 +105,15 @@ export class TracingInstrumentation extends BaseInstrumentation {
     // Device/Platform attributes from React Native
     // Note: metas.value contains all meta providers, we need to check if device meta exists
     const allMetas = this.metas.value as Record<string, unknown>;
-    const deviceMeta = allMetas['device'];
+    const deviceMeta = allMetas['device'] as
+      | {
+          model?: string;
+          brand?: string;
+          osName?: string;
+          osVersion?: string;
+          locale?: string;
+        }
+      | undefined;
 
     if (deviceMeta?.model) {
       attributes[ATTR_DEVICE_MODEL] = deviceMeta.model;

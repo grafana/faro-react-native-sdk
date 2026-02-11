@@ -15,7 +15,7 @@ const fetch = jest.fn(() =>
     status: 202,
     text: () => Promise.resolve(),
     headers: {
-      get: () => null,
+      get: (_name?: string): string | null => null,
     },
   })
 );
@@ -61,7 +61,7 @@ describe('FetchTransport', () => {
         status: 202,
         text: () => Promise.resolve(),
         headers: {
-          get: () => null,
+          get: (_name?: string): string | null => null,
         },
       })
     );
@@ -289,7 +289,8 @@ describe('FetchTransport', () => {
       Promise.resolve({
         status: 202,
         headers: {
-          get: (name: string) => (name === 'X-Faro-Session-Status' ? 'invalid' : null),
+          get: (name?: string): string | null =>
+            name === 'X-Faro-Session-Status' ? 'invalid' : null,
         },
         text: () => Promise.resolve(),
       })
@@ -299,7 +300,6 @@ describe('FetchTransport', () => {
       url: 'http://example.com/collect',
     });
 
-    transport.metas.value = { session: { id: mockSessionId } };
     transport.internalLogger = mockInternalLogger;
 
     const config = mockConfig({
@@ -310,7 +310,10 @@ describe('FetchTransport', () => {
       },
     });
 
-    initializeFaro(config);
+    const faro = initializeFaro(config);
+
+    // Use faro API to set session properly (triggers metas listeners)
+    faro.api.setSession({ id: mockSessionId });
 
     await transport.send([item]);
 
@@ -323,7 +326,6 @@ describe('FetchTransport', () => {
       url: 'http://example.com/collect',
     });
 
-    transport.metas.value = { session: { id: mockSessionId } };
     transport.internalLogger = mockInternalLogger;
 
     const config = mockConfig({
@@ -334,7 +336,10 @@ describe('FetchTransport', () => {
       },
     });
 
-    initializeFaro(config);
+    const faro = initializeFaro(config);
+
+    // Use faro API to set session properly (triggers metas listeners)
+    faro.api.setSession({ id: mockSessionId });
 
     await transport.send([item]);
 
@@ -574,7 +579,6 @@ describe('FetchTransport', () => {
     });
 
     it('handles buffer full errors silently', async () => {
-      jest.useFakeTimers();
       const consoleSpy = jest.spyOn(console, 'error');
 
       const transport = new FetchTransport({
@@ -585,8 +589,10 @@ describe('FetchTransport', () => {
 
       transport.metas.value = { session: { id: mockSessionId } };
       transport.internalLogger = mockInternalLogger;
+      // Disable session tracking to skip session wait
+      (transport as any).config = { sessionTracking: { enabled: false } };
 
-      // Make fetch slow to fill up buffer
+      // Make fetch slow to fill up buffer (using short real delays)
       fetch.mockImplementation(
         () =>
           new Promise((resolve) =>
@@ -599,7 +605,7 @@ describe('FetchTransport', () => {
                     get: () => null,
                   },
                 }),
-              100
+              10 // Short delay for tests
             )
           )
       );
@@ -610,15 +616,12 @@ describe('FetchTransport', () => {
         promises.push(transport.send([item]));
       }
 
-      // Run all timers to resolve the delayed promises
-      jest.runAllTimers();
       await Promise.all(promises);
 
       // Should not log buffer full errors to console
       expect(consoleSpy).not.toHaveBeenCalled();
 
       consoleSpy.mockRestore();
-      jest.useRealTimers();
     });
 
     it('continues to respect rate limiting during circuit breaker recovery', async () => {

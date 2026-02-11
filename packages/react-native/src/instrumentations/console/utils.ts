@@ -96,9 +96,10 @@ function getErrorDetails(error: Error): [string | undefined, string | undefined,
   } else if (isObject(error)) {
     // Handle error-like objects
     value = String(error);
+    const errorObj = error as Record<string, unknown>;
     type =
-      error && typeof error === 'object' && 'constructor' in error
-        ? (error.constructor as { name?: string })?.name
+      errorObj && typeof errorObj === 'object' && 'constructor' in errorObj
+        ? (errorObj.constructor as { name?: string })?.name
         : undefined;
   }
 

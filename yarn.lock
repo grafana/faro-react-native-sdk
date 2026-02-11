@@ -1707,6 +1707,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@grafana/faro-core@npm:^2.2.3":
+  version: 2.2.3
+  resolution: "@grafana/faro-core@npm:2.2.3"
+  dependencies:
+    "@opentelemetry/api": "npm:^1.9.0"
+    "@opentelemetry/otlp-transformer": "npm:^0.211.0"
+  checksum: 10c0/546b3a922372415060cd44d0fe643d04d1777cd4b85c00990b38cc0721b80c6143516ea98abe08a2fe3d4d21eb132565576c6e1923ca10d47dcc9c30c15d58fe
+  languageName: node
+  linkType: hard
+
 "@grafana/faro-demo-react-native@workspace:demo":
   version: 0.0.0-use.local
   resolution: "@grafana/faro-demo-react-native@workspace:demo"
@@ -1720,6 +1730,7 @@ __metadata:
     "@react-native-community/cli": "npm:^20.0.2"
     "@react-native-community/cli-platform-android": "npm:20.0.0"
     "@react-native-community/cli-platform-ios": "npm:20.0.0"
+    "@react-native-community/netinfo": "npm:^11.4.1"
     "@react-native/babel-preset": "npm:0.82.1"
     "@react-native/codegen": "npm:^0.82.1"
     "@react-native/eslint-config": "npm:0.82.1"
@@ -1756,7 +1767,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@grafana/faro-react-native-tracing@workspace:packages/react-native-tracing"
   dependencies:
-    "@grafana/faro-core": "npm:2.0.2"
+    "@grafana/faro-core": "npm:^2.2.3"
     "@grafana/faro-react-native": "npm:^1.0.0"
     "@opentelemetry/api": "npm:^1.9.0"
     "@opentelemetry/core": "npm:^2.0.0"
@@ -1783,7 +1794,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@grafana/faro-react-native@workspace:packages/react-native"
   dependencies:
-    "@grafana/faro-core": "npm:2.0.2"
+    "@grafana/faro-core": "npm:^2.2.3"
     "@react-native-async-storage/async-storage": "npm:^1.21.0"
     "@types/node": "npm:24.10.1"
     "@types/react": "npm:^19.1.1"
@@ -3445,6 +3456,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentelemetry/api-logs@npm:0.211.0":
+  version: 0.211.0
+  resolution: "@opentelemetry/api-logs@npm:0.211.0"
+  dependencies:
+    "@opentelemetry/api": "npm:^1.3.0"
+  checksum: 10c0/75d87828d9d6350a4a419c7d135782b00dbc6eda5ea04b222a8330e5aa868d5aec5380e95217446f89e4ef6493b4e5b8dd6e0e3af1b867cee09b912cc72dd04a
+  languageName: node
+  linkType: hard
+
 "@opentelemetry/api@npm:^1.3.0, @opentelemetry/api@npm:^1.9.0":
   version: 1.9.0
   resolution: "@opentelemetry/api@npm:1.9.0"
@@ -3518,6 +3538,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentelemetry/otlp-transformer@npm:^0.211.0":
+  version: 0.211.0
+  resolution: "@opentelemetry/otlp-transformer@npm:0.211.0"
+  dependencies:
+    "@opentelemetry/api-logs": "npm:0.211.0"
+    "@opentelemetry/core": "npm:2.5.0"
+    "@opentelemetry/resources": "npm:2.5.0"
+    "@opentelemetry/sdk-logs": "npm:0.211.0"
+    "@opentelemetry/sdk-metrics": "npm:2.5.0"
+    "@opentelemetry/sdk-trace-base": "npm:2.5.0"
+    protobufjs: "npm:8.0.0"
+  peerDependencies:
+    "@opentelemetry/api": ^1.3.0
+  checksum: 10c0/973a67385477644fa8327411d0dbc6ce9e70a71aea40eb1b4804fe037f10d740a09e61c914a3d04c65671c9aeeefddff9a0de3824e4c75de5df0732b98bdbf54
+  languageName: node
+  linkType: hard
+
 "@opentelemetry/resources@npm:2.2.0":
   version: 2.2.0
   resolution: "@opentelemetry/resources@npm:2.2.0"
@@ -3555,6 +3592,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentelemetry/sdk-logs@npm:0.211.0":
+  version: 0.211.0
+  resolution: "@opentelemetry/sdk-logs@npm:0.211.0"
+  dependencies:
+    "@opentelemetry/api-logs": "npm:0.211.0"
+    "@opentelemetry/core": "npm:2.5.0"
+    "@opentelemetry/resources": "npm:2.5.0"
+  peerDependencies:
+    "@opentelemetry/api": ">=1.4.0 <1.10.0"
+  checksum: 10c0/dbd6a35f1c1d07c98aaa76b236d26195625c21406d07f9140a2fe1ed86bf21eefe2ec1f1b4dae06e02134672f0132db67669a5fde846c150ab7fae9ecf3cd5b6
+  languageName: node
+  linkType: hard
+
 "@opentelemetry/sdk-metrics@npm:2.2.0":
   version: 2.2.0
   resolution: "@opentelemetry/sdk-metrics@npm:2.2.0"
@@ -3564,6 +3614,18 @@ __metadata:
   peerDependencies:
     "@opentelemetry/api": ">=1.9.0 <1.10.0"
   checksum: 10c0/a2668f9ef937123552a5ab96ec23675931ae7d3223ec7a31c8aac95fbbfb0b03a54a873f17f2356b04db7031421e7e3d7e3bf9d96d9069a0b97c680a2c158bc4
+  languageName: node
+  linkType: hard
+
+"@opentelemetry/sdk-metrics@npm:2.5.0":
+  version: 2.5.0
+  resolution: "@opentelemetry/sdk-metrics@npm:2.5.0"
+  dependencies:
+    "@opentelemetry/core": "npm:2.5.0"
+    "@opentelemetry/resources": "npm:2.5.0"
+  peerDependencies:
+    "@opentelemetry/api": ">=1.9.0 <1.10.0"
+  checksum: 10c0/8e85c14705d700d7fdd1ab9649ad786fb004663a04e0ebca15f2cbc5cbe31ac898f871ded6339bce8c998dded00c7d876ff5e749d10d5d49455af9afe73656d6
   languageName: node
   linkType: hard
 
@@ -3580,7 +3642,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opentelemetry/sdk-trace-base@npm:^2.0.0":
+"@opentelemetry/sdk-trace-base@npm:2.5.0, @opentelemetry/sdk-trace-base@npm:^2.0.0":
   version: 2.5.0
   resolution: "@opentelemetry/sdk-trace-base@npm:2.5.0"
   dependencies:
@@ -3962,6 +4024,16 @@ __metadata:
   bin:
     rnc-cli: build/bin.js
   checksum: 10c0/f3fa43fc8c170ba291ae81e796f4ac35956e143bf1094f15f91061b93835ed0665749ca11da91df7fbfcdd96ee32fc16da6cab60adef1a21022195aa1947bd5d
+  languageName: node
+  linkType: hard
+
+"@react-native-community/netinfo@npm:^11.4.1":
+  version: 11.5.2
+  resolution: "@react-native-community/netinfo@npm:11.5.2"
+  peerDependencies:
+    react: "*"
+    react-native: ">=0.59"
+  checksum: 10c0/d5301d7d8b363753b6980f5d17dc47ad4933fc46e4010aceb937c0f673b35a6648f259df930b2b48d99344a90ff7a187344486100c4874462d88545f1647bef5
   languageName: node
   linkType: hard
 
@@ -14469,6 +14541,26 @@ __metadata:
     object-assign: "npm:^4.1.1"
     react-is: "npm:^16.13.1"
   checksum: 10c0/59ece7ca2fb9838031d73a48d4becb9a7cc1ed10e610517c7d8f19a1e02fa47f7c27d557d8a5702bec3cfeccddc853579832b43f449e54635803f277b1c78077
+  languageName: node
+  linkType: hard
+
+"protobufjs@npm:8.0.0":
+  version: 8.0.0
+  resolution: "protobufjs@npm:8.0.0"
+  dependencies:
+    "@protobufjs/aspromise": "npm:^1.1.2"
+    "@protobufjs/base64": "npm:^1.1.2"
+    "@protobufjs/codegen": "npm:^2.0.4"
+    "@protobufjs/eventemitter": "npm:^1.1.0"
+    "@protobufjs/fetch": "npm:^1.1.0"
+    "@protobufjs/float": "npm:^1.0.2"
+    "@protobufjs/inquire": "npm:^1.1.0"
+    "@protobufjs/path": "npm:^1.1.2"
+    "@protobufjs/pool": "npm:^1.1.0"
+    "@protobufjs/utf8": "npm:^1.1.0"
+    "@types/node": "npm:>=13.7.0"
+    long: "npm:^5.0.0"
+  checksum: 10c0/6fb29ca3c6abc2095a777407750f6094448b7b68bbf04147ec49ee442f85f151592338449f56d19883ea67c39ce915e3d47ec6c5c92f0bcac1eaba1841ab84ff
   languageName: node
   linkType: hard
 

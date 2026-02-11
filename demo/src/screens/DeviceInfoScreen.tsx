@@ -37,10 +37,7 @@ export default function DeviceInfoScreen() {
         </Text>
 
         {/* Live Performance Metrics */}
-        <PerformanceMetricsCard
-          title="⚡ Live Performance"
-          subtitle="Updates every 2 seconds"
-        />
+        <PerformanceMetricsCard title="⚡ Live Performance" />
 
         {/* System Information */}
         <View style={styles.section}>
@@ -88,7 +85,8 @@ export default function DeviceInfoScreen() {
             {'\n'}
             {`{service_name="React Native Test", browser_isEmulator="true"}`}
             {'\n\n'}
-            Performance metrics (CPU and memory) are updated every 2 seconds.
+            Performance metrics (CPU and memory) are sent at the configured
+            vitals interval.
           </Text>
         </View>
       </View>

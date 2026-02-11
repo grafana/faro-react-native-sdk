@@ -21,6 +21,12 @@ export { PerformanceInstrumentation } from './instrumentations/performance';
 export type { PerformanceInstrumentationOptions } from './instrumentations/performance/types';
 export { StartupInstrumentation } from './instrumentations/startup';
 export type { StartupInstrumentationOptions } from './instrumentations/startup/types';
+export { FrameMonitoringInstrumentation } from './instrumentations/frameMonitoring';
+export type { FrameMonitoringOptions } from './instrumentations/frameMonitoring';
+export { ANRInstrumentation } from './instrumentations/anr';
+export type { ANRInstrumentationOptions } from './instrumentations/anr';
+export { CrashReportingInstrumentation } from './instrumentations/crashReporting';
+export type { CrashReportingOptions } from './instrumentations/crashReporting';
 
 // Export console utilities
 export { reactNativeLogArgsSerializer } from './instrumentations/console/utils';
@@ -50,6 +56,26 @@ export { getSdkMeta } from './metas/sdk';
 export { FetchTransport } from './transports/fetch';
 export { ConsoleTransport } from './transports/console';
 export type { ConsoleTransportOptions } from './transports/console';
+export { OfflineTransport } from './transports/offline';
+export type { OfflineTransportOptions } from './transports/offline';
+
+// Export data collection policy
+export {
+  createDataCollectionPolicy,
+  getDataCollectionPolicy,
+  initializeDataCollectionPolicy,
+  setDataCollectionPolicy,
+} from './dataCollection';
+export type { DataCollectionPolicy, DataCollectionPolicyOptions } from './dataCollection';
+
+// Export user persistence
+export {
+  createUserPersistence,
+  getUserPersistence,
+  initializeUserPersistence,
+  setUserPersistence,
+} from './userPersistence';
+export type { UserPersistence, UserPersistenceOptions } from './userPersistence';
 
 // Export navigation utilities
 export { ReactNativeNavigationIntegration } from './navigation/v6';

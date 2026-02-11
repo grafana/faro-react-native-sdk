@@ -274,6 +274,17 @@ Navigate to Tempo in Grafana Cloud:
 2. Look for spans with HTTP methods
 3. Check span attributes include session ID and user info
 
+## Diagnosing Collector Issues
+
+If telemetry is not appearing in Grafana:
+
+1. **Check `.env` URL format** – Must start with `https://`.
+2. **Metro console** – In dev, `internalLoggerLevel` is VERBOSE; check for Faro logs.
+3. **ConsoleTransport** – Logs telemetry to Metro; if you see `[Faro]` lines, data is being captured.
+4. **Network inspector** – Use React Native Debugger or Flipper to inspect network requests to the collector URL.
+5. **Circuit breaker** – After 3 consecutive failures, FetchTransport backs off for 30 seconds; no logs during backoff.
+6. **Grafana query** – Use `{app_name="react-native-sdk-demo"}` in Explore (Loki).
+
 ## Common Issues
 
 ### Metro Won't Start

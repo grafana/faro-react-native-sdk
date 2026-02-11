@@ -172,6 +172,35 @@ action?.end();
 - Native: `at functionName (native)`
 - Metro: `at Object.functionName (/path/to/file.js:123:456)`
 
+### Error Type Conventions
+
+When pushing errors via `faro.api.pushError()`, follow these type conventions:
+
+**Guideline:** Avoid hardcoded generic types like `flutter_error` or `react_native_error`. Instead:
+
+1. **Get the real error type** from the error object when available (e.g., `TypeError`, `ReferenceError`, `NetworkError`)
+2. **Default to `Error`** if no specific type can be determined
+3. **Keep ANR and Crash as explicit separate types:**
+   - `ANR` - Application Not Responding events
+   - `Crash` - Native crash reports from previous sessions
+
+**Rationale:** The Flutter SDK currently uses `flutter_error` as a broad bucket for multiple error sources (FlutterError.onError, PlatformDispatcher.onError, etc.), which loses specificity. The Faro Web SDK avoids this by extracting the actual error type. React Native should follow the Web SDK pattern for consistency and better error categorization in Grafana.
+
+**Example:**
+
+```typescript
+// ✅ Good - use actual error type
+const errorType = error.name || error.constructor?.name || 'Error';
+this.api.pushError(error, { type: errorType });
+
+// ✅ Good - explicit types for special cases
+this.api.pushError(error, { type: 'ANR' });      // For ANR events
+this.api.pushError(error, { type: 'Crash' });   // For crash reports
+
+// ❌ Bad - generic bucket type
+this.api.pushError(error, { type: 'react_native_error' });
+```
+
 ### Transport System
 
 Transports implement batched sending with circuit breaker:
