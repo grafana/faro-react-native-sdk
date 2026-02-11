@@ -36,34 +36,13 @@ function getDemoVersion(): string {
  * - fetchVitalsInterval: 30 seconds
  */
 export function initFaro() {
-  console.log('[FARO DEBUG] Starting Faro initialization...');
-  console.log('[FARO DEBUG] FARO_COLLECTOR_URL value:', FARO_COLLECTOR_URL);
-  console.log(
-    '[FARO DEBUG] FARO_COLLECTOR_URL type:',
-    typeof FARO_COLLECTOR_URL,
-  );
-
   if (!FARO_COLLECTOR_URL) {
-    console.warn(
-      'FARO_COLLECTOR_URL not configured. Faro will not be initialized.',
-    );
-    return undefined;
-  }
-
-  // Validate collector URL format (common typo: missing 'h' in https)
-  if (!FARO_COLLECTOR_URL.startsWith('https://')) {
-    console.error(
-      '[FARO] Invalid FARO_COLLECTOR_URL: must start with https://. Got:',
-      FARO_COLLECTOR_URL.substring(0, 20) + '...',
-    );
+    console.warn('FARO_COLLECTOR_URL not configured. Faro will not be initialized.');
     return undefined;
   }
 
   // Get random version for demo
   const appVersion = getDemoVersion();
-  console.log(`[FARO DEBUG] App version: ${appVersion}`);
-
-  console.log('[FARO DEBUG] Creating instrumentations...');
 
   const fetchVitalsInterval = FARO_DEBUG ? 5000 : 30000;
 
@@ -111,95 +90,7 @@ export function initFaro() {
 
   const faro = initializeFaro(config as ReactNativeConfig);
 
-  faro.api.pushEvent('faro_initialized', {
-    timestamp: new Date().toISOString(),
-  });
-
-  // Run collector connectivity test (helps diagnose "no data arriving" issues)
-  if (FARO_DEBUG) {
-    testCollectorConnectivity(FARO_COLLECTOR_URL);
-  }
+  faro.api.pushEvent('faro_initialized', { timestamp: new Date().toISOString()});
 
   return faro;
-}
-
-/**
- * Sends a minimal test payload to the collector and logs the result.
- * Run this when FARO_DEBUG is true to diagnose connectivity issues.
- */
-async function testCollectorConnectivity(collectorUrl: string): Promise<void> {
-  console.log('[FARO DIAG] Starting network diagnostics...');
-
-  // Test 1: Can we reach the internet at all?
-  console.log('[FARO DIAG] Test 1: Checking general internet connectivity...');
-  try {
-    const controller1 = new AbortController();
-    const timeout1 = setTimeout(() => controller1.abort(), 5000);
-
-    const googleResponse = await fetch('https://httpbin.org/get', {
-      method: 'GET',
-      signal: controller1.signal,
-    });
-    clearTimeout(timeout1);
-    console.log('[FARO DIAG] ✅ Internet connectivity OK - httpbin.org returned:', googleResponse.status);
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('[FARO DIAG] ❌ Internet connectivity FAILED:', errorMessage);
-    console.error('[FARO DIAG] This suggests the emulator cannot reach the internet.');
-    return; // No point testing collector if internet is down
-  }
-
-  // Test 2: Can we reach the collector host?
-  console.log('[FARO DIAG] Test 2: Checking collector connectivity...');
-  const testPayload = {
-    meta: {
-      app: { name: 'react-native-sdk-demo', version: '1.0.0' },
-      sdk: { name: '@grafana/faro-react-native', version: '1.0.0' },
-    },
-    measurements: [
-      {
-        type: 'test_measurement',
-        values: { test: 1 },
-        timestamp: new Date().toISOString(),
-      },
-    ],
-  };
-
-  try {
-    const controller2 = new AbortController();
-    const timeout2 = setTimeout(() => {
-      controller2.abort();
-      console.error('[FARO DIAG] ❌ Collector request TIMED OUT after 10s');
-    }, 10000);
-
-    const response = await fetch(collectorUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Faro-Session-Id': 'diag-test-session',
-      },
-      body: JSON.stringify(testPayload),
-      signal: controller2.signal,
-    });
-    clearTimeout(timeout2);
-
-    const status = response.status;
-
-    if (status === 202) {
-      console.log('[FARO DIAG] ✅ Collector connectivity OK - received 202 Accepted');
-    } else if (status === 400) {
-      const text = await response.text().catch(() => '');
-      console.warn('[FARO DIAG] ⚠️ Collector returned 400:', text);
-    } else {
-      console.warn('[FARO DIAG] ⚠️ Collector returned:', status, response.statusText);
-    }
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('[FARO DIAG] ❌ Collector connectivity FAILED:', errorMessage);
-    if (errorMessage.includes('Aborted')) {
-      console.error('[FARO DIAG] Request was aborted (likely timeout)');
-    }
-  }
-
-  console.log('[FARO DIAG] Network diagnostics complete.');
 }
