@@ -86,6 +86,32 @@ This demo app demonstrates:
 - **Run Heavy Computation** - Tracks and reports computation time as a measurement
 - **Simulate Slow Render** - Tracks and reports render timing
 
+### Crash Demo Screen
+
+The Crash Demo screen allows you to test native crash reporting features:
+
+- **🔥 Native Crash** - Triggers a native crash (Swift fatalError on iOS, Java RuntimeException on Android)
+- **🧊 Trigger ANR** - Blocks the main thread for 10 seconds to simulate Application Not Responding
+
+#### Testing Native Crashes
+
+1. Navigate to the Crash Demo screen
+2. Click the crash button to trigger a native crash
+3. The app will terminate immediately
+4. Restart the app:
+   - **iOS Simulator**: The app should restart automatically or click the app icon
+   - **Android Emulator**: The app closes completely. Re-open it using:
+     ```bash
+     adb shell am start -n com.farorndemo/.MainActivity
+     ```
+5. Faro automatically retrieves and sends the crash report to Grafana on restart
+6. View crashes in Grafana with query: `{app_id="<app_id>", kind="exception"} |~ "type=crash"`
+
+#### Platform Requirements
+
+- **Android**: Crash reporting requires Android 11+ (API 30+) using the ApplicationExitInfo API
+- **iOS**: Uses PLCrashReporter which is included via the Podspec
+
 ## Viewing Data in Grafana Cloud
 
 To view your telemetry data:

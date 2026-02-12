@@ -43,17 +43,23 @@ class CrashTestModule(reactContext: ReactApplicationContext) :
     /**
      * Trigger an ANR by blocking the main thread
      *
-     * This method blocks the main thread for 10 seconds, which should
-     * trigger an ANR (Application Not Responding) dialog on Android.
-     * The ANR will be captured by ApplicationExitInfo if the user
-     * closes the app via the dialog.
+     * This method blocks the main thread for 60 seconds, which should
+     * trigger an ANR (Application Not Responding) and cause the system
+     * to force-kill the app. This ensures the ANR is recorded as
+     * REASON_ANR in ApplicationExitInfo (not REASON_CRASH).
      *
-     * WARNING: This will freeze the app for 10 seconds!
+     * Note: Android's ANR watchdog typically kills apps after ~5-10 seconds
+     * of unresponsiveness, so the system should kill the app automatically
+     * before the 60 seconds completes.
+     *
+     * WARNING: This will freeze the app until the system kills it!
      */
-    @ReactMethod(isBlockingSynchronousMethod = true)
-    fun triggerANR(): Boolean {
-        // Block main thread for 10 seconds - should trigger ANR
-        Thread.sleep(10000)
-        return true
+    @ReactMethod
+    fun triggerANR() {
+        // Post to main Android thread to ensure we block the UI thread
+        Handler(Looper.getMainLooper()).post {
+            // Block main thread for 60 seconds - system should kill before this completes
+            Thread.sleep(60000)
+        }
     }
 }

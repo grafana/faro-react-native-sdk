@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Alert,
   NativeModules,
@@ -16,12 +16,11 @@ import {
  * Demonstrates crash reporting features:
  * - Native crashes (Java/Kotlin exceptions on Android, fatal errors on iOS)
  * - ANR simulation (blocking main thread)
- * - Checking for crash reports from previous sessions
  *
  * IMPORTANT: Crash reports are collected from PREVIOUS sessions.
  * When a crash occurs, the app terminates immediately.
- * On the next app launch, CrashReportingInstrumentation retrieves
- * the crash data via:
+ * On the next app launch, CrashReportingInstrumentation automatically
+ * retrieves and sends the crash data to Grafana via:
  * - Android: ApplicationExitInfo API (Android 11+)
  * - iOS: PLCrashReporter
  *
@@ -29,12 +28,8 @@ import {
  * of the Faro SDK - crash triggers should never be in production code.
  */
 export function CrashDemoScreen() {
-  const [crashReports, setCrashReports] = useState<string[] | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  // FaroReactNativeModule is from the SDK (for getCrashReport)
   // CrashTestModule is demo-only (for triggering test crashes)
-  const { FaroReactNativeModule, CrashTestModule } = NativeModules;
+  const { CrashTestModule } = NativeModules;
 
   /**
    * Trigger a native crash
@@ -73,19 +68,19 @@ export function CrashDemoScreen() {
 
   /**
    * Trigger an ANR by blocking the main thread
-   * - Android: May trigger ANR dialog
+   * - Android: System will force-kill the app after ~5-10 seconds of unresponsiveness
    * - iOS: App becomes unresponsive (no official ANR mechanism)
-   * This will freeze the app for 10 seconds
+   * This will freeze the app until the system kills it
    */
   const triggerANR = () => {
     const platformDetails =
       Platform.OS === 'ios'
         ? 'iOS does not have an official ANR mechanism, but the app will become unresponsive.'
-        : 'The system may show an "App isn\'t responding" dialog.';
+        : 'The system will detect the unresponsive app and force-kill it. This records as REASON_ANR in ApplicationExitInfo.';
 
     Alert.alert(
       '⚠️ Warning',
-      `This will freeze the app for 10 seconds.\n\n${platformDetails}\n\nContinue?`,
+      `This will freeze the app until the system kills it (~5-10 seconds).\n\n${platformDetails}\n\nContinue?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -104,83 +99,6 @@ export function CrashDemoScreen() {
         },
       ],
     );
-  };
-
-  /**
-   * Check for crash reports from previous sessions
-   */
-  const checkCrashReports = async () => {
-    setIsLoading(true);
-    setCrashReports(null);
-
-    try {
-      if (FaroReactNativeModule?.getCrashReport) {
-        const reports = await FaroReactNativeModule.getCrashReport();
-        setCrashReports(reports);
-
-        if (!reports || reports.length === 0) {
-          const platformNote =
-            Platform.OS === 'ios'
-              ? 'Crash reports are captured by PLCrashReporter and are available after a crash occurred.'
-              : 'Crash reports require Android 11+ and are only available after an actual crash occurred.';
-          Alert.alert(
-            'No Crash Reports',
-            `No crash reports found from previous sessions.\n\nNote: ${platformNote}`,
-          );
-        }
-      } else {
-        Alert.alert(
-          'Not Available',
-          'Crash report retrieval is not available on this platform or build.',
-        );
-      }
-    } catch (error) {
-      Alert.alert('Error', `Failed to get crash reports: ${error}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  /**
-   * Format crash report JSON for display
-   */
-  const formatCrashReport = (reportJson: string): string => {
-    try {
-      const report = JSON.parse(reportJson);
-      let formatted =
-        `Reason: ${report.reason}\n` +
-        `Timestamp: ${new Date(report.timestamp).toLocaleString()}\n` +
-        `Status: ${report.status}\n` +
-        `Process: ${report.processName}\n` +
-        `PID: ${report.pid}\n`;
-
-      // Show crashed session ID if available (for session correlation)
-      if (report.crashedSessionId) {
-        formatted += `Crashed Session ID: ${report.crashedSessionId}\n`;
-      }
-
-      if (report.description) {
-        formatted += `Description: ${report.description}\n`;
-      }
-
-      // iOS-specific: show signal info
-      if (report.signal) {
-        formatted += `Signal: ${report.signal}\n`;
-      }
-
-      // iOS-specific: show incident ID
-      if (report.incidentId) {
-        formatted += `Incident ID: ${report.incidentId}\n`;
-      }
-
-      if (report.trace) {
-        formatted += `\nTrace:\n${report.trace.substring(0, 500)}...`;
-      }
-
-      return formatted;
-    } catch {
-      return reportJson;
-    }
   };
 
   const platformDescription =
@@ -229,43 +147,10 @@ export function CrashDemoScreen() {
         >
           <Text style={styles.buttonText}>🧊 Trigger ANR</Text>
           <Text style={styles.buttonSubtext}>
-            Blocks main thread for 10 seconds
+            Blocks main thread until system kills app
           </Text>
         </TouchableOpacity>
       </View>
-
-      {/* Check Reports Section */}
-      <Text style={styles.sectionTitle}>📋 Previous Crash Reports</Text>
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          style={[styles.button, styles.checkButton]}
-          onPress={checkCrashReports}
-          disabled={isLoading}
-        >
-          <Text style={styles.buttonText}>
-            {isLoading ? '⏳ Loading...' : '🔍 Check for Crash Reports'}
-          </Text>
-          <Text style={styles.buttonSubtext}>
-            Retrieves crashes from previous sessions
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Display Crash Reports */}
-      {crashReports && crashReports.length > 0 && (
-        <View style={styles.reportsContainer}>
-          <Text style={styles.reportsTitle}>
-            Found {crashReports.length} crash report(s):
-          </Text>
-          {crashReports.map((report, index) => (
-            <View key={index} style={styles.reportCard}>
-              <Text style={styles.reportText}>
-                {formatCrashReport(report)}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
 
       {/* Requirements Note */}
       <View style={styles.noteBox}>
@@ -322,9 +207,6 @@ const styles = StyleSheet.create({
   anrButton: {
     backgroundColor: '#fd7e14',
   },
-  checkButton: {
-    backgroundColor: '#007bff',
-  },
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
@@ -372,29 +254,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6c757d',
     lineHeight: 20,
-  },
-  reportsContainer: {
-    marginTop: 16,
-  },
-  reportsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#28a745',
-    marginBottom: 12,
-  },
-  reportCard: {
-    backgroundColor: '#f8f9fa',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#dee2e6',
-  },
-  reportText: {
-    fontSize: 12,
-    color: '#333',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    lineHeight: 18,
   },
 });
 
