@@ -88,14 +88,11 @@ export function getRNInstrumentations(
   instrumentations.push(new HttpInstrumentation({ ignoredUrls: ignoreUrls }));
 
   // Performance vitals (CPU/memory)
-  console.log('[getRNInstrumentations DEBUG] Creating PerformanceInstrumentation...');
-  console.log(`[getRNInstrumentations DEBUG] Config: memoryUsageVitals=${memoryUsageVitals}, cpuUsageVitals=${cpuUsageVitals}, fetchVitalsInterval=${fetchVitalsInterval}`);
   const perfInstrumentation = new PerformanceInstrumentation({
     memoryUsageVitals,
     cpuUsageVitals,
     fetchVitalsInterval,
   });
-  console.log(`[getRNInstrumentations DEBUG] PerformanceInstrumentation created: ${perfInstrumentation.name}`);
   instrumentations.push(perfInstrumentation);
 
   // Startup tracking - always enabled

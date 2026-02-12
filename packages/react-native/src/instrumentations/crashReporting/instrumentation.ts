@@ -99,11 +99,6 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
           });
         }
       }
-
-      // Clear processed crash reports
-      if (typeof nativeModule.clearCrashReports === 'function') {
-        await nativeModule.clearCrashReports();
-      }
     } catch (error) {
       this.logError('Failed to process crash reports', error);
     }
@@ -113,72 +108,79 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
     const errorMessage = this.getErrorMessage(crash);
     const error = new Error(errorMessage);
 
-    // Build context from crash data
+    // Build context from crash data (matching Flutter pattern)
     const context: Record<string, string> = {};
 
-    const stacktrace = crash.stacktrace;
-    const signal = crash.signal;
-    const timestamp = crash.timestamp;
-    const timestampReadable = crash.timestamp_readable_utc;
-    const description = crash.description;
-    const processName = crash.processName;
-    const pid = crash.pid;
-    const status = crash.status;
-    const importance = crash.importance;
+    if (crash.trace) {
+      context['trace'] = crash.trace;
+    }
+    if (crash.signal) {
+      context['signal'] = crash.signal;
+    }
+    if (crash.timestamp) {
+      context['timestamp'] = String(crash.timestamp);
+    }
+    if (crash.description) {
+      context['description'] = crash.description;
+    }
+    if (crash.processName) {
+      context['processName'] = crash.processName;
+    }
+    if (crash.pid) {
+      context['pid'] = String(crash.pid);
+    }
+    if (crash.importance !== undefined) {
+      context['importance'] = String(crash.importance);
+    }
 
-    if (stacktrace) {
-      context['stacktrace'] = stacktrace;
-    }
-    if (signal) {
-      context['signal'] = signal;
-    }
-    if (timestamp) {
-      context['timestamp'] = String(timestamp);
-    }
-    if (timestampReadable) {
-      context['timestamp_readable_utc'] = timestampReadable;
-    }
-    if (description) {
-      context['description'] = description;
-    }
-    if (processName) {
-      context['processName'] = processName;
-    }
-    if (pid) {
-      context['pid'] = String(pid);
-    }
-    if (status !== undefined) {
-      context['status'] = String(status);
-    }
-    if (importance !== undefined) {
-      context['importance'] = String(importance);
+    // Include crashed session ID for correlation in consumer apps.
+    // This allows users to query events from the session where the crash occurred
+    if (crash.crashedSessionId) {
+      context['crashedSessionId'] = crash.crashedSessionId;
     }
 
     // Push as error via Faro API (matching Flutter pattern)
     this.api.pushError(error, {
-      type: crash.type || 'crash',
+      type: 'crash',
       context,
     });
 
-    this.logDebug(`Reported crash: ${crash.type} at ${timestampReadable || timestamp}`);
+    this.logDebug(`Reported crash: ${crash.reason} at ${crash.timestamp}`);
   }
 
+  /**
+   * Build error message matching Flutter SDK format:
+   * "{reason}: {description}, status: {status}"
+   */
   private getErrorMessage(crash: CrashReport): string {
-    switch (crash.type) {
+    const reason = crash.reason || 'UNKNOWN';
+    const status = crash.status ?? 0;
+
+    let description: string;
+    switch (crash.reason) {
       case 'ANR':
-        return 'ANR (Application Not Responding)';
+        description = 'Application Not Responding';
+        break;
       case 'CRASH':
-        return 'Application crash (Java/Kotlin)';
+        description = 'Application crash (Java/Kotlin)';
+        break;
       case 'CRASH_NATIVE':
-        return 'Application crash (Native)';
+        description = 'Application crash (Native)';
+        break;
       case 'LOW_MEMORY':
-        return 'Application terminated due to low memory';
+        description = 'Application terminated due to low memory';
+        break;
       case 'EXCESSIVE_RESOURCE_USAGE':
-        return 'Application terminated due to excessive resource usage';
+        description = 'Application terminated due to excessive resource usage';
+        break;
       case 'INITIALIZATION_FAILURE':
-        return 'Application failed to initialize';
+        description = 'Application failed to initialize';
+        break;
       default:
-        return crash.description || `Application crash (${crash.type})`;
+        description = crash.description || 'Application crash';
+        break;
     }
+
+    return `${reason}: ${description}, status: ${status}`;
   }
 }

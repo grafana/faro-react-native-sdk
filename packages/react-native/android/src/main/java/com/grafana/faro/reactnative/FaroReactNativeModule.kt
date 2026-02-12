@@ -211,7 +211,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun getCrashReport(promise: Promise) {
-        val crashReports = CrashReporter.getCrashReports(reactApplicationContext)
+        val crashReports = FaroCrashReporter.getCrashReports(reactApplicationContext)
         
         if (crashReports != null) {
             val writableArray = com.facebook.react.bridge.Arguments.createArray()
@@ -225,11 +225,17 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
-     * Clear processed crash reports
+     * Persist the current Faro session ID to native storage.
+     *
+     * Called only when a new session starts.
+     * Enables crash reports to include the session ID where the crash occurred,
+     * allowing users to correlate crashes with pre-crash events in Grafana.
+     *
+     * @param sessionId The current Faro session ID
      */
     @ReactMethod
-    fun clearCrashReports() {
-        CrashReporter.clearCrashReports(reactApplicationContext)
+    fun persistSessionId(sessionId: String) {
+        FaroCrashReporter.persistSessionId(reactApplicationContext, sessionId)
     }
 
     /**

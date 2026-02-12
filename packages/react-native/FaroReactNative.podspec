@@ -17,6 +17,10 @@ Pod::Spec.new do |s|
 
   # Only use Old Architecture - do not register with Fabric/TurboModules
   s.dependency "React-Core"
+  
+  # PLCrashReporter for iOS crash reporting
+  # Provides signal-based crash capture (SIGSEGV, SIGABRT, etc.) and Mach exceptions
+  s.dependency "PLCrashReporter", "~> 1.11"
 
   s.pod_target_xcconfig = {
     "DEFINES_MODULE" => "YES",

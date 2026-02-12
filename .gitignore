@@ -155,3 +155,4 @@ demo/ios/*.xcworkspace
 
 # React Native Tools debug cache
 .vscode/.react
+.idea/

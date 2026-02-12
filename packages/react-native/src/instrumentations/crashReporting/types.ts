@@ -1,9 +1,15 @@
 /**
  * Configuration options for Crash Reporting instrumentation.
  *
- * **Note**: This is an experimental feature. Crash reporting uses:
- * - Android: ApplicationExitInfo API (Android 11+)
- * - iOS: PLCrashReporter (requires adding the dependency)
+ * **Platform Support**:
+ * - **Android**: Uses ApplicationExitInfo API (Android 11+ / API 30+)
+ *   Captures: CRASH, CRASH_NATIVE, ANR, LOW_MEMORY, EXCESSIVE_RESOURCE_USAGE
+ * - **iOS**: Uses PLCrashReporter (automatically included via podspec)
+ *   Captures: Signal crashes (SIGSEGV, SIGABRT, etc.) and Mach exceptions
+ *
+ * **Session Correlation**:
+ * Both platforms persist the session ID to native storage (SharedPreferences/UserDefaults)
+ * so crash reports include `crashedSessionId` for correlation in Grafana.
  */
 export interface CrashReportingOptions {
   /**
@@ -15,22 +21,21 @@ export interface CrashReportingOptions {
 
 /**
  * Crash report data from native module.
+ *
+ * Field names match Faro Flutter SDK for consistency across mobile platforms.
+ * Both Android (ApplicationExitInfo) and iOS (PLCrashReporter) produce JSON
+ * matching this interface.
  */
 export interface CrashReport {
   /**
-   * Type of crash (e.g., "CRASH", "CRASH_NATIVE", "ANR", "LOW_MEMORY")
+   * Reason for the crash (e.g., "CRASH", "CRASH_NATIVE", "ANR", "LOW_MEMORY")
    */
-  type: string;
+  reason: string;
 
   /**
    * Timestamp when the crash occurred (milliseconds since epoch)
    */
   timestamp: number;
-
-  /**
-   * Human-readable timestamp
-   */
-  timestamp_readable_utc?: string;
 
   /**
    * Exit status code
@@ -60,10 +65,19 @@ export interface CrashReport {
   /**
    * Stack trace (if available)
    */
-  stacktrace?: string;
+  trace?: string;
 
   /**
    * Signal name (for iOS crashes)
    */
   signal?: string;
+
+  /**
+   * The Faro session ID that was active when the crash occurred.
+   *
+   * This enables correlation in Grafana dashboards - you can query events
+   * from the session where the crash happened, not just the session where
+   * it was reported.
+   */
+  crashedSessionId?: string;
 }

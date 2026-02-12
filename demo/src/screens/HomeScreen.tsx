@@ -59,6 +59,16 @@ export function HomeScreen({ navigation }: Props) {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.button, styles.crashButton]}
+          onPress={() => navigation.navigate('CrashDemo')}
+        >
+          <Text style={styles.buttonText}>💥 Crash Demo</Text>
+          <Text style={styles.buttonDescription}>
+            Test native crashes and ANR (Android 11+)
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.button, styles.performanceButton]}
           onPress={() => navigation.navigate('PerformanceDemo')}
         >
@@ -172,6 +182,9 @@ const styles = StyleSheet.create({
   },
   errorButton: {
     backgroundColor: '#dc3545',
+  },
+  crashButton: {
+    backgroundColor: '#ff4757',
   },
   performanceButton: {
     backgroundColor: '#007bff',

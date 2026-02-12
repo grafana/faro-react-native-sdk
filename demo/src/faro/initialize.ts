@@ -36,6 +36,7 @@ function getDemoVersion(): string {
  * - fetchVitalsInterval: 30 seconds
  */
 export function initFaro() {
+  console.log('[FARO DEBUG] Starting Faro initialization with FARO_COLLECTOR_URL:', FARO_COLLECTOR_URL);
   if (!FARO_COLLECTOR_URL) {
     console.warn('FARO_COLLECTOR_URL not configured. Faro will not be initialized.');
     return undefined;
@@ -76,9 +77,14 @@ export function initFaro() {
       new FetchTransport({
         url: FARO_COLLECTOR_URL,
       }),
-      // new ConsoleTransport({
-      //   level: LogLevel.INFO,
-      // }),
+      // Enable ConsoleTransport in debug mode to see Faro telemetry in Metro
+      ...(FARO_DEBUG
+        ? [
+            new ConsoleTransport({
+              level: LogLevel.DEBUG,
+            }),
+          ]
+        : []),
     ],
   };
 

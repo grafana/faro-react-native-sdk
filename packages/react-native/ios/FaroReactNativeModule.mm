@@ -89,4 +89,58 @@ RCT_EXPORT_METHOD(getFrameMetrics:(RCTPromiseResolveBlock)resolve
   });
 }
 
+/// Persist the current Faro session ID to UserDefaults for crash correlation.
+/// This allows crash reports to include the session ID where the crash occurred.
+/// @param sessionId The current Faro session ID
+RCT_EXPORT_METHOD(persistSessionId:(NSString *)sessionId)
+{
+  [FaroReactNative persistSessionId:sessionId];
+}
+
+/// Get the persisted session ID from UserDefaults.
+/// Used by crash reporting to correlate crashes with the original session.
+/// @param resolve Promise resolve callback
+/// @param reject Promise reject callback
+RCT_EXPORT_METHOD(getPersistedSessionId:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  NSString *sessionId = [FaroReactNative getPersistedSessionId];
+  if (sessionId != nil) {
+    resolve(sessionId);
+  } else {
+    resolve([NSNull null]);
+  }
+}
+
+// MARK: - Crash Reporting
+
+/// Enable crash reporting using PLCrashReporter.
+/// Sets up signal handlers to capture crashes (SIGSEGV, SIGABRT, etc.).
+/// Should be called early in the app lifecycle.
+/// @param resolve Promise resolve callback
+/// @param reject Promise reject callback
+RCT_EXPORT_METHOD(enableCrashReporting:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  BOOL success = [FaroReactNative enableCrashReporting];
+  resolve(@(success));
+}
+
+/// Get crash reports from previous app sessions.
+/// Uses PLCrashReporter to capture signal crashes and Mach exceptions.
+/// Returns an array of JSON strings matching the Android format.
+/// Includes crashedSessionId for correlation in Grafana dashboards.
+/// @param resolve Promise resolve callback
+/// @param reject Promise reject callback
+RCT_EXPORT_METHOD(getCrashReport:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  NSArray<NSString *> *crashReports = [FaroReactNative getCrashReports];
+  if (crashReports != nil && crashReports.count > 0) {
+    resolve(crashReports);
+  } else {
+    resolve([NSNull null]);
+  }
+}
+
 @end
