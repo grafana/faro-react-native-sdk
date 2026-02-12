@@ -283,7 +283,7 @@ If telemetry is not appearing in Grafana:
 3. **ConsoleTransport** – Logs telemetry to Metro; if you see `[Faro]` lines, data is being captured.
 4. **Network inspector** – Use React Native Debugger or Flipper to inspect network requests to the collector URL.
 5. **Circuit breaker** – After 3 consecutive failures, FetchTransport backs off for 30 seconds; no logs during backoff.
-6. **Grafana query** – Use `{app_name="react-native-sdk-demo"}` in Explore (Loki).
+6. **Grafana query** – Use `{app_id="<ID_FRONTEND_O11Y>"}` in Explore (Loki).
 
 ## Common Issues
 
