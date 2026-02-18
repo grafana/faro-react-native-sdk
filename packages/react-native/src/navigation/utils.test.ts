@@ -3,7 +3,6 @@ import type { NavigationState, PartialState, Route } from '@react-navigation/nat
 import { initializeFaro } from '@grafana/faro-core';
 import { mockConfig } from '@grafana/faro-test-utils';
 
-import { getCurrentPage } from '../metas/page';
 import { getCurrentScreen } from '../metas/screen';
 
 import { createNavigationStateChangeHandler, getCurrentRoute, getRouteName, onNavigationStateChange } from './utils';
@@ -183,7 +182,7 @@ describe('navigation utils', () => {
       expect(pushEventSpy).not.toHaveBeenCalled();
     });
 
-    it('updates screen and page when navigation changes', () => {
+    it('updates screen when navigation changes', () => {
       const state: NavigationState = {
         index: 0,
         routes: [{ name: 'HomeScreen', key: 'home-1' }],
@@ -195,10 +194,8 @@ describe('navigation utils', () => {
       onNavigationStateChange(state);
 
       const screen = getCurrentScreen();
-      const page = getCurrentPage();
 
       expect(screen).toBe('HomeScreen');
-      expect(page?.id).toBe('HomeScreen');
     });
 
     it('calls setView with screen name', () => {

@@ -7,10 +7,11 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 
 /**
- * Demo-only native module for testing crash reporting.
+ * Demo-only native module for testing performance issues.
  *
  * This module is NOT part of the Faro SDK - it exists only in the demo app
- * to allow triggering test crashes and ANRs for demonstration purposes.
+ * to allow triggering test scenarios: crashes, ANRs, frozen frames, slow frames,
+ * and heavy performance loads for demonstration purposes.
  *
  * WARNING: Do not include this in production apps!
  */

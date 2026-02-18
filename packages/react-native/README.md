@@ -1007,101 +1007,88 @@ The SDK collects the following device information synchronously:
 - **Device Info**: Brand, model, device ID, type (mobile/tablet)
 - **System Info**: OS name, OS version, app version
 - **Locale/Language**: Device locales, timezone, primary language
-- **Memory**: Total and used memory
-- **Screen**: Viewport width and height
-- **Environment**: Whether running on emulator/simulator
+## Device Information
 
-### Async Device Information
+The SDK automatically collects device information and sends it as **session attributes** with every telemetry event. This matches the Faro Flutter SDK convention and provides comprehensive device context for mobile observability.
 
-For battery and network information that requires async calls, use `getAsyncDeviceMeta()`:
+### Session Attributes
 
-```tsx
-import { getAsyncDeviceMeta } from '@grafana/faro-react-native';
+All device information is sent as session attributes (not browser meta) to match Flutter SDK:
 
-// Fetch async device information
-const asyncDeviceInfo = await getAsyncDeviceMeta();
-console.log('Battery Level:', asyncDeviceInfo.batteryLevel);
-console.log('Carrier:', asyncDeviceInfo.carrier);
-console.log('Is Charging:', asyncDeviceInfo.isCharging);
-console.log('Low Power Mode:', asyncDeviceInfo.lowPowerMode);
-```
+**Core Attributes (matching Flutter SDK):**
+- `faro_sdk_version` - SDK version (e.g., "1.0.0")
+- `react_native_version` - React Native version (e.g., "0.75.1")
+- `device_os` - Operating system name ("iOS" or "Android")
+- `device_os_version` - OS version (e.g., "17.0", "14")
+- `device_os_detail` - Detailed OS info (e.g., "iOS 17.0", "Android 14 (SDK 34)")
+- `device_manufacturer` - Manufacturer (e.g., "apple", "samsung")
+- `device_model` - Raw model identifier (e.g., "iPhone16,1", "SM-A155F")
+- `device_model_name` - Human-readable name (e.g., "iPhone 15 Pro")
+- `device_brand` - Device brand (e.g., "iPhone", "samsung")
+- `device_is_physical` - Physical device or emulator ("true" or "false")
+- `device_id` - Unique device identifier (UUID)
 
-### Available Device Meta Fields
+**Additional Monitoring Attributes (React Native specific):**
+- `device_type` - Device type ("mobile" or "tablet")
+- `device_memory_total` - Total device memory in bytes
+- `device_memory_used` - Currently used memory in bytes
+- `device_battery_level` - Battery percentage (e.g., "85") - if available
+- `device_is_charging` - Whether charging ("true" or "false") - if available
+- `device_low_power_mode` - Low power mode enabled ("true" or "false") - if available
+- `device_carrier` - Mobile carrier name (e.g., "Verizon") - if available
 
-```typescript
-interface ExtendedBrowserMeta {
-  // Standard fields
-  name: string; // OS name (e.g., "iOS", "Android")
-  version: string; // App version
-  os: string; // OS with version (e.g., "iOS 17.0")
-  mobile: boolean; // true for mobile, false for tablet
-  userAgent: string; // User agent string
-  language: string; // Primary language
-  brands: string; // Device brand and model
-  viewportWidth: string; // Screen width
-  viewportHeight: string; // Screen height
+These attributes are automatically collected during Faro initialization and included with all telemetry events.
 
-  // Enhanced fields
-  locale?: string; // Primary locale (e.g., "en-US")
-  locales?: string; // All device locales
-  timezone?: string; // Device timezone (e.g., "America/New_York")
-  deviceType?: string; // "mobile" or "tablet"
-  isEmulator?: string; // "true" if running on emulator/simulator
-  totalMemory?: string; // Total device memory in bytes
-  usedMemory?: string; // Used memory in bytes
+### Querying Device Information
 
-  // Async fields (from getAsyncDeviceMeta)
-  batteryLevel?: string; // Battery percentage (e.g., "85%")
-  isCharging?: string; // "true" if device is charging
-  lowPowerMode?: string; // "true" if low power mode is enabled
-  carrier?: string; // Mobile carrier name (e.g., "Verizon")
-}
-```
+**Debug device-specific issues:**
 
-### Use Cases
-
-**1. Debug Device-Specific Issues**
-
-```tsx
-// Query Grafana Cloud for errors on specific devices
-{service_name="MyApp", browser_deviceType="tablet"}
+```logql
+{service_name="MyApp", device_manufacturer="samsung"}
 | logfmt
 | kind="exception"
 ```
 
-**2. Track Low Battery Correlation**
+**Filter by OS version:**
 
-```tsx
-// Find if errors correlate with low battery
-{service_name="MyApp", browser_batteryLevel=~"[0-9]%|[12][0-9]%"}
+```logql
+{service_name="MyApp", device_os="Android", device_os_version="14"}
+| logfmt
+```
+
+**Find emulator vs physical device issues:**
+
+```logql
+{service_name="MyApp", device_is_physical="false"}
 | logfmt
 | kind="exception"
 ```
 
-**3. Locale-Specific Analysis**
+**Track memory-related issues:**
 
-```tsx
-// Analyze issues by locale
-{service_name="MyApp", browser_locale=~"ja.*"}
-| logfmt
-```
-
-**4. Memory Pressure Detection**
-
-```tsx
-// Correlate high memory usage with crashes
+```logql
 {service_name="MyApp"}
 | logfmt
-| browser_usedMemory > 1000000000
+| device_memory_used > 1000000000
+| kind="exception"
+```
+
+**Monitor low battery scenarios:**
+
+```logql
+{service_name="MyApp"}
+| logfmt
+| device_battery_level <= "20"
+| kind="exception"
 ```
 
 ### Notes
 
-- All device meta is collected automatically when Faro initializes
-- Async device info (battery, carrier) is fetched lazily to avoid blocking initialization
+- All device info is collected automatically when Faro initializes
+- Session attributes are included with every telemetry event
 - All fields are optional and gracefully handle permission errors
-- Memory values are in bytes
-- Battery level is a percentage string (e.g., "85%")
+- The React Native SDK does NOT send a `browser` meta field or `page` meta field (matching Flutter SDK)
+- Battery, carrier, and low power mode info may not be available on all devices/OS versions
 
 ## TypeScript
 

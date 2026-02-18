@@ -1,7 +1,5 @@
 import type { Config } from '@grafana/faro-core';
 
-import { getDeviceMeta } from '../metas/device';
-import { createPageMeta } from '../metas/page';
 import { getScreenMeta } from '../metas/screen';
 import { getSdkMeta } from '../metas/sdk';
 
@@ -14,7 +12,10 @@ export function makeRNConfig(config: ReactNativeConfig): Config {
   const { metas = [], ...rest } = config;
 
   // Default metas for React Native
-  const defaultMetas = [getSdkMeta(), getDeviceMeta(), getScreenMeta(), createPageMeta()];
+  // Note: We do NOT include device meta (browser field) or page meta to match Flutter SDK.
+  // Device info is sent via session attributes with device_* prefixes.
+  // Screen tracking is handled via view meta.
+  const defaultMetas = [getSdkMeta(), getScreenMeta()];
 
   return {
     ...rest,

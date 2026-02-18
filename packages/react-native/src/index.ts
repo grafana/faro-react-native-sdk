@@ -48,7 +48,6 @@ export type {
 } from './errorBoundary/types';
 
 // Export metas
-export { getDeviceMeta, getAsyncDeviceMeta, type ExtendedBrowserMeta } from './metas/device';
 export { getScreenMeta } from './metas/screen';
 export { getSdkMeta } from './metas/sdk';
 
