@@ -121,9 +121,17 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
         this.eventEmitter = new NativeEventEmitter(nativeModule);
 
         // Listen for frozen frame events
-        const frozenFrameSubscription = this.eventEmitter.addListener('onFrozenFrame', (count: number) => {
-          this.handleFrozenFrame(count);
-        });
+        const frozenFrameSubscription = this.eventEmitter.addListener(
+          'onFrozenFrame',
+          (data: number | { count: number; durationMs: number }) => {
+            // Support both formats: number (legacy) or object (with duration)
+            if (typeof data === 'number') {
+              this.handleFrozenFrame(data, 0);
+            } else {
+              this.handleFrozenFrame(data.count, data.durationMs || 0);
+            }
+          }
+        );
         this.eventSubscriptions.push(frozenFrameSubscription);
 
         // Listen for slow frame events
@@ -184,7 +192,7 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
             this.handleSlowFrames(metrics.slowFrames);
           }
           if (metrics.frozenFrames > 0) {
-            this.handleFrozenFrame(metrics.frozenFrames);
+            this.handleFrozenFrame(metrics.frozenFrames, metrics.frozenDurationMs);
           }
         }
       }
@@ -213,11 +221,14 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     );
   }
 
-  private handleFrozenFrame(count: number): void {
+  private handleFrozenFrame(count: number, durationMs: number): void {
     this.api.pushMeasurement(
       {
         type: 'app_frozen_frame',
-        values: { frozen_frames: count },
+        values: { 
+          frozen_frames: count,
+          frozen_duration: durationMs
+        },
       },
       { skipDedupe: true }
     );

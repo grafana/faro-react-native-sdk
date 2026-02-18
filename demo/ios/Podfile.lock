@@ -2,6 +2,7 @@ PODS:
   - boost (1.84.0)
   - DoubleConversion (1.1.6)
   - FaroReactNative (1.0.0):
+    - PLCrashReporter (~> 1.11)
     - React-Core
   - fast_float (8.0.0)
   - FBLazyVector (0.82.1)
@@ -10,6 +11,7 @@ PODS:
   - hermes-engine (0.82.1):
     - hermes-engine/Pre-built (= 0.82.1)
   - hermes-engine/Pre-built (0.82.1)
+  - PLCrashReporter (1.12.0)
   - RCT-Folly (2024.11.18.00):
     - boost
     - DoubleConversion
@@ -2615,6 +2617,7 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - PLCrashReporter
     - SocketRocket
 
 EXTERNAL SOURCES:
@@ -2781,12 +2784,13 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   boost: 7e761d76ca2ce687f7cc98e698152abd03a18f90
   DoubleConversion: cb417026b2400c8f53ae97020b2be961b59470cb
-  FaroReactNative: edf0989cf9d1e06508f0a7f60ed16a1dc316247f
+  FaroReactNative: cae60e655fcc5b43afbff967b345ccf3d0a0023f
   fast_float: b32c788ed9c6a8c584d114d0047beda9664e7cc6
   FBLazyVector: 0aa6183b9afe3c31fc65b5d1eeef1f3c19b63bfa
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
   hermes-engine: 273e30e7fb618279934b0b95ffab60ecedb7acf5
+  PLCrashReporter: db59ef96fa3d25f3650040d02ec2798cffee75f2
   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: f17e2ebc07876ca9ab8eb6e4b0a4e4647497ae3a
   RCTRequired: e2c574c1b45231f7efb0834936bd609d75072b63

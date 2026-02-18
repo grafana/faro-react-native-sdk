@@ -70,7 +70,7 @@ RCT_EXPORT_METHOD(getRefreshRate:(RCTPromiseResolveBlock)resolve
   });
 }
 
-/// Get frame metrics (refresh rate, slow frames, frozen frames)
+/// Get frame metrics (refresh rate, slow frames, frozen frames, frozen duration)
 /// @param resolve Promise resolve callback
 /// @param reject Promise reject callback
 RCT_EXPORT_METHOD(getFrameMetrics:(RCTPromiseResolveBlock)resolve
@@ -82,7 +82,8 @@ RCT_EXPORT_METHOD(getFrameMetrics:(RCTPromiseResolveBlock)resolve
     NSDictionary *metrics = @{
       @"refreshRate": @([vitals getRefreshRate]),
       @"slowFrames": @([vitals getAndResetSlowFrames]),
-      @"frozenFrames": @([vitals getAndResetFrozenFrames])
+      @"frozenFrames": @([vitals getAndResetFrozenFrames]),
+      @"frozenDurationMs": @([vitals getAndResetFrozenDuration])
     };
     
     resolve(metrics);

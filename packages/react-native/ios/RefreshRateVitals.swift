@@ -31,6 +31,9 @@ import UIKit
     /// Count of frozen frames since last reset
     @objc public private(set) var frozenFrameCount: Int = 0
     
+    /// Total duration of frozen frames in milliseconds
+    @objc public private(set) var frozenFrameDurationMs: Double = 0
+    
     /// Whether monitoring is active
     @objc public private(set) var isMonitoring: Bool = false
     
@@ -69,6 +72,7 @@ import UIKit
         // Reset counters
         slowFrameCount = 0
         frozenFrameCount = 0
+        frozenFrameDurationMs = 0
         lastFrameTimestamp = nil
         nextFrameDuration = nil
     }
@@ -101,9 +105,30 @@ import UIKit
         return count
     }
     
+    /// Get and reset frozen frame duration in milliseconds
+    @objc public func getAndResetFrozenDuration() -> Double {
+        let duration = frozenFrameDurationMs
+        frozenFrameDurationMs = 0
+        return duration
+    }
+    
     // MARK: - Private Methods
     
     @objc private func displayTick(link: CADisplayLink) {
+        // Check for frozen frames FIRST (before calculateFPS updates lastFrameTimestamp)
+        if let lastTimestamp = lastFrameTimestamp {
+            let frameDuration = link.timestamp - lastTimestamp
+            if frameDuration > frozenFrameThreshold {
+                frozenFrameCount += 1
+                
+                // Track duration in milliseconds
+                let durationMs = frameDuration * 1000
+                frozenFrameDurationMs += durationMs
+                
+                NSLog("[Faro] Frozen frame detected! Duration: %.0fms (threshold: %.0fms)", durationMs, frozenFrameThreshold * 1000)
+            }
+        }
+        
         guard let fps = calculateFPS(provider: link) else { return }
         
         lastRefreshRate = fps
@@ -111,14 +136,6 @@ import UIKit
         // Check for slow frames (below target FPS)
         if fps < targetFps {
             slowFrameCount += 1
-        }
-        
-        // Check for frozen frames (frame duration exceeds threshold)
-        if let lastTimestamp = lastFrameTimestamp {
-            let frameDuration = link.timestamp - lastTimestamp
-            if frameDuration > frozenFrameThreshold {
-                frozenFrameCount += 1
-            }
         }
     }
     

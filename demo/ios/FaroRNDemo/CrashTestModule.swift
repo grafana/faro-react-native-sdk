@@ -28,19 +28,109 @@ class CrashTestModule: NSObject {
     }
 
     /**
-     * Trigger an ANR-like freeze by blocking the main thread.
+     * Trigger a main thread freeze using a busy-wait loop.
      *
-     * iOS doesn't have an official ANR mechanism like Android, but blocking
-     * the main thread will make the app unresponsive. The system may terminate
-     * the app if it remains unresponsive for too long (watchdog termination).
+     * This keeps the main thread busy with computation, which allows
+     * CADisplayLink callbacks to run but with extremely delayed timing.
+     * The delays will be detected as frozen frames.
      *
-     * WARNING: This will freeze the app for 10 seconds!
+     * WARNING: This will freeze the app for 3 seconds!
      */
     @objc
-    func triggerANR() {
-        // Block main thread for 10 seconds
-        // This simulates an ANR-like condition
-        Thread.sleep(forTimeInterval: 10.0)
+    func triggerFreeze() {
+        // Ensure we're on the main thread
+        if Thread.isMainThread {
+            self.blockMainThreadWithBusyLoop()
+        } else {
+            DispatchQueue.main.async {
+                self.blockMainThreadWithBusyLoop()
+            }
+        }
+    }
+    
+    /// Blocks the main thread with a CPU-intensive busy loop
+    private func blockMainThreadWithBusyLoop() {
+        let endTime = Date().addingTimeInterval(3.0)
+        var counter: UInt64 = 0
+        
+        // Tight busy loop - keeps main thread occupied
+        // CADisplayLink will try to fire but will be severely delayed
+        while Date() < endTime {
+            counter = counter &+ 1
+            // Every 100 million iterations, do a tiny bit of work
+            // This creates frame gaps that CADisplayLink will detect
+            if counter % 100_000_000 == 0 {
+                // This slight delay accumulates and creates detectable frame drops
+                usleep(50_000) // 50ms delay
+            }
+        }
+    }
+    
+    /**
+     * Trigger slow frames by doing moderate CPU work on the main thread.
+     *
+     * Creates janky animations by periodically blocking the main thread
+     * for 20-30ms, causing frames to drop below 60 FPS.
+     *
+     * WARNING: This will cause janky UI for 5 seconds!
+     */
+    @objc
+    func triggerSlowFrames() {
+        DispatchQueue.main.async {
+            let endTime = Date().addingTimeInterval(5.0)
+            var iteration = 0
+            
+            while Date() < endTime {
+                // Do work that takes ~20-30ms per iteration
+                // This causes frames to render slower than 60fps
+                var sum = 0.0
+                for i in 0..<500_000 {
+                    sum += Double(i)
+                }
+                
+                // Small sleep to allow some frames to render (but slowly)
+                usleep(20_000) // 20ms = ~50fps (slow but not frozen)
+                
+                iteration += 1
+                
+                // Every 20 iterations, give the UI a brief break
+                if iteration % 20 == 0 {
+                    usleep(5_000) // 5ms break
+                }
+            }
+        }
+    }
+    
+    /**
+     * Trigger heavy load with mixed slow frames and occasional freezes.
+     *
+     * Simulates a worst-case scenario with continuous poor performance.
+     * Combines slow frame rendering with periodic freezes.
+     *
+     * WARNING: This will cause severe performance issues for 10 seconds!
+     */
+    @objc
+    func triggerHeavyLoad() {
+        DispatchQueue.main.async {
+            let endTime = Date().addingTimeInterval(10.0)
+            var iteration = 0
+            
+            while Date() < endTime {
+                // Most iterations: slow frames (20-30ms work)
+                var sum = 0.0
+                for i in 0..<500_000 {
+                    sum += Double(i)
+                }
+                usleep(20_000) // 20ms = slow frame
+                
+                iteration += 1
+                
+                // Every 10th iteration: brief freeze (150ms)
+                if iteration % 10 == 0 {
+                    usleep(150_000) // 150ms = frozen frame
+                }
+            }
+        }
     }
 
     /**

@@ -54,6 +54,11 @@ export interface FrameMetrics {
    * Number of frozen frames since last measurement.
    */
   frozenFrames: number;
+
+  /**
+   * Total duration of frozen frames in milliseconds.
+   */
+  frozenDurationMs: number;
 }
 
 /**
