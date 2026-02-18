@@ -6,7 +6,7 @@ import { VERSION } from '@grafana/faro-core';
 /**
  * Session attributes for React Native
  * These attributes are automatically included with every telemetry event
- * 
+ *
  * Core attributes match Flutter SDK format, with additional mobile-specific
  * monitoring fields (memory, device type, battery, etc.)
  */

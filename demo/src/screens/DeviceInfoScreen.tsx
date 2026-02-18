@@ -7,15 +7,17 @@ import { PerformanceMetricsCard } from '../components/PerformanceMetricsCard';
 
 /**
  * Device Info Screen
- * Displays live performance metrics and device metadata
+ * Displays live performance metrics and device metadata sent as session attributes
  */
 export default function DeviceInfoScreen() {
-  // Get synchronous device info from Faro's browser meta
+  // Get session attributes from Faro
   const metasValue = faro?.metas?.value as Record<string, unknown> | undefined;
-  const browserMeta = (metasValue?.browser as Record<string, unknown>) || {};
+  const sessionMeta = (metasValue?.session as Record<string, unknown>) || {};
+  const sessionAttributes =
+    (sessionMeta.attributes as Record<string, unknown>) || {};
 
   const renderMetaField = (label: string, value: unknown) => {
-    if (value === undefined || value === null) {
+    if (value === undefined || value === null || value === '') {
       return null;
     }
 
@@ -27,13 +29,23 @@ export default function DeviceInfoScreen() {
     );
   };
 
+  const formatBytes = (bytes: string | undefined): string => {
+    if (!bytes) return 'N/A';
+    const num = parseInt(bytes, 10);
+    if (isNaN(num)) return 'N/A';
+    const gb = (num / 1024 / 1024 / 1024).toFixed(2);
+    const mb = (num / 1024 / 1024).toFixed(0);
+    return num > 1024 * 1024 * 1024 ? `${gb} GB` : `${mb} MB`;
+  };
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>Device Information</Text>
         <Text style={styles.description}>
-          Live performance metrics and device metadata automatically collected
-          by Faro SDK for better debugging and analytics.
+          All metadata is automatically sent as session attributes with every
+          telemetry event. No browser or page meta fields - mobile-first
+          approach! 🚀
         </Text>
 
         {/* Live Performance Metrics */}
@@ -42,51 +54,109 @@ export default function DeviceInfoScreen() {
         {/* System Information */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>📱 System Information</Text>
-          {renderMetaField('OS Name', browserMeta.name)}
-          {renderMetaField('OS Version', browserMeta.os)}
-          {renderMetaField('App Version', browserMeta.version)}
-          {renderMetaField('Device Type', browserMeta.deviceType)}
-          {renderMetaField('Is Mobile', browserMeta.mobile)}
-          {renderMetaField('Is Emulator', browserMeta.isEmulator)}
-          {renderMetaField('User Agent', browserMeta.userAgent)}
+          {renderMetaField('OS', sessionAttributes.device_os)}
+          {renderMetaField('OS Version', sessionAttributes.device_os_version)}
+          {renderMetaField('OS Detail', sessionAttributes.device_os_detail)}
+          {renderMetaField('SDK Version', sessionAttributes.faro_sdk_version)}
+          {renderMetaField(
+            'React Native',
+            sessionAttributes.react_native_version,
+          )}
         </View>
 
         {/* Device Details */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🔧 Device Details</Text>
-          {renderMetaField('Brand & Model', browserMeta.brands)}
           {renderMetaField(
-            'Viewport',
-            `${browserMeta.viewportWidth}x${browserMeta.viewportHeight}`,
+            'Manufacturer',
+            sessionAttributes.device_manufacturer,
+          )}
+          {renderMetaField('Brand', sessionAttributes.device_brand)}
+          {renderMetaField('Model', sessionAttributes.device_model)}
+          {renderMetaField('Model Name', sessionAttributes.device_model_name)}
+          {renderMetaField('Device Type', sessionAttributes.device_type)}
+          {renderMetaField('Is Physical', sessionAttributes.device_is_physical)}
+          {renderMetaField(
+            'Device ID',
+            String(sessionAttributes.device_id).substring(0, 8) + '...',
           )}
         </View>
 
-        {/* Locale & Language */}
+        {/* Memory & Resources */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🌍 Locale & Language</Text>
-          {renderMetaField('Primary Language', browserMeta.language)}
-          {renderMetaField('Primary Locale', browserMeta.locale)}
-          {renderMetaField('All Locales', browserMeta.locales)}
-          {renderMetaField('Timezone', browserMeta.timezone)}
+          <Text style={styles.sectionTitle}>💾 Memory & Resources</Text>
+          {renderMetaField(
+            'Total Memory',
+            formatBytes(sessionAttributes.device_memory_total as string),
+          )}
+          {renderMetaField(
+            'Used Memory',
+            formatBytes(sessionAttributes.device_memory_used as string),
+          )}
+          {sessionAttributes.device_memory_total &&
+          sessionAttributes.device_memory_used &&
+          typeof sessionAttributes.device_memory_total === 'string' &&
+          typeof sessionAttributes.device_memory_used === 'string' ? (
+            <View style={styles.metaRow}>
+              <Text style={styles.metaLabel}>Memory Usage:</Text>
+              <Text style={styles.metaValue}>
+                {(
+                  (parseInt(sessionAttributes.device_memory_used, 10) /
+                    parseInt(sessionAttributes.device_memory_total, 10)) *
+                  100
+                ).toFixed(1)}
+                %
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* Battery & Power */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🔋 Battery & Power</Text>
+          {sessionAttributes.device_battery_level ? (
+            renderMetaField(
+              'Battery Level',
+              `${sessionAttributes.device_battery_level}%`,
+            )
+          ) : (
+            <Text style={styles.loading}>Battery info not available</Text>
+          )}
+          {renderMetaField('Is Charging', sessionAttributes.device_is_charging)}
+          {renderMetaField(
+            'Low Power Mode',
+            sessionAttributes.device_low_power_mode,
+          )}
+        </View>
+
+        {/* Network & Connectivity */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📡 Network & Connectivity</Text>
+          {sessionAttributes.device_carrier ? (
+            renderMetaField('Carrier', sessionAttributes.device_carrier)
+          ) : (
+            <Text style={styles.loading}>Carrier info not available</Text>
+          )}
         </View>
 
         {/* Instructions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>💡 Usage in Grafana Cloud</Text>
           <Text style={styles.instructions}>
-            All this metadata is automatically attached to every log, error, and
-            event sent to Grafana Cloud.
+            All metadata is sent as session attributes (device_* prefix)
+            matching Flutter SDK convention.
             {'\n\n'}
-            Query examples:
+            Query examples in Grafana:
             {'\n\n'}
-            {`{service_name="React Native Test", browser_deviceType="mobile"}`}
+            {`{service_name="MyApp", device_manufacturer="samsung"}`}
             {'\n'}
-            {`{service_name="React Native Test", browser_locale=~"en.*"}`}
+            {`{service_name="MyApp", device_os="Android", device_os_version="14"}`}
             {'\n'}
-            {`{service_name="React Native Test", browser_isEmulator="true"}`}
+            {`{service_name="MyApp", device_is_physical="false"}`}
+            {'\n'}
+            {`{service_name="MyApp"} | device_battery_level <= "20"`}
             {'\n\n'}
-            Performance metrics (CPU and memory) are sent at the configured
-            vitals interval.
+            No browser_ or page_ fields - clean mobile-first architecture! ✨
           </Text>
         </View>
       </View>

@@ -62,7 +62,7 @@ export class FetchTransport extends BaseTransport {
   /**
    * Wait for session to be available before sending.
    * This prevents 400 errors from the collector due to missing X-Faro-Session-Id header.
-   * 
+   *
    * Only waits if session tracking is enabled. If disabled, returns immediately.
    */
   private waitForSession(): Promise<void> {
@@ -95,7 +95,7 @@ export class FetchTransport extends BaseTransport {
     // Create a promise that resolves when session becomes available via listener
     this.sessionReadyPromise = new Promise<void>((resolve) => {
       this.sessionReadyResolve = resolve;
-      
+
       // Also check immediately in case session was set between our check and listener registration
       const sessionMeta = this.metas?.value?.session;
       if (sessionMeta?.id) {
@@ -123,7 +123,9 @@ export class FetchTransport extends BaseTransport {
 
       // DEBUG: Check session state before waiting
       const sessionTrackingEnabled = this.config?.sessionTracking?.enabled;
-      this.logDebug(`FetchTransport: sessionTracking.enabled=${sessionTrackingEnabled}, sessionReady=${this.sessionReady}`);
+      this.logDebug(
+        `FetchTransport: sessionTracking.enabled=${sessionTrackingEnabled}, sessionReady=${this.sessionReady}`
+      );
 
       // Wait for session to be ready before sending
       // This prevents 400 errors from missing X-Faro-Session-Id header

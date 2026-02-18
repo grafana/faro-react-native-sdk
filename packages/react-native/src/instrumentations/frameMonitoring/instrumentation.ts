@@ -225,9 +225,9 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     this.api.pushMeasurement(
       {
         type: 'app_frozen_frame',
-        values: { 
+        values: {
           frozen_frames: count,
-          frozen_duration: durationMs
+          frozen_duration: durationMs,
         },
       },
       { skipDedupe: true }

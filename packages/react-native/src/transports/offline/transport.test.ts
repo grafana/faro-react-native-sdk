@@ -157,7 +157,7 @@ describe('OfflineTransport', () => {
         isBatched: () => false,
       };
 
-      transport.setOtherTransports([mockTransport as unknown as TransportItem & { name: string; version: string; send: jest.Mock; getIgnoreUrls: () => never[]; isBatched: () => boolean }]);
+      transport.setOtherTransports([mockTransport as any]);
 
       // Force replay directly instead of relying on connectivity subscription
       mockConnectivity.setOnline(true);
@@ -182,7 +182,7 @@ describe('OfflineTransport', () => {
         isBatched: () => false,
       };
 
-      transport.setOtherTransports([mockTransport as unknown as TransportItem & { name: string; version: string; send: jest.Mock; getIgnoreUrls: () => never[]; isBatched: () => boolean }]);
+      transport.setOtherTransports([mockTransport as any]);
 
       // Force replay
       mockConnectivity.setOnline(true);

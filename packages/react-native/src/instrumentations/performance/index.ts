@@ -124,11 +124,10 @@ export class PerformanceInstrumentation extends BaseInstrumentation {
       }
 
       this.logDebug(`Memory: pushing measurement with mem_usage = ${memoryUsage}`);
-      this.api.pushMeasurement(
-        {
-          type: 'app_memory',
-          values: { mem_usage: memoryUsage },
-        });
+      this.api.pushMeasurement({
+        type: 'app_memory',
+        values: { mem_usage: memoryUsage },
+      });
     } catch (error) {
       this.logError('Failed to collect memory usage', error);
     }
@@ -154,11 +153,10 @@ export class PerformanceInstrumentation extends BaseInstrumentation {
       this.logDebug(`CPU: pushing measurement with cpu_usage = ${cpuUsage}`);
       // Flutter SDK also filters values >= 100, but we allow them as they can be valid
       // in multi-core scenarios where one core is maxed out
-      this.api.pushMeasurement(
-        {
-          type: 'app_cpu_usage',
-          values: { cpu_usage: cpuUsage },
-        });
+      this.api.pushMeasurement({
+        type: 'app_cpu_usage',
+        values: { cpu_usage: cpuUsage },
+      });
     } catch (error) {
       this.logError('Failed to collect CPU usage', error);
     }

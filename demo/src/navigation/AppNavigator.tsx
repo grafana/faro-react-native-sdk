@@ -5,7 +5,6 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 
-// @ts-expect-error - TS module resolution issue, export exists in source
 import { useFaroNavigation } from '@grafana/faro-react-native';
 
 import { AboutScreen } from '../screens/AboutScreen';

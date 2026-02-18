@@ -48,6 +48,7 @@ export type {
 } from './errorBoundary/types';
 
 // Export metas
+export { getPageMeta } from './metas/page';
 export { getScreenMeta } from './metas/screen';
 export { getSdkMeta } from './metas/sdk';
 

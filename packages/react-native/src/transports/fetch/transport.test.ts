@@ -289,8 +289,7 @@ describe('FetchTransport', () => {
       Promise.resolve({
         status: 202,
         headers: {
-          get: (name?: string): string | null =>
-            name === 'X-Faro-Session-Status' ? 'invalid' : null,
+          get: (name?: string): string | null => (name === 'X-Faro-Session-Status' ? 'invalid' : null),
         },
         text: () => Promise.resolve(),
       })

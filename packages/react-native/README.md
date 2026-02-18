@@ -1007,6 +1007,7 @@ The SDK collects the following device information synchronously:
 - **Device Info**: Brand, model, device ID, type (mobile/tablet)
 - **System Info**: OS name, OS version, app version
 - **Locale/Language**: Device locales, timezone, primary language
+
 ## Device Information
 
 The SDK automatically collects device information and sends it as **session attributes** with every telemetry event. This matches the Faro Flutter SDK convention and provides comprehensive device context for mobile observability.
@@ -1016,6 +1017,7 @@ The SDK automatically collects device information and sends it as **session attr
 All device information is sent as session attributes (not browser meta) to match Flutter SDK:
 
 **Core Attributes (matching Flutter SDK):**
+
 - `faro_sdk_version` - SDK version (e.g., "1.0.0")
 - `react_native_version` - React Native version (e.g., "0.75.1")
 - `device_os` - Operating system name ("iOS" or "Android")
@@ -1029,6 +1031,7 @@ All device information is sent as session attributes (not browser meta) to match
 - `device_id` - Unique device identifier (UUID)
 
 **Additional Monitoring Attributes (React Native specific):**
+
 - `device_type` - Device type ("mobile" or "tablet")
 - `device_memory_total` - Total device memory in bytes
 - `device_memory_used` - Currently used memory in bytes
@@ -1087,7 +1090,8 @@ These attributes are automatically collected during Faro initialization and incl
 - All device info is collected automatically when Faro initializes
 - Session attributes are included with every telemetry event
 - All fields are optional and gracefully handle permission errors
-- The React Native SDK does NOT send a `browser` meta field or `page` meta field (matching Flutter SDK)
+- The React Native SDK sends an empty `page` meta field to override faro-core's default web-specific page meta
+- Screen tracking is handled via `view` meta instead of `page` meta (matching Flutter SDK)
 - Battery, carrier, and low power mode info may not be available on all devices/OS versions
 
 ## TypeScript

@@ -39,9 +39,7 @@ import type { ReactNativeConfig } from './types';
  * };
  * ```
  */
-export function getRNInstrumentations(
-  config: Partial<ReactNativeConfig> = {}
-): Instrumentation[] {
+export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): Instrumentation[] {
   // Aligned with Flutter SDK FaroConfig defaults
   const {
     // Error & crash tracking
