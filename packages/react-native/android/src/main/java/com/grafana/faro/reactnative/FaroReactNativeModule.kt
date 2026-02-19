@@ -107,7 +107,14 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
         // Set up event callbacks to emit events to JavaScript
         FrameMonitor.setCallbacks(
             onSlowFrames = { count -> sendEvent("onSlowFrames", count) },
-            onFrozenFrame = { count -> sendEvent("onFrozenFrame", count) },
+            onFrozenFrame = { count, durationMs -> 
+                // Send frozen frame event with count and duration
+                val data = WritableNativeMap().apply {
+                    putInt("count", count)
+                    putDouble("durationMs", durationMs)
+                }
+                sendEvent("onFrozenFrame", data)
+            },
             onRefreshRate = { rate -> sendEvent("onRefreshRate", rate) }
         )
 
@@ -138,7 +145,8 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
-     * Get frame metrics (refresh rate, slow frames, frozen frames)
+     * Get frame metrics (refresh rate, slow frame events, frozen frames)
+     * Note: slowFrames contains the count of slow frame EVENTS (not individual frames)
      *
      * @param promise Promise to resolve with the metrics map
      */
@@ -148,6 +156,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
             putDouble("refreshRate", FrameMonitor.getRefreshRate())
             putInt("slowFrames", FrameMonitor.getAndResetSlowFrames())
             putInt("frozenFrames", FrameMonitor.getAndResetFrozenFrames())
+            putDouble("frozenDurationMs", FrameMonitor.getAndResetFrozenDuration())
         }
         promise.resolve(metrics)
     }

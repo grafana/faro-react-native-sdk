@@ -69,35 +69,42 @@ class CrashTestModule: NSObject {
     /**
      * Trigger slow frames by doing moderate CPU work on the main thread.
      *
-     * Creates janky animations by periodically blocking the main thread
-     * for 20-30ms, causing frames to drop below 60 FPS.
+     * Creates janky animations by scheduling repeated bursts of CPU work
+     * that allow CADisplayLink callbacks to run between bursts.
+     * Each burst takes 30-50ms, creating slow frames without freezing.
      *
      * WARNING: This will cause janky UI for 5 seconds!
      */
     @objc
     func triggerSlowFrames() {
-        DispatchQueue.main.async {
-            let endTime = Date().addingTimeInterval(5.0)
-            var iteration = 0
-            
-            while Date() < endTime {
-                // Do work that takes ~20-30ms per iteration
-                // This causes frames to render slower than 60fps
-                var sum = 0.0
-                for i in 0..<500_000 {
-                    sum += Double(i)
-                }
-                
-                // Small sleep to allow some frames to render (but slowly)
-                usleep(20_000) // 20ms = ~50fps (slow but not frozen)
-                
-                iteration += 1
-                
-                // Every 20 iterations, give the UI a brief break
-                if iteration % 20 == 0 {
-                    usleep(5_000) // 5ms break
-                }
+        let startTime = Date()
+        var iteration = 0
+        
+        // Schedule repeated work on main queue that yields between iterations
+        func scheduleNextBurst() {
+            guard Date().timeIntervalSince(startTime) < 5.0 else {
+                return
             }
+            
+            // Do CPU work for ~30-50ms to create slow frames
+            // This is above the 16.67ms frame budget (60fps) but below 700ms frozen threshold
+            var sum = 0.0
+            for i in 0..<1_500_000 {
+                sum += Double(i)
+            }
+            
+            iteration += 1
+            
+            // Yield back to run loop immediately so CADisplayLink can fire
+            // This allows frame monitoring to detect the slow frames
+            DispatchQueue.main.async {
+                scheduleNextBurst()
+            }
+        }
+        
+        // Start the burst sequence
+        DispatchQueue.main.async {
+            scheduleNextBurst()
         }
     }
     

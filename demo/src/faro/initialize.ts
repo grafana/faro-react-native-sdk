@@ -36,7 +36,9 @@ function getDemoVersion(): string {
  * - fetchVitalsInterval: 30 seconds
  */
 export function initFaro() {
-  console.log('[FARO DEBUG] Starting Faro initialization with FARO_COLLECTOR_URL:', FARO_COLLECTOR_URL);
+  console.log('[FARO DEBUG] Starting Faro initialization');
+  console.log('[FARO DEBUG] FARO_COLLECTOR_URL:', FARO_COLLECTOR_URL);
+  
   if (!FARO_COLLECTOR_URL) {
     console.warn('FARO_COLLECTOR_URL not configured. Faro will not be initialized.');
     return undefined;

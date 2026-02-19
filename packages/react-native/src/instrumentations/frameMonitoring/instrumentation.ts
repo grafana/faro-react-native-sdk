@@ -20,9 +20,20 @@ const DEFAULT_NORMALIZED_REFRESH_RATE = 60;
  * Monitors frame rendering performance and detects slow/frozen frames.
  * Uses native CADisplayLink (iOS) and Choreographer (Android) for accurate metrics.
  *
+ * ## Slow Frame Detection
+ * Slow frames are detected using **event-based grouping** to report user-perceptible jank:
+ * - Tracks consecutive frames below `targetFps` as a single "slow frame event"
+ * - Only counts events lasting ≥50ms (~3 frames at 60fps) to filter noise
+ * - This prevents reporting normal microsecond variations as slow frames
+ * - Reports meaningful performance degradation that affects user experience
+ *
+ * ## Frozen Frame Detection
+ * Frozen frames are individual frames exceeding `frozenFrameThresholdMs` (default 100ms).
+ * These represent severe jank where the app appears unresponsive.
+ *
  * Sends measurements via Faro API:
  * - `app_refresh_rate`: Current refresh rate in FPS
- * - `app_frames_rate`: Number of slow frames (below targetFps)
+ * - `app_frames_rate`: Number of slow frame events (not individual frames)
  * - `app_frozen_frame`: Number of frozen frames (exceeding frozenFrameThresholdMs)
  *
  * @example
@@ -115,7 +126,8 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private setupEventListeners(nativeModule: typeof NativeModules.FaroReactNativeModule): void {
-    // Android uses event-based approach for frame drops
+    // Android uses event-based approach for frozen frames only
+    // Slow frames are retrieved via polling (like iOS) to avoid flooding
     if (Platform.OS === 'android') {
       try {
         this.eventEmitter = new NativeEventEmitter(nativeModule);
@@ -134,12 +146,6 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
         );
         this.eventSubscriptions.push(frozenFrameSubscription);
 
-        // Listen for slow frame events
-        const slowFrameSubscription = this.eventEmitter.addListener('onSlowFrames', (count: number) => {
-          this.handleSlowFrames(count);
-        });
-        this.eventSubscriptions.push(slowFrameSubscription);
-
         // Listen for refresh rate events (only when refreshRateVitals is enabled in config)
         if (this.refreshRateVitalsEnabled) {
           const refreshRateSubscription = this.eventEmitter.addListener('onRefreshRate', (refreshRate: number) => {
@@ -156,12 +162,11 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private startPolling(): void {
-    // iOS uses polling approach
-    if (Platform.OS === 'ios') {
-      this.pollingIntervalId = setInterval(() => {
-        this.pollFrameMetrics();
-      }, this.options.refreshRatePollingInterval);
-    }
+    // Both iOS and Android use polling approach for slow frames
+    // This provides consistent behavior and avoids flooding with events
+    this.pollingIntervalId = setInterval(() => {
+      this.pollFrameMetrics();
+    }, this.options.refreshRatePollingInterval);
   }
 
   private async pollFrameMetrics(): Promise<void> {
@@ -212,6 +217,8 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private handleSlowFrames(count: number): void {
+    // Note: Despite the name "slow_frames", this count represents slow frame EVENTS, not individual frames. 
+    // Each event is a period of consecutive slow frames lasting ≥50ms (~3 frames at 60fps).
     this.api.pushMeasurement(
       {
         type: 'app_frames_rate',
@@ -222,16 +229,23 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private handleFrozenFrame(count: number, durationMs: number): void {
-    this.api.pushMeasurement(
-      {
-        type: 'app_frozen_frame',
-        values: {
-          frozen_frames: count,
-          frozen_duration: durationMs,
+    // Only send frozen frame events if duration is greater than 0
+    // This filters out any erroneous 0ms frozen frames
+    if (durationMs > 0) {
+      // 🔍 TEMP DEBUG LOG - Remove after analysis
+      console.log(`[Faro DEBUG ${Platform.OS.toUpperCase()}] 🧊 SENDING frozen frame: count=${count}, duration=${durationMs}ms`);
+      
+      this.api.pushMeasurement(
+        {
+          type: 'app_frozen_frame',
+          values: {
+            frozen_frames: count,
+            frozen_duration: durationMs,
+          },
         },
-      },
-      { skipDedupe: true }
-    );
+        { skipDedupe: true }
+      );
+    }
   }
 
   /**

@@ -33,14 +33,21 @@ object FrameMonitor {
     private var lastFrameTimeNanos: Long = 0
     private var lastRefreshRate: Double = 0.0
     private var lastRefreshRateEmitTimeMs: Long = 0
-    private val slowFrameCount = AtomicInteger(0)
+    private val slowFrameEventCount = AtomicInteger(0)
     private val frozenFrameCount = AtomicInteger(0)
+    private var frozenFrameDurationMs: Double = 0.0
     private val isMonitoring = AtomicBoolean(false)
+
+    // Slow frame event detection
+    private var inSlowFrameEvent: Boolean = false
+    private var slowFrameEventStartTimeNanos: Long = 0
+    // Minimum duration (in nanoseconds) for a slow frame event to be counted (~3 frames at 60fps)
+    private val slowFrameEventMinDurationNs: Long = 50 * NANOSECONDS_IN_MILLISECOND
 
     // Callbacks
     private var frameCallback: Choreographer.FrameCallback? = null
     private var onSlowFrames: ((Int) -> Unit)? = null
-    private var onFrozenFrame: ((Int) -> Unit)? = null
+    private var onFrozenFrame: ((Int, Double) -> Unit)? = null
     private var onRefreshRate: ((Double) -> Unit)? = null
 
     /**
@@ -65,7 +72,7 @@ object FrameMonitor {
      */
     fun setCallbacks(
         onSlowFrames: ((Int) -> Unit)? = null,
-        onFrozenFrame: ((Int) -> Unit)? = null,
+        onFrozenFrame: ((Int, Double) -> Unit)? = null,
         onRefreshRate: ((Double) -> Unit)? = null
     ) {
         this.onSlowFrames = onSlowFrames
@@ -83,8 +90,11 @@ object FrameMonitor {
             isMonitoring.set(true)
             lastFrameTimeNanos = 0
             lastRefreshRateEmitTimeMs = 0
-            slowFrameCount.set(0)
+            slowFrameEventCount.set(0)
             frozenFrameCount.set(0)
+            frozenFrameDurationMs = 0.0
+            inSlowFrameEvent = false
+            slowFrameEventStartTimeNanos = 0
 
             frameCallback = object : Choreographer.FrameCallback {
                 override fun doFrame(frameTimeNanos: Long) {
@@ -120,8 +130,9 @@ object FrameMonitor {
 
         // Reset state
         lastFrameTimeNanos = 0
-        slowFrameCount.set(0)
+        slowFrameEventCount.set(0)
         frozenFrameCount.set(0)
+        frozenFrameDurationMs = 0.0
     }
 
     /**
@@ -132,10 +143,11 @@ object FrameMonitor {
     }
 
     /**
-     * Get and reset slow frame count.
+     * Get and reset slow frame event count.
      */
     fun getAndResetSlowFrames(): Int {
-        return slowFrameCount.getAndSet(0)
+        val count = slowFrameEventCount.getAndSet(0)
+        return count
     }
 
     /**
@@ -143,6 +155,16 @@ object FrameMonitor {
      */
     fun getAndResetFrozenFrames(): Int {
         return frozenFrameCount.getAndSet(0)
+    }
+
+    /**
+     * Get and reset frozen frame duration in milliseconds.
+     */
+    @Synchronized
+    fun getAndResetFrozenDuration(): Double {
+        val duration = frozenFrameDurationMs
+        frozenFrameDurationMs = 0.0
+        return duration
     }
 
     /**
@@ -176,16 +198,57 @@ object FrameMonitor {
             refreshRateCallback.invoke(fps)
         }
 
-        // Check for slow frames (below target FPS)
-        if (fps < targetFps) {
-            val count = slowFrameCount.incrementAndGet()
-            onSlowFrames?.invoke(count)
+        // Check for slow frames using event-based detection
+        // A slow frame "event" is a period of consecutive frames below target FPS
+        // This groups consecutive slow frames to report meaningful jank, not microsecond variations
+        val isSlow = fps < targetFps
+        if (isSlow) {
+            android.util.Log.d(TAG, "[Faro DEBUG ANDROID] 🐌 Slow frame detected: %.1f FPS (target: %.1f)".format(fps, targetFps))
+        }
+        
+        if (isSlow) {
+            if (!inSlowFrameEvent) {
+                // Start new slow frame event
+                inSlowFrameEvent = true
+                slowFrameEventStartTimeNanos = frameTimeNanos
+            } else {
+                val durationSoFarMs = (frameTimeNanos - slowFrameEventStartTimeNanos) / NANOSECONDS_IN_MILLISECOND
+            }
+            // If already in slow frame event, continue tracking
+        } else {
+            // Frame is good - check if we should end the current slow frame event
+            if (inSlowFrameEvent) {
+                val eventDurationNs = frameTimeNanos - slowFrameEventStartTimeNanos
+                val eventDurationMs = eventDurationNs / NANOSECONDS_IN_MILLISECOND
+                val thresholdMs = slowFrameEventMinDurationNs / NANOSECONDS_IN_MILLISECOND
+                
+                // Only count as a slow frame event if it lasted long enough to be user-perceptible
+                // This filters out single-frame dips that don't affect user experience
+                if (eventDurationNs >= slowFrameEventMinDurationNs) {
+                    val newCount = slowFrameEventCount.incrementAndGet()
+                    // 🔍 TEMP DEBUG LOG - Remove after analysis
+                    android.util.Log.d(TAG, "[Faro DEBUG ANDROID] ✅ COUNTED as event (${eventDurationMs}ms)! Total events now: $newCount")
+                } else {
+                    // 🔍 TEMP DEBUG LOG - Remove after analysis
+                    android.util.Log.d(TAG, "[Faro DEBUG ANDROID] ❌ NOT counted (${eventDurationMs}ms is too short). Total events still: ${slowFrameEventCount.get()}")
+                }
+                
+                inSlowFrameEvent = false
+                slowFrameEventStartTimeNanos = 0
+            }
         }
 
         // Check for frozen frames (frame duration exceeds threshold)
         if (frameDuration > frozenFrameThresholdNs) {
             val count = frozenFrameCount.incrementAndGet()
-            onFrozenFrame?.invoke(count)
+            val durationMs = frameDuration.toDouble() / NANOSECONDS_IN_MILLISECOND
+            
+            // Track duration (synchronized to avoid race conditions)
+            synchronized(this) {
+                frozenFrameDurationMs += durationMs
+            }
+            
+            onFrozenFrame?.invoke(count, durationMs)
         }
 
         lastFrameTimeNanos = frameTimeNanos

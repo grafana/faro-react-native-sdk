@@ -83,40 +83,51 @@ class CrashTestModule(reactContext: ReactApplicationContext) :
     }
 
     /**
-     * Trigger slow frames by doing moderate CPU work on the main thread
+     * Trigger slow frames by doing moderate CPU work on the main thread.
      *
-     * Creates janky animations by periodically blocking the main thread
-     * for 20-30ms, causing frames to drop below 60 FPS.
+     * Creates janky animations by scheduling repeated bursts of CPU work
+     * that allow Choreographer callbacks to run between bursts.
+     * Each burst takes 80-90ms, creating slow frames without freezing.
      *
      * WARNING: This will cause janky UI for 5 seconds!
      */
     @ReactMethod
     fun triggerSlowFrames() {
-        Handler(Looper.getMainLooper()).post {
-            val startTime = System.currentTimeMillis()
-            val duration = 5000L // 5 seconds
-            var iteration = 0
-
-            while (System.currentTimeMillis() - startTime < duration) {
-                // Do CPU-intensive work that takes ~20-30ms
+        val handler = Handler(Looper.getMainLooper())
+        val startTime = System.currentTimeMillis()
+        val durationMs = 5000L // 5 seconds
+        var iteration = 0
+        
+        // Recursive function to schedule bursts
+        val runnable = object : Runnable {
+            override fun run() {
+                val burstStartTime = System.currentTimeMillis()
+                
+                // Check if we've run for 5 seconds
+                if (System.currentTimeMillis() - startTime >= durationMs) {
+                    return
+                }
+                
+                // Do CPU work for ~80-90ms to create slow frames
+                // Android devices/emulators are much faster than iOS for this type of work,
+                // so we need significantly more iterations (15-20x more than iOS)
                 var sum = 0.0
-                for (i in 0..500_000) {
+                for (i in 0..40_000_000) {
                     sum += i.toDouble()
                 }
-
-                // Small sleep to allow some frames to render (but slowly)
-                Thread.sleep(20) // 20ms = ~50fps (slow but not frozen)
-
+                
+                val burstDuration = System.currentTimeMillis() - burstStartTime
+                
                 iteration++
-
-                // Every 20 iterations, give the UI a brief break
-                if (iteration % 20 == 0) {
-                    Thread.sleep(5) // 5ms break
-                }
+                
+                // Yield back to main looper immediately so Choreographer can fire
+                // This allows frame monitoring to detect the slow frames
+                handler.post(this)
             }
-
-            android.util.Log.d(NAME, "Slow frames simulation completed: $iteration iterations")
         }
+        
+        // Start the burst sequence
+        handler.post(runnable)
     }
 
     /**
@@ -147,11 +158,9 @@ class CrashTestModule(reactContext: ReactApplicationContext) :
                 // Every 10th iteration: brief freeze (150ms)
                 if (iteration % 10 == 0) {
                     Thread.sleep(150) // 150ms = frozen frame
-                    android.util.Log.d(NAME, "Heavy load: freeze #${iteration / 10}")
                 }
             }
 
-            android.util.Log.d(NAME, "Heavy load simulation completed: $iteration iterations")
         }
     }
 }

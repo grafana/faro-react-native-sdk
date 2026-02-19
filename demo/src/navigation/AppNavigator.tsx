@@ -72,7 +72,7 @@ export function AppNavigator() {
         <Stack.Screen
           name="CrashDemo"
           component={CrashDemoScreen}
-          options={{ title: 'Crash Demo' }}
+          options={{ title: 'Crash & Performance Demo' }}
         />
         <Stack.Screen
           name="PerformanceDemo"

@@ -121,16 +121,9 @@ export class FetchTransport extends BaseTransport {
         return Promise.resolve();
       }
 
-      // DEBUG: Check session state before waiting
-      const sessionTrackingEnabled = this.config?.sessionTracking?.enabled;
-      this.logDebug(
-        `FetchTransport: sessionTracking.enabled=${sessionTrackingEnabled}, sessionReady=${this.sessionReady}`
-      );
-
       // Wait for session to be ready before sending
       // This prevents 400 errors from missing X-Faro-Session-Id header
       await this.waitForSession();
-      this.logDebug(`FetchTransport: session ready, proceeding with send`);
 
       await this.promiseBuffer.add(() => {
         const transportBody = getTransportBody(items);

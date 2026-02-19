@@ -66,7 +66,6 @@ export class StartupInstrumentation extends BaseInstrumentation {
           'Native module not available. Startup instrumentation requires native module. ' +
             'Run `cd ios && pod install` and rebuild the app.'
         );
-        console.log('[STARTUP DEBUG] Native module not available - exiting');
         return;
       }
 
@@ -78,7 +77,6 @@ export class StartupInstrumentation extends BaseInstrumentation {
           'App startup duration is 0. This may indicate unsupported Android version (< API 24) ' +
             'or an issue with the native module.'
         );
-        console.log('[STARTUP DEBUG] Duration is 0 - exiting');
         return;
       }
 

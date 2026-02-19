@@ -70,7 +70,8 @@ RCT_EXPORT_METHOD(getRefreshRate:(RCTPromiseResolveBlock)resolve
   });
 }
 
-/// Get frame metrics (refresh rate, slow frames, frozen frames, frozen duration)
+/// Get frame metrics (refresh rate, slow frame events, frozen frames, frozen duration)
+/// Note: slowFrames contains the count of slow frame EVENTS (not individual frames)
 /// @param resolve Promise resolve callback
 /// @param reject Promise reject callback
 RCT_EXPORT_METHOD(getFrameMetrics:(RCTPromiseResolveBlock)resolve

@@ -56,8 +56,77 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
 
     this.logDebug('Initializing crash reporting instrumentation');
 
+    // Wait for session attributes to be populated before sending crash reports
+    // This ensures crash reports include full session metadata
+    await this.waitForSessionAttributes();
+
     // Get crash reports from previous session
     await this.processCrashReports(nativeModule);
+  }
+
+  /**
+   * Wait for session attributes to be populated.
+   *
+   * Crash reports are sent in a new session, so we need to wait for
+   * SessionInstrumentation to finish collecting device info, OS version, etc.
+   * before sending the crash report. Otherwise, the crash report will be missing
+   * session metadata.
+   *
+   * This checks for multiple device-specific attributes that are collected
+   * asynchronously (device_id, device_os_detail, device_model_name) to ensure
+   * the async getSessionAttributes() call has completed.
+   *
+   * @param maxWaitMs Maximum time to wait in milliseconds (default 10000ms)
+   */
+  private async waitForSessionAttributes(maxWaitMs = 10000): Promise<void> {
+    const startTime = Date.now();
+    const pollInterval = 200; // Check every 200ms
+    let checkCount = 0;
+
+    while (Date.now() - startTime < maxWaitMs) {
+      checkCount++;
+      try {
+        // Check if session attributes are populated
+        const sessionAttrs = this.metas?.value?.session?.attributes;
+        
+        if (sessionAttrs) {
+          const attrCount = Object.keys(sessionAttrs).length;
+          const attrKeys = JSON.stringify(Object.keys(sessionAttrs));
+          
+          // Look for multiple device-specific attributes that indicate full async collection is done.
+          // getSessionAttributes() collects these asynchronously:
+          // - device_id (async getDeviceId)
+          // - device_os_detail (async getDeviceOsDetail)
+          // - device_model_name (DeviceInfo.getDeviceNameSync)
+          // All three should be present when collection is complete.
+          const hasDeviceId = 'device_id' in sessionAttrs && sessionAttrs['device_id'] !== 'unknown';
+          const hasDeviceOsDetail = 'device_os_detail' in sessionAttrs && sessionAttrs['device_os_detail'] !== 'unknown';
+          const hasDeviceModelName = 'device_model_name' in sessionAttrs;
+          
+          if (hasDeviceId && hasDeviceOsDetail && hasDeviceModelName) {
+            const elapsed = Date.now() - startTime;
+            this.logDebug(`Session attributes ready after ${elapsed}ms (${checkCount} checks, ${attrCount} attrs)`);
+            return;
+          } else {
+            this.logDebug(`Check #${checkCount}: Found ${attrCount} session attributes: ${attrKeys} but still missing required attrs - device_id:${hasDeviceId}, device_os_detail:${hasDeviceOsDetail}, device_model_name:${hasDeviceModelName}`);
+          }
+        } else {
+          this.logDebug(`Check #${checkCount}: No session attributes available yet`);
+        }
+      } catch (error) {
+        // Continue waiting if we can't access metas yet
+        this.logDebug(`Check #${checkCount}: Error accessing metas: ${error}`);
+      }
+
+      // Wait before next check
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+
+    // Timeout reached - log warning but continue
+    const finalAttrs = this.metas?.value?.session?.attributes;
+    const finalAttrCount = finalAttrs ? Object.keys(finalAttrs).length : 0;
+    const finalAttrKeys = finalAttrs ? JSON.stringify(Object.keys(finalAttrs)) : 'none';
+    this.logWarn(`Session attributes not ready after ${maxWaitMs}ms timeout (${checkCount} checks, ${finalAttrCount} attrs: ${finalAttrKeys}). Sending crash report anyway.`);
   }
 
   private getNativeModule(): typeof NativeModules.FaroReactNativeModule | null {
@@ -77,6 +146,7 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
         return;
       }
 
+      this.logDebug('Attempting to retrieve crash reports from native module');
       const crashReports = (await nativeModule.getCrashReport()) as string[] | null;
 
       if (!crashReports || crashReports.length === 0) {
@@ -88,13 +158,17 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
 
       for (const crashJson of crashReports) {
         try {
+          this.logDebug(`Parsing crash report JSON: ${crashJson.substring(0, 200)}...`);
           const crash = JSON.parse(crashJson) as CrashReport;
           this.sendCrashReport(crash);
-        } catch {
+        } catch (parseError) {
           // If parsing fails, still try to report something
+          this.logError('Failed to parse crash report JSON', parseError);
           this.api.pushError(new Error('Application crash (parse error)'), {
+            type: 'crash',
             context: {
-              raw: crashJson,
+              raw: crashJson.substring(0, 500), // Limit size
+              parseError: String(parseError),
             },
           });
         }
@@ -133,8 +207,8 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
       context['importance'] = String(crash.importance);
     }
 
-    // Include crashed session ID for correlation in consumer apps.
-    // This allows users to query events from the session where the crash occurred
+    // Include crashed session ID for correlation.
+    // This allows querying events from the session where the crash occurred.
     if (crash.crashedSessionId) {
       context['crashedSessionId'] = crash.crashedSessionId;
     }

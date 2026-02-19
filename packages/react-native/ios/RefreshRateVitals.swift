@@ -25,8 +25,8 @@ import UIKit
     /// Last calculated refresh rate
     @objc public private(set) var lastRefreshRate: Double = 0.0
     
-    /// Count of slow frames since last reset
-    @objc public private(set) var slowFrameCount: Int = 0
+    /// Count of slow frame events since last reset (not individual frames)
+    @objc public private(set) var slowFrameEventCount: Int = 0
     
     /// Count of frozen frames since last reset
     @objc public private(set) var frozenFrameCount: Int = 0
@@ -39,6 +39,17 @@ import UIKit
     
     /// Shared instance for global access
     @objc public static let shared = RefreshRateVitals()
+    
+    // MARK: - Slow Frame Event Detection
+    
+    /// Whether we're currently in a slow frame event
+    private var inSlowFrameEvent: Bool = false
+    
+    /// Timestamp when current slow frame event started
+    private var slowFrameEventStartTime: CFTimeInterval = 0
+    
+    /// Minimum duration (in seconds) for a slow frame event to be counted (prevents noise)
+    private let slowFrameEventMinDuration: Double = 0.050  // ~3 frames at 60fps
     
     private override init() {
         super.init()
@@ -70,11 +81,13 @@ import UIKit
         isMonitoring = true
         
         // Reset counters
-        slowFrameCount = 0
+        slowFrameEventCount = 0
         frozenFrameCount = 0
         frozenFrameDurationMs = 0
         lastFrameTimestamp = nil
         nextFrameDuration = nil
+        inSlowFrameEvent = false
+        slowFrameEventStartTime = 0
     }
     
     /// Stop frame monitoring
@@ -91,10 +104,10 @@ import UIKit
         return lastRefreshRate
     }
     
-    /// Get and reset slow frame count
+    /// Get and reset slow frame event count
     @objc public func getAndResetSlowFrames() -> Int {
-        let count = slowFrameCount
-        slowFrameCount = 0
+        let count = slowFrameEventCount
+        slowFrameEventCount = 0
         return count
     }
     
@@ -133,9 +146,46 @@ import UIKit
         
         lastRefreshRate = fps
         
-        // Check for slow frames (below target FPS)
-        if fps < targetFps {
-            slowFrameCount += 1
+        // Check for slow frames using event-based detection
+        // A slow frame "event" is a period of consecutive frames below target FPS
+        // This groups consecutive slow frames to report meaningful jank, not microsecond variations
+        let isSlow = fps < targetFps
+        
+        // 🔍 TEMP DEBUG LOG - Remove after analysis
+        if isSlow {
+            NSLog("[Faro DEBUG IOS] 🐌 Slow frame detected: %.1f FPS (target: %.1f)", fps, targetFps)
+        }
+        
+        if isSlow {
+            if !inSlowFrameEvent {
+                // Start new slow frame event
+                inSlowFrameEvent = true
+                slowFrameEventStartTime = link.timestamp
+            } else {
+                // 🔍 TEMP DEBUG LOG - Remove after analysis
+                let durationSoFar = link.timestamp - slowFrameEventStartTime
+            }
+            // If already in slow frame event, continue tracking
+        } else {
+            // Frame is good - check if we should end the current slow frame event
+            if inSlowFrameEvent {
+                let eventDuration = link.timestamp - slowFrameEventStartTime
+                let eventDurationMs = eventDuration * 1000
+                
+                // Only count as a slow frame event if it lasted long enough to be user-perceptible
+                // This filters out single-frame dips that don't affect user experience
+                if eventDuration >= slowFrameEventMinDuration {
+                    slowFrameEventCount += 1
+                    // 🔍 TEMP DEBUG LOG - Remove after analysis
+                    NSLog("[Faro DEBUG IOS] ✅ COUNTED as event (%.0fms)! Total events now: %d", eventDurationMs, slowFrameEventCount)
+                } else {
+                    // 🔍 TEMP DEBUG LOG - Remove after analysis
+                    NSLog("[Faro DEBUG IOS] ❌ NOT counted (%.0fms is too short). Total events still: %d", eventDurationMs, slowFrameEventCount)
+                }
+                
+                inSlowFrameEvent = false
+                slowFrameEventStartTime = 0
+            }
         }
     }
     
