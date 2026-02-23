@@ -2,18 +2,79 @@ import type { Config } from '@grafana/faro-core';
 
 import type { ANRInstrumentationOptions } from '../instrumentations/anr';
 import type { FrameMonitoringOptions } from '../instrumentations/frameMonitoring';
+import type { TracingInstrumentationOptions } from '@grafana/faro-react-native-tracing';
+
+/**
+ * Flags for enabling built-in transports.
+ * When provided, makeRNConfig builds transports from these flags instead of requiring manual transport setup.
+ * Requires `url` when fetch is true.
+ */
+export interface EnableTransportsConfig {
+  /** Enable OfflineTransport for caching when offline (default: false) */
+  offline?: boolean;
+  /** Enable FetchTransport to send to collector (default: true when url is provided) */
+  fetch?: boolean;
+  /** Enable ConsoleTransport to log telemetry to Metro console for debugging (default: false) */
+  console?: boolean;
+}
 
 /**
  * React Native-specific configuration options
  *
- * Aligned with Faro Flutter SDK FaroConfig: All options are in the main config.
- * Access any option via faro.config (e.g., faro.config.cpuUsageVitals).
+ * Flag-based config: Set what to enable, makeRNConfig builds instrumentations and transports.
+ * Only `app` is required; faro-core props (dedupe, parseStacktrace, etc.) have defaults in makeRNConfig.
  */
-export interface ReactNativeConfig extends Omit<Config, 'metas'> {
+export interface ReactNativeConfig
+  extends Partial<Omit<Config, 'app' | 'metas' | 'instrumentations' | 'transports'>> {
+  /** Application metadata (required) */
+  app: Config['app'];
+
   /**
    * Optional metas to include. If not provided, default RN metas will be used
    */
   metas?: Config['metas'];
+
+  /**
+   * Collector URL for FetchTransport. Required when enableTransports.fetch is true.
+   * Also used to filter collector URLs from HTTP instrumentation.
+   */
+  url?: string;
+
+  /**
+   * API key for collector authentication. Added as x-api-key header.
+   */
+  apiKey?: string;
+
+  /**
+   * Enable built-in transports by flag. Built transports are OfflineTransport, FetchTransport, ConsoleTransport.
+   * Custom transports from the transports array are appended after the built-in set.
+   */
+  enableTransports?: EnableTransportsConfig;
+
+  /**
+   * Enable OpenTelemetry tracing. Requires @grafana/faro-react-native-tracing.
+   * When true, TracingInstrumentation is added to instrumentations.
+   */
+  enableTracing?: boolean;
+
+  /**
+   * Options for TracingInstrumentation. Only used when enableTracing is true.
+   * Same type as TracingInstrumentation constructor from @grafana/faro-react-native-tracing.
+   */
+  tracingOptions?: TracingInstrumentationOptions;
+
+  /**
+   * Additional custom transports appended to the built-in set from enableTransports.
+   * Same pattern as instrumentations: built-ins first, then extras.
+   * To use only custom transports, set enableTransports: { offline: false, fetch: false, console: false }.
+   */
+  transports?: Config['transports'];
+
+  /**
+   * Additional instrumentations to add after the default set.
+   * Default instrumentations are built from flags; this allows adding extras (e.g. custom instrumentations).
+   */
+  instrumentations?: Config['instrumentations'];
 
   // ============================================================================
   // Performance Vitals (aligned with Flutter SDK)
@@ -21,39 +82,26 @@ export interface ReactNativeConfig extends Omit<Config, 'metas'> {
 
   /**
    * Enable CPU usage monitoring (default: true)
-   * Monitors CPU usage percentage via differential calculation.
-   * Uses native OS APIs - no manual setup required!
-   * Requires: iOS 13.4+, Android API 21+
    */
   cpuUsageVitals?: boolean;
 
   /**
    * Enable memory usage monitoring (default: true)
-   * Monitors RSS (Resident Set Size) - physical memory used by the app.
-   * Uses native OS APIs - no manual setup required!
-   * Requires: iOS 13.4+, Android any version
    */
   memoryUsageVitals?: boolean;
 
   /**
    * Enable refresh rate monitoring (default: false)
-   * Monitors display refresh rate in FPS.
    */
   refreshRateVitals?: boolean;
 
   /**
-   * Interval (in milliseconds) for collecting performance vitals (default: 30000 - 30 seconds)
-   * Controls how often CPU and memory metrics are collected and sent.
-   * Minimum recommended: 5000ms (5 seconds) to avoid overhead.
-   *
-   * Note: Flutter SDK uses Duration type; React Native uses milliseconds for consistency with JS APIs.
+   * Interval (ms) for collecting performance vitals (default: 30000)
    */
   fetchVitalsInterval?: number;
 
   /**
-   * Advanced configuration options for frame monitoring (React Native-specific).
-   * Only used when refreshRateVitals is true.
-   * Flutter SDK uses hardcoded values; these options allow customization if needed.
+   * Options for frame monitoring. Only used when refreshRateVitals is true.
    */
   frameMonitoringOptions?: FrameMonitoringOptions;
 
@@ -62,31 +110,45 @@ export interface ReactNativeConfig extends Omit<Config, 'metas'> {
   // ============================================================================
 
   /**
-   * Enable JavaScript error and exception capture (default: true)
-   * Equivalent to Flutter SDK's enableFlutterErrorReporting.
+   * Enable JavaScript error capture (default: true)
    */
   enableErrorReporting?: boolean;
 
   /**
    * Enable crash reporting (default: false)
-   * Retrieves crash reports from previous app sessions.
-   * Android: Uses ApplicationExitInfo API (Android 11+)
-   * iOS: Requires PLCrashReporter dependency (experimental)
    */
   enableCrashReporting?: boolean;
 
   /**
-   * Enable ANR (Application Not Responding) detection (default: false)
-   * Detects when the main thread is blocked for extended periods.
-   * Only available on Android.
+   * Enable ANR detection (default: false, Android only)
    */
   anrTracking?: boolean;
 
   /**
-   * Configuration options for ANR detection.
-   * Only used when anrTracking is true.
+   * Options for ANR detection. Only used when anrTracking is true.
    */
   anrOptions?: ANRInstrumentationOptions;
+
+  /**
+   * Enable console log capture via ConsoleInstrumentation (default: true)
+   */
+  enableConsoleCapture?: boolean;
+
+  /**
+   * Options for ConsoleInstrumentation when enableConsoleCapture is true
+   */
+  consoleCaptureOptions?: Config['consoleInstrumentation'];
+
+  /**
+   * Enable user action tracking via UserActionInstrumentation (default: true)
+   * Tracks interactions from withFaroUserAction HOC and trackUserAction helper.
+   */
+  enableUserActions?: boolean;
+
+  /**
+   * Options for UserActionInstrumentation when enableUserActions is true
+   */
+  userActionsOptions?: Config['userActionsInstrumentation'];
 
   // ============================================================================
   // Network (aligned with Flutter SDK)
@@ -94,9 +156,23 @@ export interface ReactNativeConfig extends Omit<Config, 'metas'> {
 
   /**
    * URLs to ignore for HTTP tracking (regex patterns)
-   * Aligned with Flutter SDK ignoreUrls.
    */
   ignoreUrls?: RegExp[];
+
+  /**
+   * Error message patterns to ignore (faro-core ignoreErrors)
+   */
+  ignoreErrors?: Config['ignoreErrors'];
+
+  /**
+   * Hook to modify/filter events before sending (faro-core beforeSend)
+   */
+  beforeSend?: Config['beforeSend'];
+
+  /**
+   * Preserve original Error in transport items for beforeSend (faro-core preserveOriginalError)
+   */
+  preserveOriginalError?: Config['preserveOriginalError'];
 
   // ============================================================================
   // User Persistence (aligned with Flutter SDK)
@@ -104,14 +180,6 @@ export interface ReactNativeConfig extends Omit<Config, 'metas'> {
 
   /**
    * Whether to persist user data between app sessions (default: true)
-   * When enabled, the user set via faro.api.setUser() will be
-   * automatically restored on the next app start.
    */
   persistUser?: boolean;
 }
-
-/**
- * @deprecated Use ReactNativeConfig directly. All options are now in the main Faro config.
- * This type alias is kept for backward compatibility.
- */
-export type GetRNInstrumentationsOptions = Partial<ReactNativeConfig>;

@@ -3,7 +3,7 @@ export { initializeFaro } from './initialize';
 export { faro } from '@grafana/faro-core';
 
 // Export types
-export type { ReactNativeConfig } from './config/types';
+export type { EnableTransportsConfig, ReactNativeConfig } from './config/types';
 
 // Export instrumentation helpers
 export { getRNInstrumentations } from './config/getRNInstrumentations';

@@ -57,6 +57,14 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
 
     // Network
     ignoreUrls = [],
+
+    // Console and user actions
+    enableConsoleCapture = true,
+    enableUserActions = true,
+
+    // Tracing
+    enableTracing = false,
+    tracingOptions = {},
   } = config;
 
   const instrumentations: Instrumentation[] = [];
@@ -67,8 +75,9 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
   }
 
   // Console capture - not in Flutter SDK, RN-specific
-  // Default: false (opt-in)
-  instrumentations.push(new ConsoleInstrumentation());
+  if (enableConsoleCapture) {
+    instrumentations.push(new ConsoleInstrumentation());
+  }
 
   // Sessions - always enabled in Flutter, same here
   instrumentations.push(new SessionInstrumentation());
@@ -79,8 +88,10 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
   // App state - always enabled in Flutter, same here
   instrumentations.push(new AppStateInstrumentation());
 
-  // User actions - always enabled in Flutter, same here
-  instrumentations.push(new UserActionInstrumentation());
+  // User actions - enabled by default, opt-out via enableUserActions
+  if (enableUserActions) {
+    instrumentations.push(new UserActionInstrumentation());
+  }
 
   // HTTP tracking - always enabled in Flutter (via HttpOverrides), same here
   instrumentations.push(new HttpInstrumentation({ ignoredUrls: ignoreUrls }));
@@ -110,6 +121,21 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
   // Crash reporting
   if (enableCrashReporting) {
     instrumentations.push(new CrashReportingInstrumentation());
+  }
+
+  if (enableTracing) {
+    try {
+      const { TracingInstrumentation } = require('@grafana/faro-react-native-tracing');
+      instrumentations.push(
+        new TracingInstrumentation(tracingOptions)
+      );
+    } catch {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[Faro] enableTracing is true but @grafana/faro-react-native-tracing is not installed. ' +
+          'Add it to use tracing: yarn add @grafana/faro-react-native-tracing'
+      );
+    }
   }
 
   return instrumentations;

@@ -24,8 +24,8 @@ const DEFAULT_POLLING_INTERVAL = 60000;
  * the same ANR concept as Android's system watchdog.
  *
  * Sends telemetry via Faro API:
- * - Measurement: `anr` with `anr_count` value
- * - Error: Each ANR with its stack trace
+ * - Measurement: `anr` with `anr_count` value (for dashboards)
+ * - Error: Each ANR with `type: 'ANR'`, stack trace, duration, timestamp (Sentry-aligned)
  *
  * @example
  * ```typescript
@@ -122,23 +122,27 @@ export class ANRInstrumentation extends BaseInstrumentation {
           { skipDedupe: true }
         );
 
-        // Push each ANR as an error with stacktrace
+        // Push each ANR as an error with type='ANR' for filtering (Sentry-aligned)
         for (const anrJson of anrList) {
           try {
             const anr = JSON.parse(anrJson) as ANREvent;
 
             this.api.pushError(new Error('ANR (Application Not Responding)'), {
+              type: 'ANR',
               context: {
                 stacktrace: anr.stacktrace,
                 duration: String(anr.duration),
                 timestamp: String(anr.timestamp),
+                mechanism: 'ANR',
               },
             });
           } catch {
             // If parsing fails, still log the raw ANR
             this.api.pushError(new Error('ANR (Application Not Responding)'), {
+              type: 'ANR',
               context: {
                 raw: anrJson,
+                mechanism: 'ANR',
               },
             });
           }

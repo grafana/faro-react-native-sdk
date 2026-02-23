@@ -360,28 +360,20 @@ function App() {
 
 ## Configuration
 
-### Instrumentation Options
+### Instrumentation Flags
+
+Instrumentations are controlled by flags in `ReactNativeConfig`. Pass these to `initializeFaro()`:
 
 ```tsx
-interface GetRNInstrumentationsOptions {
-  /** Capture console logs (default: false) */
-  captureConsole?: boolean;
-
-  /** Track app state changes (background/foreground) (default: true) */
-  trackAppState?: boolean;
-
-  /** Capture errors (default: true) */
-  captureErrors?: boolean;
-
-  /** Track sessions (default: true) */
-  trackSessions?: boolean;
-
-  /** Track view/screen changes (default: true) */
-  trackViews?: boolean;
-
-  /** Track user actions/interactions (default: true) */
-  trackUserActions?: boolean;
-}
+// Key instrumentation flags (all in ReactNativeConfig)
+enableErrorReporting?: boolean;     // default: true
+enableConsoleCapture?: boolean;     // default: true
+enableUserActions?: boolean;        // default: true
+enableCrashReporting?: boolean;     // default: false
+anrTracking?: boolean;              // default: false (Android only)
+cpuUsageVitals?: boolean;           // default: true
+memoryUsageVitals?: boolean;        // default: true
+refreshRateVitals?: boolean;        // default: false
 ```
 
 ### Console Instrumentation Configuration
@@ -397,7 +389,7 @@ initializeFaro({
     name: 'my-app',
     version: '1.0.0',
   },
-  consoleInstrumentation: {
+  consoleCaptureOptions: {
     // Configure which log levels to capture
     // By default: [LogLevel.DEBUG, LogLevel.TRACE, LogLevel.LOG] are disabled
     disabledLevels: [LogLevel.DEBUG, LogLevel.TRACE],
@@ -442,13 +434,11 @@ initializeFaro({
 
 ```tsx
 // Capture all console levels including debug
-getRNInstrumentations({
-  captureConsole: true,
-});
-
 initializeFaro({
-  // ...
-  consoleInstrumentation: {
+  url: 'https://your-faro-collector-url',
+  app: { name: 'my-app', version: '1.0.0' },
+  enableConsoleCapture: true,
+  consoleCaptureOptions: {
     disabledLevels: [], // Capture everything
   },
 });
@@ -456,7 +446,7 @@ initializeFaro({
 // Send console.error as logs instead of errors
 initializeFaro({
   // ...
-  consoleInstrumentation: {
+  consoleCaptureOptions: {
     consoleErrorAsLog: true,
   },
 });
@@ -464,7 +454,7 @@ initializeFaro({
 // Enable detailed error serialization
 initializeFaro({
   // ...
-  consoleInstrumentation: {
+  consoleCaptureOptions: {
     serializeErrors: true, // Extract stack frames and error details
   },
 });

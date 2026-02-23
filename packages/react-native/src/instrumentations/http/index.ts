@@ -11,6 +11,24 @@ export interface HttpRequestPayload {
   duration?: number;
   status?: number;
   error?: string;
+  /** Request body size in bytes (best-effort; not available for FormData/streams). */
+  requestSize?: number;
+  /** Response body size in bytes (from Content-Length header when present). */
+  responseSize?: number;
+}
+
+/**
+ * Compute request body size in bytes (best-effort).
+ * FormData and ReadableStream do not expose length without consuming.
+ */
+function getRequestSize(body: BodyInit | null | undefined): number | undefined {
+  if (body == null) return undefined;
+  if (typeof body === 'string') return new Blob([body]).size;
+  if (body instanceof ArrayBuffer) return body.byteLength;
+  if (ArrayBuffer.isView(body)) return body.byteLength;
+  if (typeof Blob !== 'undefined' && body instanceof Blob) return body.size;
+  if (body instanceof URLSearchParams) return new Blob([body.toString()]).size;
+  return undefined;
 }
 
 /**
@@ -21,6 +39,7 @@ export interface HttpRequestPayload {
  * - Request URL, method, and timing
  * - Response status codes
  * - Request duration
+ * - Request/response size (bytes; best-effort; aligned with Flutter SDK)
  * - Network errors
  *
  * @example
@@ -111,12 +130,15 @@ export class HttpInstrumentation extends BaseInstrumentation {
 
       const requestId = genShortID();
       const startTime = Date.now();
+      const body = init?.body;
+      const requestSize = getRequestSize(body);
 
       const payload: HttpRequestPayload = {
         url,
         method,
         requestId,
         startTime,
+        requestSize,
       };
 
       self.requests.set(requestId, payload);
@@ -146,6 +168,12 @@ export class HttpInstrumentation extends BaseInstrumentation {
         .then((response) => {
           const endTime = Date.now();
           const duration = endTime - startTime;
+          const contentLength = response.headers.get('content-length');
+          const responseSize = contentLength ? parseInt(contentLength, 10) : undefined;
+          payload.responseSize =
+            responseSize != null && !Number.isNaN(responseSize) && responseSize >= 0
+              ? responseSize
+              : undefined;
 
           payload.endTime = endTime;
           payload.duration = duration;
@@ -154,23 +182,36 @@ export class HttpInstrumentation extends BaseInstrumentation {
           // Notify user action monitor
           notifyHttpRequestEnd(payload);
 
+          // Build context/values aligned with Flutter (request_size, response_size as strings in context)
+          const context: Record<string, string> = {
+            url,
+            method,
+            requestId,
+            statusText: response.statusText,
+          };
+          if (requestSize != null) context.request_size = String(requestSize);
+          if (payload.responseSize != null) context.response_size = String(payload.responseSize);
+
+          const values: Record<string, number> = {
+            duration,
+            status: response.status,
+          };
+          if (requestSize != null) values.request_size = requestSize;
+          if (payload.responseSize != null) values.response_size = payload.responseSize;
+
           // Track successful request
           self.api?.pushMeasurement(
             {
               type: 'http_request',
-              values: {
-                duration,
-                status: response.status,
-              },
+              values,
             },
-            {
-              context: {
-                url,
-                method,
-                requestId,
-                statusText: response.statusText,
-              },
-            }
+            { context }
+          );
+
+          self.logDebug(
+            `HTTP request → ${method} ${url} | status=${response.status} duration=${duration}ms` +
+              (requestSize != null ? ` request_size=${requestSize}` : '') +
+              (payload.responseSize != null ? ` response_size=${payload.responseSize}` : '')
           );
 
           self.requests.delete(requestId);
@@ -187,22 +228,29 @@ export class HttpInstrumentation extends BaseInstrumentation {
           // Notify user action monitor
           notifyHttpRequestEnd(payload);
 
-          // Track failed request
+          const context: Record<string, string> = {
+            url,
+            method,
+            requestId,
+            error: payload.error || 'Unknown error',
+          };
+          if (requestSize != null) context.request_size = String(requestSize);
+
+          const values: Record<string, number> = { duration };
+          if (requestSize != null) values.request_size = requestSize;
+
+          // Track failed request (no response, so no response_size)
           self.api?.pushMeasurement(
             {
               type: 'http_request_error',
-              values: {
-                duration,
-              },
+              values,
             },
-            {
-              context: {
-                url,
-                method,
-                requestId,
-                error: payload.error || 'Unknown error',
-              },
-            }
+            { context }
+          );
+
+          self.logDebug(
+            `HTTP request error → ${method} ${url} | error=${payload.error} duration=${duration}ms` +
+              (requestSize != null ? ` request_size=${requestSize}` : '')
           );
 
           self.api?.pushError(error, {

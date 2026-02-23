@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+
+# Build output (monorepo packages + demo)
+dist/
+build/
+*.tsbuildinfo
+
+# Coverage & test artifacts (Jest)
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Node diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Cache
+.cache/
+.eslintcache
+.stylelintcache
+
+# Demo: React Native
+demo/android/app/build/
+demo/android/.gradle/
+demo/android/build/
+demo/ios/build/
+demo/ios/Pods/
+
+# Demo: Ruby/Bundler (CocoaPods)
+demo/vendor/
+demo/.bundle/
+
+# Packages: native module build
+packages/react-native/android/build/
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Yarn 4
+.yarn/cache
+.yarn/install-state.gz

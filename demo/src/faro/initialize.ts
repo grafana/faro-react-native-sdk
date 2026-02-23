@@ -1,16 +1,8 @@
 import { FARO_COLLECTOR_URL } from '@env';
-import { InternalLoggerLevel, Config } from '@grafana/faro-core';
+import { InternalLoggerLevel } from '@grafana/faro-core';
 
-import {
-  ConsoleTransport,
-  FetchTransport,
-  getRNInstrumentations,
-  initializeFaro,
-  LogLevel,
-  OfflineTransport,
-} from '@grafana/faro-react-native';
+import { initializeFaro } from '@grafana/faro-react-native';
 import type { ReactNativeConfig } from '@grafana/faro-react-native';
-import { TracingInstrumentation } from '@grafana/faro-react-native-tracing';
 
 /** In dev, use VERBOSE internal logger to diagnose collector connectivity issues */
 const FARO_DEBUG = __DEV__;
@@ -30,33 +22,29 @@ function getDemoVersion(): string {
 
 /**
  * Initialize Faro for React Native demo app with Grafana Cloud.
- * Aligned with mobile-o11y-demo (Flutter) and faro-flutter-sdk example config:
- * - OfflineTransport (3 days cache)
- * - CPU/memory vitals, ANR, crash reporting, frame metrics
- * - fetchVitalsInterval: 30 seconds
+ * Flag-based config: enable what you need, makeRNConfig builds the rest.
+ * Aligned with mobile-o11y-demo (Flutter) and faro-flutter-sdk example.
  */
 export function initFaro() {
   console.log('[FARO DEBUG] Starting Faro initialization');
   console.log('[FARO DEBUG] FARO_COLLECTOR_URL:', FARO_COLLECTOR_URL);
-  
+
   if (!FARO_COLLECTOR_URL) {
     console.warn('FARO_COLLECTOR_URL not configured. Faro will not be initialized.');
     return undefined;
   }
 
-  // Get random version for demo
   const appVersion = getDemoVersion();
-
   const fetchVitalsInterval = FARO_DEBUG ? 5000 : 30000;
 
-  // Faro config - single source of truth, aligned with Flutter SDK FaroConfig.
-  // getRNInstrumentations reads all options from this config.
-  const config: Partial<ReactNativeConfig> = {
+  const config: ReactNativeConfig = {
     app: {
       name: 'react-native-sdk-demo',
       version: appVersion,
       environment: 'production',
     },
+
+    url: FARO_COLLECTOR_URL,
 
     // Performance vitals (aligned with Flutter SDK)
     cpuUsageVitals: true,
@@ -69,36 +57,28 @@ export function initFaro() {
     enableCrashReporting: true,
     anrTracking: true,
 
-    // Helps diagnose collector issues: see transport activity in Metro console
+    // Console capture
+    enableConsoleCapture: true,
+
+    // Internal logger
     internalLoggerLevel: FARO_DEBUG ? InternalLoggerLevel.VERBOSE : InternalLoggerLevel.ERROR,
 
-    transports: [
-      new OfflineTransport({
-        maxCacheDurationMs: 3 * 24 * 60 * 60 * 1000, // 3 days (matches Flutter)
-      }),
-      new FetchTransport({
-        url: FARO_COLLECTOR_URL,
-      }),
-      // Enable ConsoleTransport in debug mode to see Faro telemetry in Metro
-      ...(FARO_DEBUG
-        ? [
-            new ConsoleTransport({
-              level: LogLevel.DEBUG,
-            }),
-          ]
-        : []),
-    ],
+    // Transports: enable what to use
+    enableTransports: {
+      offline: true,
+      fetch: true,
+      console: FARO_DEBUG,
+    },
+
+    // OpenTelemetry tracing (requires @grafana/faro-react-native-tracing)
+    enableTracing: true,
   };
 
-  // Add instrumentations based on config (reads all options from config)
-  config.instrumentations = [
-    ...getRNInstrumentations(config),
-    new TracingInstrumentation({}),
-  ];
+  const faro = initializeFaro(config);
 
-  const faro = initializeFaro(config as ReactNativeConfig);
-
-  faro.api.pushEvent('faro_initialized', { timestamp: new Date().toISOString()});
+  faro.api.pushEvent('faro_initialized', {
+    timestamp: new Date().toISOString(),
+  });
 
   return faro;
 }

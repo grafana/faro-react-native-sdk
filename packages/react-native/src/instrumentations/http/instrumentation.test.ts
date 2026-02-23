@@ -59,15 +59,15 @@ describe('HttpInstrumentation', () => {
       // Find http_request_start measurement
       const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
       expect(startMeasurement).toBeDefined();
-      expect(startMeasurement?.payload.values?.timestamp).toBeDefined();
-      expect(typeof startMeasurement?.payload.values?.timestamp).toBe('number');
+      expect(startMeasurement?.payload.values?.['timestamp']).toBeDefined();
+      expect(typeof startMeasurement?.payload.values?.['timestamp']).toBe('number');
 
       // Find http_request measurement
       const requestMeasurement = measurements.find((m) => m.payload.type === 'http_request');
       expect(requestMeasurement).toBeDefined();
-      expect(requestMeasurement?.payload.values?.status).toBe(200);
-      expect(requestMeasurement?.payload.values?.duration).toBeDefined();
-      expect(typeof requestMeasurement?.payload.values?.duration).toBe('number');
+      expect(requestMeasurement?.payload.values?.['status']).toBe(200);
+      expect(requestMeasurement?.payload.values?.['duration']).toBeDefined();
+      expect(typeof requestMeasurement?.payload.values?.['duration']).toBe('number');
     });
 
     it('should track POST requests', async () => {
@@ -92,8 +92,8 @@ describe('HttpInstrumentation', () => {
       expect(startMeasurement).toBeDefined();
       // Context is included in the measurement
       expect(startMeasurement?.payload.context).toBeDefined();
-      expect(startMeasurement?.payload.context?.method).toBe('POST');
-      expect(startMeasurement?.payload.context?.url).toBe('https://api.example.com/data');
+      expect(startMeasurement?.payload.context?.['method']).toBe('POST');
+      expect(startMeasurement?.payload.context?.['url']).toBe('https://api.example.com/data');
     });
 
     it('should track failed fetch requests', async () => {
@@ -122,8 +122,8 @@ describe('HttpInstrumentation', () => {
       const errorMeasurement = measurements.find((m) => m.payload.type === 'http_request_error');
       expect(errorMeasurement).toBeDefined();
       expect(errorMeasurement?.payload.context).toBeDefined();
-      expect(errorMeasurement?.payload.context?.error).toBe('Network error');
-      expect(errorMeasurement?.payload.values?.duration).toBeDefined();
+      expect(errorMeasurement?.payload.context?.['error']).toBe('Network error');
+      expect(errorMeasurement?.payload.values?.['duration']).toBeDefined();
 
       // Should also push error
       const exceptions = transport.items.filter((item) => item.type === 'exception');
@@ -152,7 +152,7 @@ describe('HttpInstrumentation', () => {
 
       expect(startMeasurement).toBeDefined();
       expect(startMeasurement?.payload.context).toBeDefined();
-      expect(startMeasurement?.payload.context?.url).toBe('https://api.example.com/data');
+      expect(startMeasurement?.payload.context?.['url']).toBe('https://api.example.com/data');
     });
 
     it('should handle Request object input', async () => {
@@ -177,8 +177,8 @@ describe('HttpInstrumentation', () => {
 
       expect(startMeasurement).toBeDefined();
       expect(startMeasurement?.payload.context).toBeDefined();
-      expect(startMeasurement?.payload.context?.url).toBe('https://api.example.com/data');
-      expect(startMeasurement?.payload.context?.method).toBe('POST');
+      expect(startMeasurement?.payload.context?.['url']).toBe('https://api.example.com/data');
+      expect(startMeasurement?.payload.context?.['method']).toBe('POST');
     });
   });
 
@@ -300,10 +300,43 @@ describe('HttpInstrumentation', () => {
       ) as TransportItem<MeasurementEvent>[];
       const requestMeasurement = measurements.find((m) => m.payload.type === 'http_request');
 
-      expect(requestMeasurement?.payload.values?.duration).toBeDefined();
-      expect(typeof requestMeasurement?.payload.values?.duration).toBe('number');
+      expect(requestMeasurement?.payload.values?.['duration']).toBeDefined();
+      expect(typeof requestMeasurement?.payload.values?.['duration']).toBe('number');
 
       jest.useRealTimers();
+    });
+
+    it('should track request_size and response_size when available', async () => {
+      const transport = new MockTransport();
+      const requestBody = JSON.stringify({ key: 'value' });
+      const mockResponse = new Response('{"ok":true}', {
+        status: 200,
+        headers: { 'Content-Length': '14' },
+      });
+      global.fetch = jest.fn().mockResolvedValue(mockResponse);
+
+      initializeFaro(
+        mockConfig({
+          transports: [transport],
+          instrumentations: [new HttpInstrumentation()],
+        })
+      );
+
+      await fetch('https://api.example.com/data', {
+        method: 'POST',
+        body: requestBody,
+      });
+
+      const measurements = transport.items.filter(
+        (item) => item.type === 'measurement'
+      ) as TransportItem<MeasurementEvent>[];
+      const requestMeasurement = measurements.find((m) => m.payload.type === 'http_request');
+
+      expect(requestMeasurement).toBeDefined();
+      expect(requestMeasurement?.payload.values?.['request_size']).toBe(requestBody.length);
+      expect(requestMeasurement?.payload.values?.['response_size']).toBe(14);
+      expect(requestMeasurement?.payload.context?.['request_size']).toBe(String(requestBody.length));
+      expect(requestMeasurement?.payload.context?.['response_size']).toBe('14');
     });
   });
 
@@ -393,16 +426,18 @@ describe('HttpInstrumentation', () => {
       expect(requestMeasurements).toHaveLength(3);
 
       // Each should have a unique requestId
-      const requestIds = startMeasurements.map((m) => m.payload.context?.requestId).filter((id) => id !== undefined);
+      const requestIds = startMeasurements
+        .map((m) => m.payload.context?.['requestId'])
+        .filter((id) => id !== undefined);
       const uniqueIds = new Set(requestIds);
       expect(uniqueIds.size).toBe(3);
 
       // Verify each request has proper context
       startMeasurements.forEach((measurement) => {
         expect(measurement.payload.context).toBeDefined();
-        expect(measurement.payload.context?.url).toMatch(/https:\/\/api\.example\.com\/data[1-3]/);
-        expect(measurement.payload.context?.method).toBe('GET');
-        expect(measurement.payload.context?.requestId).toBeDefined();
+        expect(measurement.payload.context?.['url']).toMatch(/https:\/\/api\.example\.com\/data[1-3]/);
+        expect(measurement.payload.context?.['method']).toBe('GET');
+        expect(measurement.payload.context?.['requestId']).toBeDefined();
       });
     });
   });
