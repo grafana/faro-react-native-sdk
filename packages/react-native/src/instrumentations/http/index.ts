@@ -2,6 +2,8 @@ import { BaseInstrumentation, genShortID, VERSION } from '@grafana/faro-core';
 
 import { notifyHttpRequestEnd, notifyHttpRequestStart } from '../userActions/httpRequestMonitor';
 
+const FARO_TRACING_FETCH_EVENT = 'faro.tracing.fetch';
+
 export interface HttpRequestPayload {
   url: string;
   method: string;
@@ -32,14 +34,61 @@ function getRequestSize(body: BodyInit | null | undefined): number | undefined {
 }
 
 /**
+ * Parse URL for scheme and host. Returns empty strings if parsing fails.
+ */
+function parseUrlParts(url: string): { scheme: string; host: string } {
+  try {
+    const parsed = new URL(url);
+    return {
+      scheme: parsed.protocol.replace(':', '') || 'http',
+      host: parsed.host || '',
+    };
+  } catch {
+    return { scheme: 'http', host: '' };
+  }
+}
+
+/**
+ * Build Web SDK-style event attributes for faro.tracing.fetch.
+ * Aligns with Grafana HTTP insights and Frontend Observability plugin.
+ */
+function buildFetchEventAttributes(payload: HttpRequestPayload): Record<string, string> {
+  const { scheme, host } = parseUrlParts(payload.url);
+  const durationNs = payload.duration != null ? String(Math.round(payload.duration * 1_000_000)) : '';
+  const statusCode = payload.status != null ? String(payload.status) : '0';
+
+  const attrs: Record<string, string> = {
+    'http.url': payload.url,
+    'http.method': payload.method,
+    'http.scheme': scheme,
+    'http.host': host,
+    'http.status_code': statusCode,
+    'duration_ns': durationNs,
+  };
+
+  if (payload.requestSize != null) {
+    attrs['http.request_size'] = String(payload.requestSize);
+  }
+  if (payload.responseSize != null) {
+    attrs['http.response_size'] = String(payload.responseSize);
+  }
+  if (payload.error) {
+    attrs['http.error'] = payload.error;
+  }
+
+  return attrs;
+}
+
+/**
  * HTTP instrumentation for React Native
  *
- * Tracks fetch API calls to monitor HTTP requests and responses.
+ * Tracks fetch API calls and emits faro.tracing.fetch events (Web SDK format).
+ * Compatible with Grafana Frontend Observability HTTP insights.
  * Automatically captures:
  * - Request URL, method, and timing
- * - Response status codes
+ * - Response status codes (0 for network errors)
  * - Request duration
- * - Request/response size (bytes; best-effort; aligned with Flutter SDK)
+ * - Request/response size (bytes; best-effort)
  * - Network errors
  *
  * @example
@@ -146,23 +195,6 @@ export class HttpInstrumentation extends BaseInstrumentation {
       // Notify user action monitor
       notifyHttpRequestStart(payload);
 
-      // Track request start
-      self.api?.pushMeasurement(
-        {
-          type: 'http_request_start',
-          values: {
-            timestamp: startTime,
-          },
-        },
-        {
-          context: {
-            url,
-            method,
-            requestId,
-          },
-        }
-      );
-
       return self
         .originalFetch!.call(this, input, init)
         .then((response) => {
@@ -182,31 +214,9 @@ export class HttpInstrumentation extends BaseInstrumentation {
           // Notify user action monitor
           notifyHttpRequestEnd(payload);
 
-          // Build context/values aligned with Flutter (request_size, response_size as strings in context)
-          const context: Record<string, string> = {
-            url,
-            method,
-            requestId,
-            statusText: response.statusText,
-          };
-          if (requestSize != null) context.request_size = String(requestSize);
-          if (payload.responseSize != null) context.response_size = String(payload.responseSize);
-
-          const values: Record<string, number> = {
-            duration,
-            status: response.status,
-          };
-          if (requestSize != null) values.request_size = requestSize;
-          if (payload.responseSize != null) values.response_size = payload.responseSize;
-
-          // Track successful request
-          self.api?.pushMeasurement(
-            {
-              type: 'http_request',
-              values,
-            },
-            { context }
-          );
+          // Emit faro.tracing.fetch event (Web SDK format for Grafana HTTP insights)
+          const attributes = buildFetchEventAttributes(payload);
+          self.api?.pushEvent(FARO_TRACING_FETCH_EVENT, attributes);
 
           self.logDebug(
             `HTTP request → ${method} ${url} | status=${response.status} duration=${duration}ms` +
@@ -228,25 +238,9 @@ export class HttpInstrumentation extends BaseInstrumentation {
           // Notify user action monitor
           notifyHttpRequestEnd(payload);
 
-          const context: Record<string, string> = {
-            url,
-            method,
-            requestId,
-            error: payload.error || 'Unknown error',
-          };
-          if (requestSize != null) context.request_size = String(requestSize);
-
-          const values: Record<string, number> = { duration };
-          if (requestSize != null) values.request_size = requestSize;
-
-          // Track failed request (no response, so no response_size)
-          self.api?.pushMeasurement(
-            {
-              type: 'http_request_error',
-              values,
-            },
-            { context }
-          );
+          // Emit faro.tracing.fetch event for failed request (status 0 = network error)
+          const attributes = buildFetchEventAttributes(payload);
+          self.api?.pushEvent(FARO_TRACING_FETCH_EVENT, attributes);
 
           self.logDebug(
             `HTTP request error → ${method} ${url} | error=${payload.error} duration=${duration}ms` +

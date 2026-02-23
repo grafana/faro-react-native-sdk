@@ -1121,6 +1121,79 @@ histogram_quantile(0.95, faro_measurement_values{type="app_startup", coldStart="
 sum(increase(faro_errors_total{type="ANR"}[1h]))
 ```
 
+**ANR Alert Examples:**
+```logql
+# ANR spike: >3 in 1 hour (LogQL / Loki)
+count_over_time({app_id="YOUR_APP_ID", kind="exception"} |~ "type=ANR" [1h]) > 3
+
+# ANR rate alert: >5 per hour sustained
+sum(rate({app_id="YOUR_APP_ID", kind="exception"} |~ "type=ANR" [$__interval])) * 3600 > 5
+```
+
+---
+
+### Crash Alerts
+
+**Recommended Thresholds:**
+
+| Level | Crashes/Hour | Color | Description |
+|-------|--------------|-------|-------------|
+| **Normal** | 0 | 🟢 Green | No native crashes |
+| **Warning** | 1 | 🟡 Yellow | Single crash, investigate |
+| **Critical** | 2-5 | 🟠 Orange | Multiple crashes, prioritize fix |
+| **Severe** | >5 | 🔴 Red | Crash storm, immediate attention |
+
+**Alert Examples:**
+```logql
+# Any crash in last hour (LogQL / Loki)
+count_over_time({app_id="YOUR_APP_ID", kind="exception"} |~ "type=crash" [1h]) >= 1
+
+# Crash spike: >2 crashes in 15 minutes
+count_over_time({app_id="YOUR_APP_ID", kind="exception"} |~ "type=crash" [15m]) > 2
+
+# Crash rate per 1000 sessions (if sessions metric available)
+sum(rate({app_id="YOUR_APP_ID", kind="exception"} |~ "type=crash" [1h])) / sum(rate({app_id="YOUR_APP_ID", kind="session"}[1h])) * 1000 > 1
+```
+
+---
+
+### Normal Errors (JS/Dart Runtime)
+
+**Recommended Thresholds:**
+
+Non-crash exceptions (uncaught JS errors, FlutterError, promise rejections):
+
+| Level | Errors/Hour | Color | Description |
+|-------|-------------|-------|-------------|
+| **Normal** | 0-5 | 🟢 Green | Minimal runtime errors |
+| **Warning** | 5-20 | 🟡 Yellow | Elevated errors, review logs |
+| **Critical** | 20-100 | 🟠 Orange | High error rate, likely bug |
+| **Severe** | >100 | 🔴 Red | Error storm, urgent fix |
+
+**Alert Examples:**
+```logql
+# Count normal errors (for dashboards; excludes crash/ANR)
+count_over_time(
+  {app_id="YOUR_APP_ID", kind="exception"}
+  !~ "type=crash|ANR"
+  [$__auto]
+)
+
+# Normal error spike: >20 in 1 hour
+count_over_time(
+  {app_id="YOUR_APP_ID", kind="exception"}
+  !~ "type=crash|ANR"
+  [1h]
+) > 20
+
+# Short-window spike: >50 errors in 15 minutes (possible cascading failure)
+count_over_time(
+  {app_id="YOUR_APP_ID", kind="exception"}
+  !~ "type=crash|ANR"
+  [15m]
+) > 50
+```
+
 ---
 
 ## Real Log Examples
@@ -1394,56 +1467,62 @@ timestamp=2026-02-23T10:57:02.991Z kind=measurement level=info type=app_startup 
 
 #### **React Native SDK**
 
-```bash
-[HttpInstrumentation] Patching fetch and XMLHttpRequest
+Uses **events** with `event_name=faro.tracing.fetch` (Web SDK format) for Grafana Frontend Observability and HTTP insights compatibility.
 
-# Successful request
-[HttpInstrumentation] Tracking request: GET https://api.example.com/users
+```bash
+# Successful request - faro.tracing.fetch event
 {
-  "measurements": [
+  "events": [
     {
-      "type": "http_request",
-      "timestamp": "2024-01-15T10:30:05.000Z",
-      "values": {
-        "duration": 234.56,
-        "status": 200
-      },
-      "context": {
-        "url": "https://api.example.com/users",
-        "method": "GET",
-        "requestId": "abc123",
-        "statusText": "OK"
+      "name": "faro.tracing.fetch",
+      "attributes": {
+        "http.url": "https://api.example.com/users",
+        "http.method": "GET",
+        "http.scheme": "https",
+        "http.host": "api.example.com",
+        "http.status_code": "200",
+        "http.request_size": "0",
+        "http.response_size": "1234",
+        "duration_ns": "234560000"
       }
     }
   ]
 }
 
-# Failed request
-[HttpInstrumentation] Request failed: POST https://api.example.com/orders
+# Failed request (network error) - faro.tracing.fetch event with status_code=0
 {
-  "measurements": [
+  "events": [
     {
-      "type": "http_request_error",
-      "timestamp": "2024-01-15T10:30:10.000Z",
-      "values": {
-        "duration": 5123.45
-      },
-      "context": {
-        "url": "https://api.example.com/orders",
-        "method": "POST",
-        "requestId": "def456",
-        "error": "HTTP 500: Internal Server Error"
+      "name": "faro.tracing.fetch",
+      "attributes": {
+        "http.url": "https://api.example.com/orders",
+        "http.method": "POST",
+        "http.scheme": "https",
+        "http.host": "api.example.com",
+        "http.status_code": "0",
+        "http.error": "Network error",
+        "duration_ns": "5123450000"
       }
     }
   ],
   "exceptions": [
     {
-      "type": "NetworkError",
-      "value": "HTTP 500: Internal Server Error",
+      "type": "HTTP Request Failed",
+      "value": "Network error",
       "timestamp": "2024-01-15T10:30:10.000Z"
     }
   ]
 }
+```
+
+**Loki query** for HTTP errors (status 4xx/5xx or network failure):
+
+```logql
+count_over_time({app_id="YOUR_APP_ID", kind="event"} 
+  |= "event_name=faro.tracing.fetch" 
+  | logfmt 
+  | (event_data_http_status_code >= 400 and event_data_http_status_code < 600) or event_data_http_status_code = 0 
+  [$__auto])
 ```
 
 ---
@@ -1472,24 +1551,24 @@ timestamp=2026-02-23T10:57:02.991Z kind=measurement level=info type=app_startup 
 | ANR Detection | ✅ Android only | ✅ Android only | Watchdog-based |
 | Error Deduplication | ✅ Configurable window | Check Flutter docs | RN has time-based dedup |
 | **Network Monitoring** |
-| Fetch API | ✅ Automatic | ✅ Via http package | Different approaches |
-| XMLHttpRequest | ✅ Automatic | N/A | RN-specific |
+| Fetch API | ✅ Automatic | ✅ Via http package | RN: faro.tracing.fetch events (Web SDK format) |
+| XMLHttpRequest | N/A (fetch only) | N/A | RN patches fetch only |
 | Request/Response Size | ✅ Tracked | ✅ Tracked | Both capture sizes |
 | URL Filtering | ✅ RegExp array | ✅ String array | Different filter types |
 | **Session Management** |
 | Session Tracking | ✅ AsyncStorage | ✅ SharedPreferences | Platform storage |
 | Session Persistence | ✅ Survives restarts | ✅ Survives restarts | Both persist sessions |
-| Session Timeout | ✅ 4h inactivity | Check Flutter docs | Configurable |
+| Session Timeout | ✅ 4h max / 15min inactivity | ❌ None (app process lifetime) | RN: configurable; Flutter: no timeout |
 | Session Attributes | ✅ Auto-collected | ✅ Auto-collected | Device, OS, version |
 | **User Actions** |
-| User Action Tracking | ✅ HOC + manual API | Check Flutter docs | RN has HOC wrapper |
-| HTTP Correlation | ✅ Automatic | Check Flutter docs | Links actions to requests |
+| User Action Tracking | ✅ HOC + manual API | ✅ FaroUserInteractionWidget + manual spans | RN: withFaroUserAction HOC + trackUserAction(); Flutter: wrap app with FaroUserInteractionWidget, pushEvent('user_interaction'), Faro().startSpan('user_action', ...) |
+| HTTP Correlation | ✅ Automatic | ✅ Via trace context | RN: UserActionController + httpRequestMonitor; Flutter: HTTP span inherits active span, trace_id/span_id in http_request event |
 | **Navigation** |
 | React Navigation | ✅ Built-in support | N/A | RN-specific |
 | Screen Tracking | ✅ ViewInstrumentation | ✅ Route tracking | Platform-specific |
 | **Platform Support** |
-| iOS | ✅ 13.4+ | ✅ Check Flutter | Both support modern iOS |
-| Android | ✅ API 21+ | ✅ Check Flutter | Both support wide range |
+| iOS | ✅ 13.4+ | ✅ 11.0+ | RN: newer minimum; Flutter: iOS 11+ (faro.podspec) |
+| Android | ✅ API 21+ | ✅ API 19+ | RN: API 21; Flutter: minSdkVersion 19 (build.gradle) |
 | **Configuration** |
 | Type Safety | ✅ TypeScript | ✅ Dart | Strong typing both |
 | Default Config | ✅ Sensible defaults | ✅ Sensible defaults | Both production-ready |
