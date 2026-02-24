@@ -6,6 +6,7 @@
 - [CPU & Memory Metrics](#cpu--memory-metrics)
 - [Refresh Rate & Frame Monitoring](#refresh-rate--frame-monitoring)
 - [Startup Time Metrics](#startup-time-metrics)
+- [HTTP Instrumentation](#http-instrumentation)
 - [Crash Reporting](#crash-reporting)
 - [ANR Detection](#anr-detection)
 - [Configuration Comparison](#configuration-comparison)
@@ -522,6 +523,122 @@ Faro.initialize(
 4. Expect: `app_startup` with `coldStart: 0`, `appStartDuration` = resume to first frame
 
 **Verify:** `adb logcat | grep -i faro` or enable `enableTransports: { console: true }` for Metro logs.
+
+---
+
+## HTTP Instrumentation
+
+### Event Name Differences
+
+| SDK | Event Name(s) | When Emitted |
+|-----|---------------|--------------|
+| **Flutter** | `http_request` | One event per **successful** request completion (via `markEventEnd`). Failed requests (connection error, timeout) do **not** emit this event—the OpenTelemetry span still records the error. |
+| **React Native** | `faro.tracing.fetch` | One event per request (success or failure). Aligns with Web SDK format for Grafana Frontend Observability / HTTP insights. |
+| **Web SDK** | `faro.tracing.fetch` | One event per fetch span export. OpenTelemetry `FetchInstrumentation` creates spans; `faroTraceExporter` converts CLIENT spans to `faro.tracing.${component}` events. |
+
+---
+
+### How Data is Collected
+
+#### **React Native SDK**
+
+- **Mechanism:** Patches `global.fetch` via `HttpInstrumentation`
+- **Location:** `packages/react-native/src/instrumentations/http/index.ts`
+- **Flow:**
+  1. Wraps `fetch()`; records start time, URL, method, request size
+  2. Notifies `httpRequestMonitor` for user action correlation (internal only—`http_request_start` / `http_request_end` are observable messages, not Faro events)
+  3. On response: extracts status, duration, response size; builds Web SDK-style attributes
+  4. Emits `faro.tracing.fetch` event with `http.url`, `http.method`, `http.scheme`, `http.host`, `http.status_code`, `duration_ns`, optional `http.request_size` / `http.response_size`
+  5. On failure: emits same event with `http.status_code: 0` and `http.error`, plus `pushError` for the exception
+- **URL filtering:** Ignores collector URL (`grafana.net/collect`), config `ignoreUrls`, and transport URLs
+- **User action correlation:** `notifyHttpRequestStart` / `notifyHttpRequestEnd` drive `UserActionController` halt logic (waits for in-flight requests before ending action)
+
+#### **Flutter SDK**
+
+- **Mechanism:** `HttpOverrides` + `FaroHttpTrackingClient` wrapping Dart `HttpClient` (used by `http` package and `dio`)
+- **Location:** `lib/src/integrations/http_tracking_client.dart`
+- **Flow:**
+  1. Overrides `HttpClient.createHttpClient`; wraps requests in `FaroHttpTrackingClient`
+  2. On `openUrl`: `markEventStart(key, 'http_request')` for timing (internal, no event sent)
+  3. Wraps request in `FaroTrackingHttpClientRequest`, which creates an OpenTelemetry span (`startSpanManual`) with `http.method`, `http.scheme`, `http.url`, `http.host`
+  4. Injects `traceparent` header for distributed tracing
+  5. On response close (success): sets span attributes (`http.status_code`, `http.request_size`, `http.response_size`), ends span, returns `FaroTrackingHttpResponse`
+  6. `FaroTrackingHttpResponse._onFinish` (when body stream completes) calls `markEventEnd(key, 'http_request', attributes)` → pushes **one** `http_request` Faro event
+  7. On failure (close `onError`): span is marked error and ended, but `markEventEnd` is **never** called—no `http_request` event for failed requests
+- **Scope:** Instruments `dart:io` HttpClient. Does **not** patch `fetch` (not available in Flutter); `http` and `dio` use HttpClient under the hood
+- **Span-to-event mapping:** `span_record.dart` maps HTTP spans (with `http.scheme` or `http.method`) to `faro.tracing.fetch` when exporting to Grafana
+
+---
+
+### Metric Format Sent to Faro
+
+#### **React Native SDK** (`faro.tracing.fetch`)
+
+**Successful request:**
+```json
+{
+  "name": "faro.tracing.fetch",
+  "attributes": {
+    "http.url": "https://api.example.com/users/1",
+    "http.method": "GET",
+    "http.scheme": "https",
+    "http.host": "api.example.com",
+    "http.status_code": "200",
+    "duration_ns": "125000000",
+    "http.response_size": "1024"
+  }
+}
+```
+
+**Failed request (network error):**
+```json
+{
+  "name": "faro.tracing.fetch",
+  "attributes": {
+    "http.url": "https://api.example.com/users/1",
+    "http.method": "GET",
+    "http.scheme": "https",
+    "http.host": "api.example.com",
+    "http.status_code": "0",
+    "http.error": "Network request failed",
+    "duration_ns": "5000000000"
+  }
+}
+```
+
+#### **Flutter SDK** (`http_request` — success only)
+
+```json
+{
+  "name": "http_request",
+  "attributes": {
+    "url": "https://api.example.com/users/1",
+    "method": "GET",
+    "status_code": "200",
+    "response_size": "1024",
+    "request_size": "0",
+    "content_type": "application/json",
+    "duration": "125",
+    "eventStart": "1678901234000",
+    "eventEnd": "1678901234125",
+    "trace_id": "abc123",
+    "span_id": "def456"
+  }
+}
+```
+
+---
+
+### Key Differences
+
+| Aspect | React Native | Flutter |
+|--------|--------------|---------|
+| **Event name** | `faro.tracing.fetch` (Web SDK format) | `http_request` |
+| **Success + failure** | ✅ Both emit event | Success only; failures omit `http_request` |
+| **Instrumentation** | Fetch API patch | HttpClient override (dart:io) |
+| **Scope** | `fetch()` only | `http` package, `dio`, any HttpClient user |
+| **Trace propagation** | Via HttpInstrumentation (if TracingInstrumentation present) | `traceparent` header injected in request |
+| **Grafana HTTP insights** | ✅ Compatible (`faro.tracing.fetch`) | Requires span→event mapping for `faro.tracing.fetch` |
 
 ---
 

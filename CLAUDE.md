@@ -381,6 +381,17 @@ lerna publish from-package
 - `packages/react-native/src/index.ts` - Main export file (check here for public API)
 - `packages/react-native/src/config/getRNInstrumentations.ts` - Default instrumentation setup
 
+## Documentation
+
+### MOBILE_RUM_COMPARISON.md
+
+This document is read by both technical and non-technical people (product, support, stakeholders). When writing or updating it:
+
+- **Audience**: Assume readers include people unfamiliar with implementation details.
+- **"How Data is Collected"**: Keep the list structure (bullets, iOS/Android breakdown) but use plain language. Avoid file paths, class names, internal APIs. It's fine to name libraries (e.g. axios, dio) when relevant.
+- **Prefer**: "The SDK automatically tracks..." over "Patches `global.fetch` via `HttpInstrumentation`".
+- **Avoid**: `task_threads()`, `phys_footprint`, `/proc/[pid]/stat`, `markEventEnd`, `startSpanManual`, etc., unless the technical distinction matters for the comparison.
+
 ## Feature Parity Notes
 
 This SDK aims for feature parity with:

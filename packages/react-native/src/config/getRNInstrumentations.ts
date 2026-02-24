@@ -8,6 +8,7 @@ import { CrashReportingInstrumentation } from '../instrumentations/crashReportin
 import { ErrorsInstrumentation } from '../instrumentations/errors';
 import { FrameMonitoringInstrumentation } from '../instrumentations/frameMonitoring';
 import { HttpInstrumentation } from '../instrumentations/http';
+import { XHRInstrumentation } from '../instrumentations/xhr';
 import { PerformanceInstrumentation } from '../instrumentations/performance';
 import { SessionInstrumentation } from '../instrumentations/session';
 import { StartupInstrumentation } from '../instrumentations/startup';
@@ -93,8 +94,13 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
     instrumentations.push(new UserActionInstrumentation());
   }
 
-  // HTTP tracking - always enabled in Flutter (via HttpOverrides), same here
-  instrumentations.push(new HttpInstrumentation({ ignoredUrls: ignoreUrls }));
+  // HTTP/XHR tracking: when tracing is enabled, FetchInstrumentation + XMLHttpRequestInstrumentation
+  // (in TracingInstrumentation) patch fetch and XHR, sending faro.tracing.fetch events via span export.
+  // When tracing is disabled, HttpInstrumentation and XHRInstrumentation patch fetch/XHR directly.
+  if (!enableTracing) {
+    instrumentations.push(new HttpInstrumentation({ ignoredUrls: ignoreUrls }));
+    instrumentations.push(new XHRInstrumentation({ ignoredUrls: ignoreUrls }));
+  }
 
   // Performance vitals (CPU/memory)
   const perfInstrumentation = new PerformanceInstrumentation({

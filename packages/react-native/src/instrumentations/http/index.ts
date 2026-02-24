@@ -2,22 +2,12 @@ import { BaseInstrumentation, genShortID, VERSION } from '@grafana/faro-core';
 
 import { notifyHttpRequestEnd, notifyHttpRequestStart } from '../userActions/httpRequestMonitor';
 
+import { buildFetchEventAttributes } from './utils';
+import type { HttpRequestPayload } from './utils';
+
 const FARO_TRACING_FETCH_EVENT = 'faro.tracing.fetch';
 
-export interface HttpRequestPayload {
-  url: string;
-  method: string;
-  requestId: string;
-  startTime: number;
-  endTime?: number;
-  duration?: number;
-  status?: number;
-  error?: string;
-  /** Request body size in bytes (best-effort; not available for FormData/streams). */
-  requestSize?: number;
-  /** Response body size in bytes (from Content-Length header when present). */
-  responseSize?: number;
-}
+export type { HttpRequestPayload } from './utils';
 
 /**
  * Compute request body size in bytes (best-effort).
@@ -31,52 +21,6 @@ function getRequestSize(body: BodyInit | null | undefined): number | undefined {
   if (typeof Blob !== 'undefined' && body instanceof Blob) return body.size;
   if (body instanceof URLSearchParams) return new Blob([body.toString()]).size;
   return undefined;
-}
-
-/**
- * Parse URL for scheme and host. Returns empty strings if parsing fails.
- */
-function parseUrlParts(url: string): { scheme: string; host: string } {
-  try {
-    const parsed = new URL(url);
-    return {
-      scheme: parsed.protocol.replace(':', '') || 'http',
-      host: parsed.host || '',
-    };
-  } catch {
-    return { scheme: 'http', host: '' };
-  }
-}
-
-/**
- * Build Web SDK-style event attributes for faro.tracing.fetch.
- * Aligns with Grafana HTTP insights and Frontend Observability plugin.
- */
-function buildFetchEventAttributes(payload: HttpRequestPayload): Record<string, string> {
-  const { scheme, host } = parseUrlParts(payload.url);
-  const durationNs = payload.duration != null ? String(Math.round(payload.duration * 1_000_000)) : '';
-  const statusCode = payload.status != null ? String(payload.status) : '0';
-
-  const attrs: Record<string, string> = {
-    'http.url': payload.url,
-    'http.method': payload.method,
-    'http.scheme': scheme,
-    'http.host': host,
-    'http.status_code': statusCode,
-    'duration_ns': durationNs,
-  };
-
-  if (payload.requestSize != null) {
-    attrs['http.request_size'] = String(payload.requestSize);
-  }
-  if (payload.responseSize != null) {
-    attrs['http.response_size'] = String(payload.responseSize);
-  }
-  if (payload.error) {
-    attrs['http.error'] = payload.error;
-  }
-
-  return attrs;
 }
 
 /**

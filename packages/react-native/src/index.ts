@@ -17,6 +17,7 @@ export { ViewInstrumentation } from './instrumentations/view';
 export { AppStateInstrumentation } from './instrumentations/appState';
 export { UserActionInstrumentation } from './instrumentations/userActions';
 export { HttpInstrumentation } from './instrumentations/http';
+export { XHRInstrumentation } from './instrumentations/xhr';
 export { PerformanceInstrumentation } from './instrumentations/performance';
 export type { PerformanceInstrumentationOptions } from './instrumentations/performance/types';
 export { StartupInstrumentation } from './instrumentations/startup';
@@ -37,6 +38,11 @@ export {
   trackUserAction,
   type WithFaroUserActionProps,
 } from './instrumentations/userActions/withFaroUserAction';
+export {
+  notifyHttpRequestEnd,
+  notifyHttpRequestStart,
+} from './instrumentations/userActions/httpRequestMonitor';
+export type { HttpRequestMessagePayload } from './instrumentations/userActions/httpRequestMonitor';
 
 // Export error boundary
 export { FaroErrorBoundary } from './errorBoundary/FaroErrorBoundary';

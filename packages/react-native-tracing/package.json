@@ -57,6 +57,7 @@
     "@opentelemetry/core": "^2.0.0",
     "@opentelemetry/instrumentation": "^0.208.0",
     "@opentelemetry/instrumentation-fetch": "^0.208.0",
+    "@opentelemetry/instrumentation-xml-http-request": "^0.208.0",
     "@opentelemetry/otlp-transformer": "^0.208.0",
     "@opentelemetry/resources": "^2.0.0",
     "@opentelemetry/sdk-trace-base": "^2.0.0",

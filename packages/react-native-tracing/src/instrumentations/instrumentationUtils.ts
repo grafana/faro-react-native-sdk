@@ -1,6 +1,7 @@
 import { SpanStatusCode } from '@opentelemetry/api';
 import type { Span } from '@opentelemetry/api';
 import type { FetchCustomAttributeFunction } from '@opentelemetry/instrumentation-fetch';
+import type { XHRCustomAttributeFunction } from '@opentelemetry/instrumentation-xml-http-request';
 
 /**
  * FetchError interface matching OpenTelemetry's internal type
@@ -59,4 +60,27 @@ export function fetchCustomAttributeFunctionWithDefaults(
     }
   };
   return fn;
+}
+
+/**
+ * Set span status to ERROR for XHR failures (status 0 or 4xx/5xx).
+ */
+export function setSpanStatusOnXMLHttpRequestError(span: Span, xhr: XMLHttpRequest): void {
+  const status = xhr.status;
+  if (status == null) return;
+  if (status === 0 || (status >= 400 && status < 600)) {
+    span.setStatus({ code: SpanStatusCode.ERROR });
+  }
+}
+
+/**
+ * Custom attribute function for XHR instrumentation with defaults.
+ */
+export function xhrCustomAttributeFunctionWithDefaults(
+  userFunction?: XHRCustomAttributeFunction
+): XHRCustomAttributeFunction {
+  return (span: Span, xhr: XMLHttpRequest) => {
+    setSpanStatusOnXMLHttpRequestError(span, xhr);
+    userFunction?.(span, xhr);
+  };
 }
