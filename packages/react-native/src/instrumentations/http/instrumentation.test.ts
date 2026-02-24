@@ -51,9 +51,7 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data');
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvent).toBeDefined();
@@ -79,9 +77,7 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data', { method: 'POST' });
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvent).toBeDefined();
@@ -103,9 +99,7 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data').catch(() => {});
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvent).toBeDefined();
@@ -132,9 +126,7 @@ describe('HttpInstrumentation', () => {
       const url = new URL('https://api.example.com/data');
       await fetch(url);
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvent).toBeDefined();
@@ -156,9 +148,7 @@ describe('HttpInstrumentation', () => {
       const request = new Request('https://api.example.com/data', { method: 'POST' });
       await fetch(request);
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvent).toBeDefined();
@@ -182,9 +172,7 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://faro.grafana.net/collect');
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvents = events.filter((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvents).toHaveLength(0);
@@ -210,9 +198,7 @@ describe('HttpInstrumentation', () => {
       await fetch('http://127.0.0.1:8080/data');
       await fetch('https://api.example.com/internal-api/users');
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvents = events.filter((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvents).toHaveLength(0);
@@ -236,9 +222,7 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data');
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvents = events.filter((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvents.length).toBeGreaterThan(0);
@@ -271,9 +255,7 @@ describe('HttpInstrumentation', () => {
       resolvePromise!(mockResponse);
       await request;
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvent?.payload.attributes?.['duration_ns']).toBeDefined();
@@ -303,15 +285,11 @@ describe('HttpInstrumentation', () => {
         body: requestBody,
       });
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvent).toBeDefined();
-      expect(fetchEvent?.payload.attributes?.['http.request_size']).toBe(
-        String(requestBody.length)
-      );
+      expect(fetchEvent?.payload.attributes?.['http.request_size']).toBe(String(requestBody.length));
       expect(fetchEvent?.payload.attributes?.['http.response_size']).toBe('14');
     });
   });
@@ -383,9 +361,7 @@ describe('HttpInstrumentation', () => {
         fetch('https://api.example.com/data3'),
       ]);
 
-      const events = transport.items.filter(
-        (item) => item.type === 'event'
-      ) as TransportItem<EventEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
       const fetchEvents = events.filter((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
       expect(fetchEvents).toHaveLength(3);

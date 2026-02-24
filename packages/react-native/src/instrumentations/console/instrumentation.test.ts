@@ -46,6 +46,7 @@ describe('ConsoleInstrumentation', () => {
     expect((mockTransport.items[0] as TransportItem<ExceptionEvent>)?.payload.value).toBe(
       'console.error: console.error no 1'
     );
+    expect((mockTransport.items[0] as TransportItem<ExceptionEvent>)?.payload.context?.mechanism).toBe('console');
     expect((mockTransport.items[1] as TransportItem<ExceptionEvent>)?.payload.type).toBe('Error');
     expect((mockTransport.items[1] as TransportItem<ExceptionEvent>)?.payload.value).toBe(
       'console.error: with object {"foo":"bar","baz":"bam"}'

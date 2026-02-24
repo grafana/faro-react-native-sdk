@@ -391,6 +391,7 @@ This document is read by both technical and non-technical people (product, suppo
 - **"How Data is Collected"**: Keep the list structure (bullets, iOS/Android breakdown) but use plain language. Avoid file paths, class names, internal APIs. It's fine to name libraries (e.g. axios, dio) when relevant.
 - **Prefer**: "The SDK automatically tracks..." over "Patches `global.fetch` via `HttpInstrumentation`".
 - **Avoid**: `task_threads()`, `phys_footprint`, `/proc/[pid]/stat`, `markEventEnd`, `startSpanManual`, etc., unless the technical distinction matters for the comparison.
+- **Flutter SDK values**: Never use "Check Flutter docs" as a placeholder. If `faro-flutter-sdk` is in the workspace, go to `faro-flutter-sdk/lib/` and look up the implementation (config option, event name, default value, etc.)—do not search the web. Only search the web if `faro-flutter-sdk` is not cloned in the workspace.
 
 ## Feature Parity Notes
 
@@ -402,7 +403,7 @@ This SDK aims for feature parity with:
 When implementing new features, check:
 
 - `packages/react-native/FEATURE_PARITY.md` - Detailed comparison with Web SDK
-- Faro Flutter SDK repository for mobile patterns
+- Faro Flutter SDK: If `faro-flutter-sdk` is in the workspace, go to `faro-flutter-sdk/lib/` and inspect for implementation details and patterns. Only search the web if the repo is not in the workspace.
 
 ## Performance Monitoring
 

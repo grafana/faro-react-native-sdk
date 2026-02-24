@@ -719,14 +719,14 @@ initializeFaro({
 
 **App State Events:**
 
-The SDK automatically emits `app_state_changed` events when the app state transitions:
+The SDK automatically emits `app_lifecycle_changed` events when the app state transitions:
 
 ```typescript
 {
-  event_name: "app_state_changed",
-  fromState: "active",       // Previous state
-  toState: "background",     // New state
-  duration: "5234",          // Time spent in previous state (ms)
+  event_name: "app_lifecycle_changed",
+  fromState: "resumed",      // Previous state (Flutter-aligned: resumed | paused | inactive | detached)
+  toState: "paused",         // New state
+  duration: "5234",         // Time spent in previous state (ms)
   timestamp: "1701518400000" // Unix timestamp
 }
 ```
@@ -745,19 +745,25 @@ The SDK automatically emits `app_state_changed` events when the app state transi
 # View all app state changes
 {app_name="my-app", kind="event"}
 | json
-| event_name="app_state_changed"
+| event_name="app_lifecycle_changed"
 
-# Count background transitions
+# Count background transitions (toState="paused")
 {app_name="my-app", kind="event"}
 | json
-| event_name="app_state_changed"
-| toState="background"
+| event_name="app_lifecycle_changed"
+| toState="paused"
 
-# Average time in foreground
+# Count foreground transitions (toState="resumed")
 {app_name="my-app", kind="event"}
 | json
-| event_name="app_state_changed"
-| fromState="active"
+| event_name="app_lifecycle_changed"
+| toState="resumed"
+
+# Average time in foreground (unwrap duration)
+{app_name="my-app", kind="event"}
+| json
+| event_name="app_lifecycle_changed"
+| fromState="resumed"
 | unwrap duration
 | avg
 ```

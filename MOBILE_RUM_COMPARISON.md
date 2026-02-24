@@ -9,6 +9,12 @@
 - [HTTP Instrumentation](#http-instrumentation)
 - [Crash Reporting](#crash-reporting)
 - [ANR Detection](#anr-detection)
+- [App State](#app-state)
+- [Console Capture](#console-capture)
+- [Error Reporting](#error-reporting)
+- [Session Management](#session-management)
+- [User Actions](#user-actions)
+- [View / Screen Tracking](#view--screen-tracking)
 - [Configuration Comparison](#configuration-comparison)
 - [Threshold Proposals](#threshold-proposals)
 - [Real Log Examples](#real-log-examples)
@@ -530,11 +536,10 @@ Faro.initialize(
 
 ### Event Name Differences
 
-| SDK | Event Name(s) | When Emitted |
-|-----|---------------|--------------|
-| **Flutter** | `http_request` | One event per **successful** request completion (via `markEventEnd`). Failed requests (connection error, timeout) do **not** emit this event—the OpenTelemetry span still records the error. |
-| **React Native** | `faro.tracing.fetch` | One event per request (success or failure). Aligns with Web SDK format for Grafana Frontend Observability / HTTP insights. |
-| **Web SDK** | `faro.tracing.fetch` | One event per fetch span export. OpenTelemetry `FetchInstrumentation` creates spans; `faroTraceExporter` converts CLIENT spans to `faro.tracing.${component}` events. |
+| SDK | Event Name | When Emitted |
+|-----|------------|--------------|
+| **Flutter** | `http_request` | One event per successful request only; failed requests do not emit this event |
+| **React Native** | `faro.tracing.fetch` | One event per request (success or failure). Same format as Web SDK for Grafana HTTP insights |
 
 ---
 
@@ -542,31 +547,33 @@ Faro.initialize(
 
 #### **React Native SDK**
 
-- **Mechanism:** Patches `global.fetch` via `HttpInstrumentation`
-- **Location:** `packages/react-native/src/instrumentations/http/index.ts`
-- **Flow:**
-  1. Wraps `fetch()`; records start time, URL, method, request size
-  2. Notifies `httpRequestMonitor` for user action correlation (internal only—`http_request_start` / `http_request_end` are observable messages, not Faro events)
-  3. On response: extracts status, duration, response size; builds Web SDK-style attributes
-  4. Emits `faro.tracing.fetch` event with `http.url`, `http.method`, `http.scheme`, `http.host`, `http.status_code`, `duration_ns`, optional `http.request_size` / `http.response_size`
-  5. On failure: emits same event with `http.status_code: 0` and `http.error`, plus `pushError` for the exception
-- **URL filtering:** Ignores collector URL (`grafana.net/collect`), config `ignoreUrls`, and transport URLs
-- **User action correlation:** `notifyHttpRequestStart` / `notifyHttpRequestEnd` drive `UserActionController` halt logic (waits for in-flight requests before ending action)
+The SDK automatically tracks HTTP requests made with both **fetch** and **XMLHttpRequest** (including libraries that use XHR, such as axios). No code changes are required—network calls are intercepted and reported.
+
+**What is captured:**
+- URL, method, status code, duration, request and response sizes
+- Both successful and failed requests (network errors get `status_code: 0` and an error message)
+- Data is sent as `faro.tracing.fetch` events for Grafana HTTP insights
+
+**What is excluded:**
+- Collector and transport URLs are not traced
+- URLs matching `ignoreUrls` are skipped
 
 #### **Flutter SDK**
 
-- **Mechanism:** `HttpOverrides` + `FaroHttpTrackingClient` wrapping Dart `HttpClient` (used by `http` package and `dio`)
-- **Location:** `lib/src/integrations/http_tracking_client.dart`
-- **Flow:**
-  1. Overrides `HttpClient.createHttpClient`; wraps requests in `FaroHttpTrackingClient`
-  2. On `openUrl`: `markEventStart(key, 'http_request')` for timing (internal, no event sent)
-  3. Wraps request in `FaroTrackingHttpClientRequest`, which creates an OpenTelemetry span (`startSpanManual`) with `http.method`, `http.scheme`, `http.url`, `http.host`
-  4. Injects `traceparent` header for distributed tracing
-  5. On response close (success): sets span attributes (`http.status_code`, `http.request_size`, `http.response_size`), ends span, returns `FaroTrackingHttpResponse`
-  6. `FaroTrackingHttpResponse._onFinish` (when body stream completes) calls `markEventEnd(key, 'http_request', attributes)` → pushes **one** `http_request` Faro event
-  7. On failure (close `onError`): span is marked error and ended, but `markEventEnd` is **never** called—no `http_request` event for failed requests
-- **Scope:** Instruments `dart:io` HttpClient. Does **not** patch `fetch` (not available in Flutter); `http` and `dio` use HttpClient under the hood
-- **Span-to-event mapping:** `span_record.dart` maps HTTP spans (with `http.scheme` or `http.method`) to `faro.tracing.fetch` when exporting to Grafana
+The SDK automatically tracks HTTP requests made with the `http` package and **dio** (both use Dart's built-in `HttpClient`). No manual instrumentation is needed.
+
+**What is captured:**
+- URL, method, status code, request and response sizes, duration
+- **Success only:** Failed requests (connection errors, timeouts) do not emit `http_request` events
+
+**Scope:** Covers all code using `http` or `dio`. The `fetch` API is not available in Flutter.
+
+### Tracing for HTTP Requests
+
+| SDK | Tracing Behavior |
+|-----|------------------|
+| **React Native** | Optional. With `enableTracing: false` (default), HTTP events are sent without distributed trace context. With `enableTracing: true` and `@grafana/faro-react-native-tracing` installed, HTTP requests get full distributed tracing (trace IDs, span IDs, `traceparent` header propagated to backends). |
+| **Flutter** | Built-in. HTTP events always include `trace_id` and `span_id`, and the SDK injects the `traceparent` header into outgoing requests so backend traces can be correlated. |
 
 ---
 
@@ -635,10 +642,10 @@ Faro.initialize(
 |--------|--------------|---------|
 | **Event name** | `faro.tracing.fetch` (Web SDK format) | `http_request` |
 | **Success + failure** | ✅ Both emit event | Success only; failures omit `http_request` |
-| **Instrumentation** | Fetch API patch | HttpClient override (dart:io) |
-| **Scope** | `fetch()` only | `http` package, `dio`, any HttpClient user |
-| **Trace propagation** | Via HttpInstrumentation (if TracingInstrumentation present) | `traceparent` header injected in request |
-| **Grafana HTTP insights** | ✅ Compatible (`faro.tracing.fetch`) | Requires span→event mapping for `faro.tracing.fetch` |
+| **What is tracked** | fetch + XMLHttpRequest (including axios) | `http` package + dio |
+| **Scope** | All JS network calls using fetch or XHR | All code using `http` or `dio` |
+| **Distributed tracing** | Optional (`enableTracing`) | Always on |
+| **Grafana HTTP insights** | ✅ Compatible | Via span-to-event mapping |
 
 ---
 
@@ -655,7 +662,7 @@ Faro.initialize(
 - Processes crash reports on next app launch
 - **Session correlation**: Persists session ID in UserDefaults; on next launch reads it and includes as `crashedSessionId` in the crash report
 
-**Crash Report Format:**
+**Crash Report Format**:
 ```json
 {
   "reason": "SIGSEGV",
@@ -677,7 +684,7 @@ Faro.initialize(
 - Returns list of exit reasons including crashes
 - **Session correlation**: Persists session ID in SharedPreferences; when processing crash/exit info, includes it as `crashedSessionId`
 
-**Crash Report Format:**
+**Crash Report Format** :
 ```json
 {
   "reason": "CRASH_NATIVE",
@@ -708,21 +715,38 @@ Faro.initialize(
 
 ```json
 {
-  "type": "Crash",
-  "value": {
-    "reason": "SIGSEGV",
-    "timestamp": 1678901234567,
-    "message": "Application crashed: Attempted to dereference null pointer",
-    "stackTrace": "at someFunction (file.js:123:45)\nat anotherFunction...",
-    "attributes": {
-      "crashedSessionId": "previous-session-id",
-      "platform": "iOS"
+  "exceptions": [
+    {
+      "type": "crash",
+      "value": "SIGSEGV: Attempted to dereference null pointer, status: 0",
+      "timestamp": "2024-01-15T10:25:33.000Z",
+      "context": {
+        "trace": "Stack trace string...",
+        "timestamp": "1678901234567",
+        "description": "Attempted to dereference null pointer",
+        "crashedSessionId": "abc-123-def-456",
+        "processName": "com.example.app",
+        "pid": "12345",
+        "importance": "100"
+      },
+      "stacktrace": {
+        "frames": [
+          { "filename": "SomeNativeModule.m", "function": "processData", "lineno": 145 }
+        ]
+      }
     }
-  }
+  ],
+  "meta": { "session": {...}, "app": {...} }
 }
 ```
 
 **Sent via:** `faro.api.pushError()`
+- **`type`**: `"crash"` (from `pushError` options)
+- **`value`**: Error message string (e.g. `"{reason}: {description}, status: {status}"`)
+- **`context`**: Crash report fields (trace, timestamp, description, crashedSessionId, processName, pid, importance); `signal` on iOS
+- **`stacktrace`**: Parsed frames if available from native report
+
+**Sent via:** `faro.api.pushError(error, { type: 'crash', context })`
 
 #### **Flutter SDK**
 
@@ -907,7 +931,6 @@ initializeFaro({
   app: { name: 'my-app', version: '1.0.0' },
   // Enable ANR detection (Android only, flag-based)
   anrTracking: true,  // default: false
-
   anrOptions: {
     timeout: 5000,  // default: 5000ms
   },
@@ -941,6 +964,506 @@ Faro.initialize(
 | **Configurable Timeout** | ✅ Yes | Check Flutter docs |
 | **Stack Trace Capture** | ✅ Yes | ✅ Yes |
 | **Detection Method** | Watchdog thread | Similar watchdog |
+
+---
+
+## App State
+
+### How Data is Collected
+
+#### **React Native SDK**
+
+- Uses React Native's **AppState** API
+- Subscribes to `change` events
+- Maps RN states to Flutter AppLifecycleState names so both SDKs send the same state values
+- Always enabled (no config flag)
+
+**State mapping (RN → Flutter):**
+- `active` → `resumed`
+- `background` → `paused`
+- `inactive` → `inactive`
+- `unknown`/`extension` → `detached`
+
+> **🔴 REVIEW NEEDED:** Is mapping RN state names to Flutter names really necessary? Both SDKs could keep their native state names (`active`/`background` vs `resumed`/`paused`) and still be queryable in Grafana. Consider reviewing this before committing to this mapping.
+
+#### **Flutter SDK**
+
+- Uses `WidgetsBindingObserver.didChangeAppLifecycleState` with `AppLifecycleState`
+- Tracks: resumed, paused, inactive, detached, hidden
+
+---
+
+### Metric Format Sent to Faro
+
+#### **React Native SDK**
+
+```json
+{
+  "events": [
+    {
+      "name": "app_lifecycle_changed",
+      "attributes": {
+        "fromState": "resumed",
+        "toState": "paused",
+        "duration": "45000",
+        "timestamp": "1678901234567"
+      }
+    }
+  ]
+}
+```
+
+**Sent via:** `faro.api.pushEvent('app_lifecycle_changed', { fromState, toState, duration, timestamp })`
+
+#### **Flutter SDK**
+
+```json
+{
+  "events": [
+    {
+      "name": "app_lifecycle_changed",
+      "attributes": {
+        "fromState": "resumed",
+        "toState": "paused"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### Key Differences
+
+| Aspect | React Native | Flutter |
+|--------|--------------|---------|
+| **API** | AppState.addEventListener | WidgetsBindingObserver (didChangeAppLifecycleState) |
+| **Always Enabled** | ✅ Yes | ✅ Yes |
+| **Event Name** | `app_lifecycle_changed` | `app_lifecycle_changed` |
+| **Event Attributes** | fromState, toState, duration, timestamp | fromState, toState ⚠️ No duration/timestamp |
+| **State Names** | resumed, paused, inactive, detached (RN maps to Flutter names) | resumed, paused, inactive, detached, hidden (AppLifecycleState) |
+
+---
+
+## Console Capture
+
+### How Data is Collected
+
+#### **React Native SDK**
+
+- Patches `console.log`, `console.warn`, `console.error`, `console.debug`, `console.trace`
+- **console.error**: By default sent as exception via `pushError()`; optionally as log via `consoleErrorAsLog`
+- Other levels: Sent as logs via `pushLog()`
+- Configurable: disable specific levels (default: debug, trace, log disabled to reduce noise)
+
+#### **Flutter SDK**
+
+- ❌ No direct equivalent (Dart `print`/`debugPrint` not patched)
+- Logging typically via custom integrations
+
+---
+
+### Metric Format Sent to Faro
+
+#### **React Native SDK**
+
+**Log (console.log, console.warn, etc.):**
+```json
+{
+  "logs": [
+    {
+      "level": "info",
+      "message": ["User clicked button"],
+      "timestamp": "2024-01-15T10:25:33.000Z"
+    }
+  ]
+}
+```
+
+**Error (console.error when consoleErrorAsLog: false):**
+```json
+{
+  "exceptions": [
+    {
+      "type": "Error",
+      "value": "console.error: Something went wrong",
+      "context": { "mechanism": "console" },
+      "stacktrace": { "frames": [...] }
+    }
+  ]
+}
+```
+
+---
+
+### Configuration
+
+#### **React Native SDK**
+
+```typescript
+initializeFaro({
+  enableConsoleCapture: true,  // default: true
+  consoleCaptureOptions: {
+    disabledLevels: [LogLevel.DEBUG, LogLevel.TRACE, LogLevel.LOG],
+    consoleErrorAsLog: false,  // treat console.error as exception (default) or log
+    serializeErrors: true,
+  },
+});
+```
+
+---
+
+### Key Differences
+
+| Aspect | React Native | Flutter |
+|--------|--------------|---------|
+| **Console Capture** | ✅ Patches console.* | ❌ No equivalent |
+| **Default Enabled** | ✅ true | N/A |
+
+---
+
+## Error Reporting
+
+### How Data is Collected
+
+#### **React Native SDK**
+
+- Patches **ErrorUtils** (React Native global) for unhandled JS errors
+- Listens to **unhandledrejection** for promise rejections
+- Parses stack traces (dev, release, Metro formats)
+- Adds platform context (OS, Hermes)
+- **Deduplication**: Same errors (identical message and stack) within a time window are not reported again. Default window: 5 seconds. Configurable via `enableDeduplication`, `deduplicationWindow`, and `maxDeduplicationEntries`.
+- **Filtering**: `ignoreErrors` regex patterns
+- **Error type and mechanism**: Aligned with Web SDK—uses actual JavaScript error type (TypeError, ReferenceError, etc.) and adds `mechanism` in context to indicate capture source (uncaught, unhandledrejection, console, crash, anr)
+
+#### **Flutter SDK**
+
+- Uses **FlutterError.onError** and **PlatformDispatcher.onError**
+- Tracks unhandled Dart exceptions and zone errors
+- Promise/future rejections via zone
+
+---
+
+### Metric Format Sent to Faro
+
+#### **React Native SDK**
+
+Each exception includes two classification dimensions:
+
+- **`type`**: The semantic error kind (matches Web SDK)
+  - JavaScript types: `TypeError`, `ReferenceError`, `RangeError`, `Error`, etc.
+  - `UnhandledRejection` for promise rejections with non-Error values (primitives, plain objects)
+  - `crash` for native crashes; `ANR` for Application Not Responding
+- **`context.mechanism`**: Where the error was captured
+  - `uncaught` — from ErrorUtils (unhandled JS)
+  - `unhandledrejection` — from unhandled promise rejection
+  - `console` — from console.error
+  - `crash` — from native crash reporting
+  - `anr` — from ANR detection
+
+**Uncaught JavaScript error:**
+```json
+{
+  "exceptions": [
+    {
+      "type": "TypeError",
+      "value": "Cannot read property 'x' of undefined",
+      "timestamp": "2024-01-15T10:25:33.000Z",
+      "stacktrace": {
+        "frames": [
+          { "filename": "App.tsx", "function": "handlePress", "lineno": 42, "colno": 12 }
+        ]
+      },
+      "context": {
+        "mechanism": "uncaught",
+        "platform": "ios",
+        "hermes": "true"
+      }
+    }
+  ]
+}
+```
+
+**Unhandled promise rejection (Error):**
+```json
+{
+  "exceptions": [
+    {
+      "type": "TypeError",
+      "value": "Something went wrong",
+      "context": { "mechanism": "unhandledrejection" }
+    }
+  ]
+}
+```
+
+**Unhandled promise rejection (primitive/non-Error):**
+```json
+{
+  "exceptions": [
+    {
+      "type": "UnhandledRejection",
+      "value": "Unhandled Promise Rejection: ...",
+      "context": { "mechanism": "unhandledrejection" }
+    }
+  ]
+}
+```
+
+**Console.error (when sent as exception):**
+```json
+{
+  "exceptions": [
+    {
+      "type": "Error",
+      "value": "console.error: Failed to load data",
+      "context": { "mechanism": "console" }
+    }
+  ]
+}
+```
+
+---
+
+### Configuration
+
+#### **React Native SDK**
+
+```typescript
+initializeFaro({
+  enableErrorReporting: true,  // default: true
+  // When using custom instrumentations:
+  instrumentations: [
+    new ErrorsInstrumentation({
+      ignoreErrors: [/network timeout/i, /cancelled/i],
+      enableDeduplication: true,
+      deduplicationWindow: 5000,
+      maxDeduplicationEntries: 50,
+    }),
+  ],
+});
+```
+
+---
+
+### Key Differences
+
+| Aspect | React Native | Flutter |
+|--------|--------------|---------|
+| **Source** | ErrorUtils + unhandledrejection | FlutterError + PlatformDispatcher |
+| **Error Type** | Actual type (TypeError, ReferenceError, etc.); `UnhandledRejection` for primitive rejections | Often `flutter_error` bucket |
+| **Mechanism** | `context.mechanism` (uncaught, unhandledrejection, console, crash, anr) | N/A |
+| **Deduplication** | ✅ Fingerprint (message+stack), 5s window, configurable | ❌ None |
+
+---
+
+## Session Management
+
+### How Data is Collected
+
+#### **React Native SDK**
+
+- **SessionInstrumentation** manages session lifecycle
+- **Persistent mode** (default): AsyncStorage; survives app restarts; 4h max, 15min inactivity timeout
+- **Volatile mode**: In-memory only; new session each launch
+- Events: `session_start`, `session_extend`, `session_resume`
+- Auto-collects session attributes: device_id, device_os, device_model, RN version, etc.
+
+#### **Flutter SDK**
+
+- SharedPreferences for persistence
+- Similar session start/extend events
+- Session attributes from device info
+
+---
+
+### Metric Format Sent to Faro
+
+#### **React Native SDK**
+
+```json
+{
+  "events": [
+    {
+      "name": "session_start",
+      "attributes": {}
+    }
+  ],
+  "meta": {
+    "session": {
+      "id": "abc-123-session-id",
+      "attributes": {
+        "device_id": "...",
+        "device_os": "iOS 17.2",
+        "device_model_name": "iPhone 15"
+      }
+    }
+  }
+}
+```
+
+---
+
+### Configuration
+
+#### **React Native SDK**
+
+Sessions are always enabled. Options (via faro-core config):
+
+- `sessionTracking.persistent`: Persist across restarts
+- `sessionTracking.maxSessionPersistenceTime`: Max session age (ms)
+- `sessionTracking.inactivityTimeout`: Inactivity before new session
+
+---
+
+### Key Differences
+
+| Aspect | React Native | Flutter |
+|--------|--------------|---------|
+| **Storage** | AsyncStorage | SharedPreferences |
+| **Session Timeout** | ✅ 4h / 15min inactivity | Check Flutter docs |
+| **Always Enabled** | ✅ Yes | ✅ Yes |
+
+---
+
+## User Actions
+
+### How Data is Collected
+
+#### **React Native SDK**
+
+- **UserActionInstrumentation** subscribes to user action message bus
+- **withFaroUserAction** HOC: Wraps TouchableOpacity, etc.; auto-tracks press/tap
+- **trackUserAction()**: Manual API for custom actions
+- **UserActionController**: Duration tracking, HTTP correlation, halt state for pending requests
+
+#### **Flutter SDK**
+
+- **FaroUserInteractionWidget** wraps app
+- **pushEvent('user_interaction')**, **Faro().startSpan('user_action', ...)**
+- HTTP correlation via trace context
+
+---
+
+### Metric Format Sent to Faro
+
+#### **React Native SDK**
+
+```json
+{
+  "events": [
+    {
+      "name": "user_action",
+      "attributes": {
+        "name": "button_pressed",
+        "duration": "250",
+        "context": "{}"
+      }
+    }
+  ]
+}
+```
+
+HTTP requests triggered during a user action are correlated via `httpRequestMonitor` (tracing) or HttpInstrumentation.
+
+---
+
+### Configuration
+
+#### **React Native SDK**
+
+```typescript
+initializeFaro({
+  enableUserActions: true,  // default: true
+  userActionsOptions: {
+    dataAttributeName: 'data-faro-action',
+    excludeItem: (element) => false,
+  },
+});
+```
+
+---
+
+### Key Differences
+
+| Aspect | React Native | Flutter |
+|--------|--------------|---------|
+| **API** | withFaroUserAction HOC + trackUserAction() | FaroUserInteractionWidget + startSpan |
+| **HTTP Correlation** | ✅ Automatic | ✅ Via trace context |
+| **Default Enabled** | ✅ true | Check Flutter docs |
+
+---
+
+## View / Screen Tracking
+
+### How Data is Collected
+
+#### **React Native SDK**
+
+- **ViewInstrumentation** listens to meta changes
+- Emits `view_changed` when screen name changes
+- **useFaroNavigation** hook: Integrates with React Navigation; calls `ViewInstrumentation.setView(screenName)` on navigation
+- Manual: `setView(name)` for non-React-Navigation apps
+
+#### **Flutter SDK**
+
+- **FaroNavigationObserver** for route tracking
+- Similar view/screen change events
+
+---
+
+### Metric Format Sent to Faro
+
+#### **React Native SDK**
+
+```json
+{
+  "events": [
+    {
+      "name": "view_changed",
+      "attributes": {
+        "fromView": "Home",
+        "toView": "Profile"
+      }
+    }
+  ],
+  "meta": {
+    "view": {
+      "name": "Profile",
+      "url": "Profile"
+    }
+  }
+}
+```
+
+---
+
+### Configuration
+
+#### **React Native SDK**
+
+**React Navigation:**
+```typescript
+const navigationRef = useNavigationContainerRef();
+useFaroNavigation(navigationRef);
+<NavigationContainer ref={navigationRef}>...</NavigationContainer>
+```
+
+**Manual:**
+```typescript
+import { setView } from '@grafana/faro-react-native';
+setView('ScreenName');
+```
+
+---
+
+### Key Differences
+
+| Aspect | React Native | Flutter |
+|--------|--------------|---------|
+| **Integration** | useFaroNavigation (React Navigation) | FaroNavigationObserver |
+| **Manual API** | setView(name) | Check Flutter docs |
+| **Always Enabled** | ✅ Yes | ✅ Yes |
 
 ---
 
@@ -1493,7 +2016,7 @@ timestamp=2026-02-23T10:57:02.991Z kind=measurement level=info type=app_startup 
 {
   "exceptions": [
     {
-      "type": "Crash",
+      "type": "crash",
       "value": "SIGSEGV: Segmentation fault",
       "stacktrace": {
         "frames": [
@@ -1644,6 +2167,252 @@ count_over_time({app_id="YOUR_APP_ID", kind="event"}
 
 ---
 
+### App State
+
+#### **React Native SDK**
+
+```bash
+# User switches to another app (app goes to background)
+[Faro] App state changed { from: 'active', to: 'background', duration: 45000 }
+
+{
+  "events": [
+    {
+      "name": "app_lifecycle_changed",
+      "attributes": {
+        "fromState": "resumed",
+        "toState": "paused",
+        "duration": "45000",
+        "timestamp": "1678901234567"
+      }
+    }
+  ],
+  "meta": { "session": { "id": "abc-123" }, "app": {} }
+}
+
+# User returns to app (app comes to foreground)
+[Faro] App returned to foreground { duration: 120000 }
+
+{
+  "events": [
+    {
+      "name": "app_lifecycle_changed",
+      "attributes": {
+        "fromState": "paused",
+        "toState": "resumed",
+        "duration": "120000",
+        "timestamp": "1678901354567"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### Console Capture
+
+#### **React Native SDK**
+
+```bash
+# console.log (when level not disabled)
+{
+  "logs": [
+    {
+      "level": "info",
+      "message": ["User opened settings"],
+      "timestamp": "2024-01-15T10:25:33.000Z"
+    }
+  ]
+}
+
+# console.warn
+{
+  "logs": [
+    {
+      "level": "warn",
+      "message": ["Deprecated API used: oldMethod"],
+      "timestamp": "2024-01-15T10:25:34.000Z"
+    }
+  ]
+}
+
+# console.error (sent as exception when consoleErrorAsLog: false)
+{
+  "exceptions": [
+    {
+      "type": "Error",
+      "value": "console.error: Failed to fetch user data",
+      "stacktrace": {
+        "frames": [
+          { "filename": "UserService.ts", "function": "fetchUser", "lineno": 42 }
+        ]
+      },
+      "timestamp": "2024-01-15T10:25:35.000Z"
+    }
+  ]
+}
+```
+
+---
+
+### Error Reporting
+
+#### **React Native SDK - Uncaught JS Error**
+
+```bash
+# Unhandled JavaScript error (mechanism: uncaught)
+{
+  "exceptions": [
+    {
+      "type": "TypeError",
+      "value": "Cannot read property 'id' of undefined",
+      "timestamp": "2024-01-15T10:25:33.000Z",
+      "stacktrace": {
+        "frames": [
+          { "filename": "ProfileScreen.tsx", "function": "renderUser", "lineno": 28, "colno": 12 },
+          { "filename": "App.tsx", "function": "App", "lineno": 15 }
+        ]
+      },
+      "context": {
+        "mechanism": "uncaught",
+        "platform": "ios",
+        "hermes": "true"
+      }
+    }
+  ]
+}
+```
+
+#### **React Native SDK - Unhandled Promise Rejection (Error)**
+
+```bash
+# Promise rejection with Error (mechanism: unhandledrejection, type from error.name)
+{
+  "exceptions": [
+    {
+      "type": "Error",
+      "value": "Network request failed",
+      "timestamp": "2024-01-15T10:25:40.000Z",
+      "context": {
+        "mechanism": "unhandledrejection",
+        "cause": "Failed to fetch"
+      }
+    }
+  ]
+}
+```
+
+#### **React Native SDK - Unhandled Promise Rejection (primitive)**
+
+```bash
+# Promise rejection with non-Error value (type: UnhandledRejection)
+{
+  "exceptions": [
+    {
+      "type": "UnhandledRejection",
+      "value": "Unhandled Promise Rejection: String rejection",
+      "context": { "mechanism": "unhandledrejection" }
+    }
+  ]
+}
+```
+
+---
+
+### Session Management
+
+#### **React Native SDK**
+
+```bash
+# App launch - new session start
+{
+  "events": [
+    {
+      "name": "session_start",
+      "attributes": {}
+    }
+  ],
+  "meta": {
+    "session": {
+      "id": "abc-123-session-id",
+      "attributes": {
+        "device_id": "device-uuid-xyz",
+        "device_os": "iOS",
+        "device_os_detail": "17.2",
+        "device_model_name": "iPhone 15"
+      }
+    }
+  }
+}
+
+# Session extended (user returns within 15min inactivity window)
+{
+  "events": [
+    {
+      "name": "session_extend",
+      "attributes": {}
+    }
+  ]
+}
+```
+
+---
+
+### User Actions
+
+#### **React Native SDK**
+
+```bash
+# User taps button (withFaroUserAction HOC)
+[Faro] User action started: button_pressed
+
+# Action ends after ~100ms inactivity (or when HTTP completes)
+{
+  "events": [
+    {
+      "name": "user_action",
+      "attributes": {
+        "name": "button_pressed",
+        "duration": "250",
+        "trigger_name": "press"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### View / Screen Tracking
+
+#### **React Native SDK - React Navigation**
+
+```bash
+# User navigates from Home to Profile
+[Faro] View instrumentation initialized
+
+{
+  "events": [
+    {
+      "name": "view_changed",
+      "attributes": {
+        "fromView": "Home",
+        "toView": "Profile"
+      }
+    }
+  ],
+  "meta": {
+    "view": {
+      "name": "Profile",
+      "url": "Profile"
+    }
+  }
+}
+```
+
+---
+
 ## Feature Parity Matrix
 
 ### Complete Feature Comparison
@@ -1666,10 +2435,10 @@ count_over_time({app_id="YOUR_APP_ID", kind="event"}
 | Crash Reporting (iOS) | ✅ PLCrashReporter | ✅ PLCrashReporter | Same implementation |
 | Crash Reporting (Android) | ✅ ApplicationExitInfo | ✅ ApplicationExitInfo | Same (API 30+) |
 | ANR Detection | ✅ Android only | ✅ Android only | Watchdog-based |
-| Error Deduplication | ✅ Configurable window | Check Flutter docs | RN has time-based dedup |
+| Error Deduplication | ✅ Fingerprint (message+stack), 5s window, configurable | ❌ None | RN: message+stack fingerprint, time window |
 | **Network Monitoring** |
-| Fetch API | ✅ Automatic | ✅ Via http package | RN: faro.tracing.fetch events (Web SDK format) |
-| XMLHttpRequest | N/A (fetch only) | N/A | RN patches fetch only |
+| Fetch API | ✅ Automatic | N/A (no fetch in Flutter) | RN: faro.tracing.fetch events (Web SDK format) |
+| XMLHttpRequest / axios | ✅ Automatic | N/A | RN: both fetch and XHR tracked |
 | Request/Response Size | ✅ Tracked | ✅ Tracked | Both capture sizes |
 | URL Filtering | ✅ RegExp array | ✅ String array | Different filter types |
 | **Session Management** |

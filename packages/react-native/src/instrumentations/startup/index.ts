@@ -91,10 +91,7 @@ export class StartupInstrumentation extends BaseInstrumentation {
       };
 
       setTimeout(() => {
-        this.api.pushMeasurement(
-          { type: 'app_startup', values },
-          { skipDedupe: true }
-        );
+        this.api.pushMeasurement({ type: 'app_startup', values }, { skipDedupe: true });
       }, 100);
 
       this.logInfo(`Cold start metrics captured: ${appStartDuration}ms`);

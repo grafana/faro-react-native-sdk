@@ -107,13 +107,9 @@ export class XHRInstrumentation extends BaseInstrumentation {
     ): void {
       this._faroMethod = (method || 'GET').toUpperCase();
       this._faroUrl = resolveUrl(url);
-      return self.originalOpen!.apply(this, [
-        method,
-        url,
-        _async,
-        _user as string,
-        _password as string,
-      ] as Parameters<typeof XMLHttpRequest.prototype.open>);
+      return self.originalOpen!.apply(this, [method, url, _async, _user as string, _password as string] as Parameters<
+        typeof XMLHttpRequest.prototype.open
+      >);
     };
 
     this.originalSend = proto.send;

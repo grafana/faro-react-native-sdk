@@ -2,19 +2,40 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { BaseInstrumentation, dateNow, VERSION } from '@grafana/faro-core';
 
-// Define app state changed event constant - exported for testing
-export const EVENT_APP_STATE_CHANGED = 'app_state_changed';
+// Event name aligned with Faro Flutter SDK (app_lifecycle_changed)
+export const EVENT_APP_STATE_CHANGED = 'app_lifecycle_changed';
+
+/**
+ * Maps React Native AppStateStatus to Flutter AppLifecycleState names for cross-SDK consistency.
+ * RN active=resumed, background=paused, inactive=inactive, unknown/extension=detached
+ */
+function mapToFlutterLifecycleState(rnState: AppStateStatus | undefined): string {
+  if (!rnState) return 'detached';
+  switch (rnState) {
+    case 'active':
+      return 'resumed';
+    case 'background':
+      return 'paused';
+    case 'inactive':
+      return 'inactive';
+    case 'unknown':
+    case 'extension':
+    default:
+      return 'detached';
+  }
+}
 
 /**
  * AppState instrumentation for React Native
  * Tracks app foreground/background/inactive state changes
  *
- * AppState values:
- * - 'active': App is running in the foreground
- * - 'background': App is running in the background (user has switched to another app or home screen)
- * - 'inactive': Transitional state (e.g., incoming call, opening control center on iOS)
- * - 'unknown': Initial state before first change (iOS only)
- * - 'extension': App extension is running (iOS only)
+ * Uses event name and state names aligned with Faro Flutter SDK (app_lifecycle_changed, resumed/paused/inactive/detached).
+ *
+ * React Native AppState → Flutter AppLifecycleState mapping:
+ * - 'active' → 'resumed'
+ * - 'background' → 'paused'
+ * - 'inactive' → 'inactive'
+ * - 'unknown'/'extension' → 'detached'
  */
 export class AppStateInstrumentation extends BaseInstrumentation {
   readonly name = '@grafana/faro-react-native:instrumentation-appstate';
@@ -38,7 +59,9 @@ export class AppStateInstrumentation extends BaseInstrumentation {
   }
 
   /**
-   * Handles app state changes and emits app_state_changed events
+   * Handles app state changes and emits app_lifecycle_changed events.
+   * State names aligned with Faro Flutter SDK (resumed/paused/inactive/detached).
+   * Includes duration and timestamp for time-in-state analysis.
    */
   private handleAppStateChange = (nextAppState: AppStateStatus): void => {
     const previousState = this.currentState;
@@ -49,19 +72,21 @@ export class AppStateInstrumentation extends BaseInstrumentation {
     this.currentState = nextAppState;
     this.stateStartTime = now;
 
-    // Log the state change
+    // Log the state change (internal debug keeps RN state names)
     this.logDebug('App state changed', {
       from: previousState,
       to: nextAppState,
       duration,
     });
 
-    // Emit app state change event
+    // Emit app lifecycle change event (Flutter-aligned state names + RN duration/timestamp)
+    const fromState = previousState !== undefined ? mapToFlutterLifecycleState(previousState) : '';
+    const toState = mapToFlutterLifecycleState(nextAppState);
     this.api.pushEvent(
       EVENT_APP_STATE_CHANGED,
       {
-        fromState: previousState ?? 'unknown',
-        toState: nextAppState,
+        fromState,
+        toState,
         duration: duration.toString(),
         timestamp: now.toString(),
       },

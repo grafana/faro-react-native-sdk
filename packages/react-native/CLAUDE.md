@@ -195,7 +195,7 @@ this.api.pushError(error, { type: errorType });
 
 // ✅ Good - explicit types for special cases
 this.api.pushError(error, { type: 'ANR' }); // For ANR events
-this.api.pushError(error, { type: 'Crash' }); // For crash reports
+this.api.pushError(error, { type: 'crash' }); // For crash reports
 
 // ❌ Bad - generic bucket type
 this.api.pushError(error, { type: 'react_native_error' });

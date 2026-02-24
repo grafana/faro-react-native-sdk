@@ -24,8 +24,7 @@ export interface EnableTransportsConfig {
  * Flag-based config: Set what to enable, makeRNConfig builds instrumentations and transports.
  * Only `app` is required; faro-core props (dedupe, parseStacktrace, etc.) have defaults in makeRNConfig.
  */
-export interface ReactNativeConfig
-  extends Partial<Omit<Config, 'app' | 'metas' | 'instrumentations' | 'transports'>> {
+export interface ReactNativeConfig extends Partial<Omit<Config, 'app' | 'metas' | 'instrumentations' | 'transports'>> {
   /** Application metadata (required) */
   app: Config['app'];
 

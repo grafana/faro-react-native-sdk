@@ -132,9 +132,7 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
   if (enableTracing) {
     try {
       const { TracingInstrumentation } = require('@grafana/faro-react-native-tracing');
-      instrumentations.push(
-        new TracingInstrumentation(tracingOptions)
-      );
+      instrumentations.push(new TracingInstrumentation(tracingOptions));
     } catch {
       // eslint-disable-next-line no-console
       console.warn(

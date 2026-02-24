@@ -147,9 +147,7 @@ export class HttpInstrumentation extends BaseInstrumentation {
           const contentLength = response.headers.get('content-length');
           const responseSize = contentLength ? parseInt(contentLength, 10) : undefined;
           payload.responseSize =
-            responseSize != null && !Number.isNaN(responseSize) && responseSize >= 0
-              ? responseSize
-              : undefined;
+            responseSize != null && !Number.isNaN(responseSize) && responseSize >= 0 ? responseSize : undefined;
 
           payload.endTime = endTime;
           payload.duration = duration;

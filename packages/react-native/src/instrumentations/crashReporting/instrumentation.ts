@@ -1,6 +1,7 @@
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 import { NativeModules } from 'react-native';
 
+import { ErrorMechanism } from '../errors/const';
 import type { CrashReport, CrashReportingOptions } from './types';
 
 /**
@@ -88,11 +89,11 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
       try {
         // Check if session attributes are populated
         const sessionAttrs = this.metas?.value?.session?.attributes;
-        
+
         if (sessionAttrs) {
           const attrCount = Object.keys(sessionAttrs).length;
           const attrKeys = JSON.stringify(Object.keys(sessionAttrs));
-          
+
           // Look for multiple device-specific attributes that indicate full async collection is done.
           // getSessionAttributes() collects these asynchronously:
           // - device_id (async getDeviceId)
@@ -100,15 +101,18 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
           // - device_model_name (DeviceInfo.getDeviceNameSync)
           // All three should be present when collection is complete.
           const hasDeviceId = 'device_id' in sessionAttrs && sessionAttrs['device_id'] !== 'unknown';
-          const hasDeviceOsDetail = 'device_os_detail' in sessionAttrs && sessionAttrs['device_os_detail'] !== 'unknown';
+          const hasDeviceOsDetail =
+            'device_os_detail' in sessionAttrs && sessionAttrs['device_os_detail'] !== 'unknown';
           const hasDeviceModelName = 'device_model_name' in sessionAttrs;
-          
+
           if (hasDeviceId && hasDeviceOsDetail && hasDeviceModelName) {
             const elapsed = Date.now() - startTime;
             this.logDebug(`Session attributes ready after ${elapsed}ms (${checkCount} checks, ${attrCount} attrs)`);
             return;
           } else {
-            this.logDebug(`Check #${checkCount}: Found ${attrCount} session attributes: ${attrKeys} but still missing required attrs - device_id:${hasDeviceId}, device_os_detail:${hasDeviceOsDetail}, device_model_name:${hasDeviceModelName}`);
+            this.logDebug(
+              `Check #${checkCount}: Found ${attrCount} session attributes: ${attrKeys} but still missing required attrs - device_id:${hasDeviceId}, device_os_detail:${hasDeviceOsDetail}, device_model_name:${hasDeviceModelName}`
+            );
           }
         } else {
           this.logDebug(`Check #${checkCount}: No session attributes available yet`);
@@ -119,14 +123,16 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
       }
 
       // Wait before next check
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
     // Timeout reached - log warning but continue
     const finalAttrs = this.metas?.value?.session?.attributes;
     const finalAttrCount = finalAttrs ? Object.keys(finalAttrs).length : 0;
     const finalAttrKeys = finalAttrs ? JSON.stringify(Object.keys(finalAttrs)) : 'none';
-    this.logWarn(`Session attributes not ready after ${maxWaitMs}ms timeout (${checkCount} checks, ${finalAttrCount} attrs: ${finalAttrKeys}). Sending crash report anyway.`);
+    this.logWarn(
+      `Session attributes not ready after ${maxWaitMs}ms timeout (${checkCount} checks, ${finalAttrCount} attrs: ${finalAttrKeys}). Sending crash report anyway.`
+    );
   }
 
   private getNativeModule(): typeof NativeModules.FaroReactNativeModule | null {
@@ -165,11 +171,12 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
           // If parsing fails, still try to report something
           this.logError('Failed to parse crash report JSON', parseError);
           this.api.pushError(new Error('Application crash (parse error)'), {
-            type: 'crash',
             context: {
-              raw: crashJson.substring(0, 500), // Limit size
+              mechanism: ErrorMechanism.CRASH,
               parseError: String(parseError),
+              raw: crashJson.substring(0, 500), // Limit size
             },
+            type: 'crash',
           });
         }
       }
@@ -183,7 +190,9 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
     const error = new Error(errorMessage);
 
     // Build context from crash data (matching Flutter pattern)
-    const context: Record<string, string> = {};
+    const context: Record<string, string> = {
+      mechanism: ErrorMechanism.CRASH,
+    };
 
     if (crash.trace) {
       context['trace'] = crash.trace;

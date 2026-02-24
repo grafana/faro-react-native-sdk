@@ -1,10 +1,5 @@
 import type { Config } from '@grafana/faro-core';
-import {
-  defaultGlobalObjectKey,
-  defaultUnpatchedConsole,
-  InternalLoggerLevel,
-  LogLevel,
-} from '@grafana/faro-core';
+import { defaultGlobalObjectKey, defaultUnpatchedConsole, InternalLoggerLevel, LogLevel } from '@grafana/faro-core';
 
 import { getStackFramesFromError } from '../instrumentations/errors/stackTraceParser';
 import { getPageMeta } from '../metas/page';
@@ -51,9 +46,7 @@ function buildTransports(config: ReactNativeConfig): Config['transports'] {
   }
 
   if (enableTransports.console) {
-    builtTransports.push(
-      new ConsoleTransport({ level: LogLevel.DEBUG })
-    );
+    builtTransports.push(new ConsoleTransport({ level: LogLevel.DEBUG }));
   }
 
   const extraTransports = config.transports ?? [];

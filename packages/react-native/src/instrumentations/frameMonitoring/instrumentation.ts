@@ -217,7 +217,7 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private handleSlowFrames(count: number): void {
-    // Note: Despite the name "slow_frames", this count represents slow frame EVENTS, not individual frames. 
+    // Note: Despite the name "slow_frames", this count represents slow frame EVENTS, not individual frames.
     // Each event is a period of consecutive slow frames lasting ≥50ms (~3 frames at 60fps).
     this.api.pushMeasurement(
       {
@@ -233,8 +233,10 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     // This filters out any erroneous 0ms frozen frames
     if (durationMs > 0) {
       // 🔍 TEMP DEBUG LOG - Remove after analysis
-      console.log(`[Faro DEBUG ${Platform.OS.toUpperCase()}] 🧊 SENDING frozen frame: count=${count}, duration=${durationMs}ms`);
-      
+      console.log(
+        `[Faro DEBUG ${Platform.OS.toUpperCase()}] 🧊 SENDING frozen frame: count=${count}, duration=${durationMs}ms`
+      );
+
       this.api.pushMeasurement(
         {
           type: 'app_frozen_frame',

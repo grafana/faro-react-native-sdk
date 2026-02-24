@@ -9,8 +9,8 @@ export type { EnableTransportsConfig, ReactNativeConfig } from './config/types';
 export { getRNInstrumentations } from './config/getRNInstrumentations';
 
 // Export instrumentations
-export { ErrorsInstrumentation } from './instrumentations/errors';
-export type { ErrorsInstrumentationOptions } from './instrumentations/errors';
+export { ErrorMechanism, ErrorsInstrumentation } from './instrumentations/errors';
+export type { ErrorMechanismType, ErrorsInstrumentationOptions } from './instrumentations/errors';
 export { ConsoleInstrumentation } from './instrumentations/console';
 export { SessionInstrumentation } from './instrumentations/session';
 export { ViewInstrumentation } from './instrumentations/view';
@@ -38,10 +38,7 @@ export {
   trackUserAction,
   type WithFaroUserActionProps,
 } from './instrumentations/userActions/withFaroUserAction';
-export {
-  notifyHttpRequestEnd,
-  notifyHttpRequestStart,
-} from './instrumentations/userActions/httpRequestMonitor';
+export { notifyHttpRequestEnd, notifyHttpRequestStart } from './instrumentations/userActions/httpRequestMonitor';
 export type { HttpRequestMessagePayload } from './instrumentations/userActions/httpRequestMonitor';
 
 // Export error boundary

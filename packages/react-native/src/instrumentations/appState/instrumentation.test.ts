@@ -81,8 +81,8 @@ describe('AppStateInstrumentation', () => {
       expect(transport.items).toHaveLength(1);
       const event = transport.items[0] as TransportItem<EventEvent>;
       expect(event.payload.name).toBe(EVENT_APP_STATE_CHANGED);
-      expect(event.payload.attributes?.fromState).toBe('active');
-      expect(event.payload.attributes?.toState).toBe('background');
+      expect(event.payload.attributes?.fromState).toBe('resumed');
+      expect(event.payload.attributes?.toState).toBe('paused');
       expect(event.payload.attributes).toHaveProperty('duration');
       expect(event.payload.attributes).toHaveProperty('timestamp');
     });
@@ -111,8 +111,8 @@ describe('AppStateInstrumentation', () => {
       expect(transport.items).toHaveLength(2);
       const event = transport.items[1] as TransportItem<EventEvent>;
       expect(event.payload.name).toBe(EVENT_APP_STATE_CHANGED);
-      expect(event.payload.attributes?.fromState).toBe('background');
-      expect(event.payload.attributes?.toState).toBe('active');
+      expect(event.payload.attributes?.fromState).toBe('paused');
+      expect(event.payload.attributes?.toState).toBe('resumed');
     });
 
     it('should handle inactive state', () => {
@@ -129,6 +129,7 @@ describe('AppStateInstrumentation', () => {
 
       expect(transport.items).toHaveLength(1);
       const event = transport.items[0] as TransportItem<EventEvent>;
+      expect(event.payload.attributes?.fromState).toBe('resumed');
       expect(event.payload.attributes?.toState).toBe('inactive');
     });
 
@@ -149,19 +150,19 @@ describe('AppStateInstrumentation', () => {
       expect(transport.items).toHaveLength(3);
 
       const event1 = transport.items[0] as TransportItem<EventEvent>;
-      expect(event1.payload.attributes?.fromState).toBe('active');
+      expect(event1.payload.attributes?.fromState).toBe('resumed');
       expect(event1.payload.attributes?.toState).toBe('inactive');
 
       const event2 = transport.items[1] as TransportItem<EventEvent>;
       expect(event2.payload.attributes?.fromState).toBe('inactive');
-      expect(event2.payload.attributes?.toState).toBe('background');
+      expect(event2.payload.attributes?.toState).toBe('paused');
 
       const event3 = transport.items[2] as TransportItem<EventEvent>;
-      expect(event3.payload.attributes?.fromState).toBe('background');
-      expect(event3.payload.attributes?.toState).toBe('active');
+      expect(event3.payload.attributes?.fromState).toBe('paused');
+      expect(event3.payload.attributes?.toState).toBe('resumed');
     });
 
-    it('should include duration in state change events', () => {
+    it('should use Flutter-aligned state names with duration and timestamp', () => {
       jest.useFakeTimers();
 
       const transport = new MockTransport();
@@ -172,13 +173,15 @@ describe('AppStateInstrumentation', () => {
         })
       );
 
-      // Advance time and trigger state change
       jest.advanceTimersByTime(5000);
       appStateListeners.forEach((listener) => listener('background'));
 
       const event = transport.items[0] as TransportItem<EventEvent>;
+      expect(event.payload.attributes?.fromState).toBe('resumed');
+      expect(event.payload.attributes?.toState).toBe('paused');
       const duration = parseInt(event.payload.attributes?.duration as string, 10);
       expect(duration).toBeGreaterThanOrEqual(0);
+      expect(event.payload.attributes?.timestamp).toBeDefined();
 
       jest.useRealTimers();
     });

@@ -41,7 +41,7 @@ export function buildFetchEventAttributes(payload: HttpRequestPayload): Record<s
     'http.scheme': scheme,
     'http.host': host,
     'http.status_code': statusCode,
-    'duration_ns': durationNs,
+    duration_ns: durationNs,
   };
 
   if (payload.requestSize != null) {

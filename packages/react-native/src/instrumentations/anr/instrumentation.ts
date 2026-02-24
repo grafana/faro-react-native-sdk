@@ -1,6 +1,7 @@
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 import { NativeModules, Platform } from 'react-native';
 
+import { ErrorMechanism } from '../errors/const';
 import type { ANREvent, ANRInstrumentationOptions } from './types';
 
 /**
@@ -128,22 +129,22 @@ export class ANRInstrumentation extends BaseInstrumentation {
             const anr = JSON.parse(anrJson) as ANREvent;
 
             this.api.pushError(new Error('ANR (Application Not Responding)'), {
-              type: 'ANR',
               context: {
-                stacktrace: anr.stacktrace,
                 duration: String(anr.duration),
+                mechanism: ErrorMechanism.ANR,
+                stacktrace: anr.stacktrace,
                 timestamp: String(anr.timestamp),
-                mechanism: 'ANR',
               },
+              type: 'ANR',
             });
           } catch {
             // If parsing fails, still log the raw ANR
             this.api.pushError(new Error('ANR (Application Not Responding)'), {
-              type: 'ANR',
               context: {
+                mechanism: ErrorMechanism.ANR,
                 raw: anrJson,
-                mechanism: 'ANR',
               },
+              type: 'ANR',
             });
           }
         }
