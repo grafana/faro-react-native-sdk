@@ -1264,16 +1264,48 @@ initializeFaro({
 #### **React Native SDK**
 
 - **SessionInstrumentation** manages session lifecycle
-- **Persistent mode** (default): AsyncStorage; survives app restarts; 4h max, 15min inactivity timeout
-- **Volatile mode**: In-memory only; new session each launch
+- **Volatile mode** (default): In-memory only; new session each app launch
+- **Persistent mode** (optional): AsyncStorage; survives app restarts; 4h max, 15min inactivity timeout
 - Events: `session_start`, `session_extend`, `session_resume`
 - Auto-collects session attributes: device_id, device_os, device_model, RN version, etc.
 
 #### **Flutter SDK**
 
-- SharedPreferences for persistence
-- Similar session start/extend events
+- No session persistence — each app launch creates a new session
+- No session expiration — session lasts until app process ends
+- Single event: `session_start` on init
 - Session attributes from device info
+
+### Volatile vs Persistent (React Native Only)
+
+React Native offers two session modes. Flutter does not support either; it always creates a new session on each app launch.
+
+| Mode | Storage | Survives app restart | When session ends |
+|------|---------|----------------------|-------------------|
+| **Volatile** (default) | In-memory | No | App killed |
+| **Persistent** | AsyncStorage | Yes | 15 min inactivity or 4 h max |
+
+**Advantages of Persistent mode:**
+
+- **Unique session count** — count of `session_start` reflects distinct sessions, not every launch
+- **Session duration** — measure time from first start to last activity across app switches
+- **Returns per session** — `(session_start + session_resume) / session_start` shows engagement depth
+- **Market alignment** — common in RUM tools (e.g. Datadog: 15 min inactivity, 4 h max)
+
+**Flutter behavior:** A user who backgrounds and returns twice creates 3 separate sessions (each launch = new session). React Native with persistent mode treats this as one session with multiple returns.
+
+### Session Extend (React Native & Web SDK)
+
+`session_extend` is emitted when a **new session** is created because the previous one expired (inactivity or 4 h max), and the new session links to the old via `attributes.previousSession`. The old session is not extended; a fresh session ID is created. This lets backends treat the new session as continuing the same logical visit. Flutter does not emit `session_extend`.
+
+**When it happens:** `session_extend` occurs when `updateSession` runs (e.g. on app foreground or before sending telemetry) while the app is **still in memory** and the session has expired. It does **not** occur when the app was killed and reopened after 4+ h — in that case the stored session is cleared before creating the new one, so no `previousSession` link exists and `session_start` is emitted instead.
+
+### Using session_resume for Analytics
+
+With persistent mode, `session_resume` supports questions like:
+
+- **How many sessions end after a single foreground period?** — compare sessions with 1 event vs more
+- **How often do users actually return within the same session?** — count `session_resume` per `session_start`
 
 ---
 
@@ -1320,9 +1352,10 @@ Sessions are always enabled. Options (via faro-core config):
 
 | Aspect | React Native | Flutter |
 |--------|--------------|---------|
-| **Storage** | AsyncStorage | SharedPreferences |
-| **Session Timeout** | ✅ 4h / 15min inactivity | Check Flutter docs |
-| **Always Enabled** | ✅ Yes | ✅ Yes |
+| **Storage** | Volatile: in-memory; Persistent: AsyncStorage | No session persistence |
+| **Session expiration** | 4 h max, 15 min inactivity | None |
+| **Events** | `session_start`, `session_resume`, `session_extend` | `session_start` only |
+| **Always enabled** | Yes | Yes |
 
 ---
 
