@@ -1,5 +1,6 @@
-import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+
+import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 
 import type { ReactNativeConfig } from '../../config/types';
 

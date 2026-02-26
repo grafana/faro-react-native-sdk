@@ -175,11 +175,8 @@ export class TracingInstrumentation extends BaseInstrumentation {
     // This is CRITICAL for the tracer to generate real trace IDs instead of all zeros
     trace.setGlobalTracerProvider(this.provider);
 
-    const {
-      propagateTraceHeaderCorsUrls,
-      fetchInstrumentationOptions,
-      xhrInstrumentationOptions,
-    } = this.options.instrumentationOptions ?? {};
+    const { propagateTraceHeaderCorsUrls, fetchInstrumentationOptions, xhrInstrumentationOptions } =
+      this.options.instrumentationOptions ?? {};
 
     // Get ignore URLs from transports to prevent infinite loops
     const ignoreUrls = this.getIgnoreUrls();

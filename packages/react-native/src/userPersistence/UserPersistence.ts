@@ -1,5 +1,6 @@
-import type { MetaUser } from '@grafana/faro-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import type { MetaUser } from '@grafana/faro-core';
 
 import type { UserPersistence, UserPersistenceOptions } from './types';
 

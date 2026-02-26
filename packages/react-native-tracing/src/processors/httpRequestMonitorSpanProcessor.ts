@@ -2,9 +2,9 @@ import type { Context } from '@opentelemetry/api';
 import type { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace-base';
 
 import {
+  type HttpRequestMessagePayload,
   notifyHttpRequestEnd,
   notifyHttpRequestStart,
-  type HttpRequestMessagePayload,
 } from '@grafana/faro-react-native';
 
 const ATTR_HTTP_METHOD = 'http.method';
@@ -18,10 +18,7 @@ const ATTR_HTTP_URL = 'http.url';
 function getAttr(span: Span | ReadableSpan, key: string): string | undefined {
   const attrs = span.attributes as Record<string, unknown> | undefined;
   if (attrs == null) return undefined;
-  const raw =
-    typeof attrs['get'] === 'function'
-      ? (attrs as { get: (k: string) => unknown })['get'](key)
-      : attrs[key];
+  const raw = typeof attrs['get'] === 'function' ? (attrs as { get: (k: string) => unknown })['get'](key) : attrs[key];
   if (raw == null) return undefined;
   if (typeof raw === 'string') return raw.length > 0 ? raw : undefined;
   if (typeof raw === 'object' && raw !== null && 'stringValue' in raw) {
@@ -82,12 +79,8 @@ export class HttpRequestMonitorSpanProcessor implements SpanProcessor {
       };
       const startNs = spanWithTime.startTimeUnixNano;
       const endNs = spanWithTime.endTimeUnixNano;
-      const startTimeMs =
-        startNs != null && !Number.isNaN(Number(startNs))
-          ? Number(startNs) / 1_000_000
-          : Date.now();
-      const endTimeMs =
-        endNs != null && !Number.isNaN(Number(endNs)) ? Number(endNs) / 1_000_000 : Date.now();
+      const startTimeMs = startNs != null && !Number.isNaN(Number(startNs)) ? Number(startNs) / 1_000_000 : Date.now();
+      const endTimeMs = endNs != null && !Number.isNaN(Number(endNs)) ? Number(endNs) / 1_000_000 : Date.now();
 
       const payload: HttpRequestMessagePayload = {
         requestId,

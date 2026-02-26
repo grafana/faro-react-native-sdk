@@ -2,6 +2,7 @@ import { allLogLevels, BaseInstrumentation, defaultErrorArgsSerializer, LogLevel
 import type { LogArgsSerializer } from '@grafana/faro-core';
 
 import { ErrorMechanism } from '../errors/const';
+
 import { getDetailsFromConsoleErrorArgs, reactNativeLogArgsSerializer } from './utils';
 
 /**

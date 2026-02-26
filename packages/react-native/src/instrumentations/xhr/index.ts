@@ -1,9 +1,9 @@
 import { BaseInstrumentation, genShortID, VERSION } from '@grafana/faro-core';
 
-import { notifyHttpRequestEnd, notifyHttpRequestStart } from '../userActions/httpRequestMonitor';
-
 import { buildFetchEventAttributes } from '../http/utils';
 import type { HttpRequestPayload } from '../http/utils';
+import { notifyHttpRequestEnd, notifyHttpRequestStart } from '../userActions/httpRequestMonitor';
+import { getPushEventOptionsWithActionContext } from '../utils/actionContext';
 
 const FARO_TRACING_FETCH_EVENT = 'faro.tracing.fetch';
 
@@ -167,7 +167,8 @@ export class XHRInstrumentation extends BaseInstrumentation {
         notifyHttpRequestEnd(payload);
 
         const attributes = buildFetchEventAttributes(payload);
-        self.api?.pushEvent(FARO_TRACING_FETCH_EVENT, attributes);
+        const pushOptions = getPushEventOptionsWithActionContext();
+        self.api?.pushEvent(FARO_TRACING_FETCH_EVENT, attributes, undefined, pushOptions);
 
         self.logDebug(
           `XHR request → ${method} ${url} | status=${status} duration=${duration}ms` +

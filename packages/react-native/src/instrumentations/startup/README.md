@@ -134,6 +134,7 @@ initializeFaro({
 Startup metrics match the Faro Flutter SDK format:
 
 **Cold start** (process launch):
+
 ```json
 {
   "type": "app_startup",
@@ -145,6 +146,7 @@ Startup metrics match the Faro Flutter SDK format:
 ```
 
 **Warm start** (resume from background):
+
 ```json
 {
   "type": "app_startup",

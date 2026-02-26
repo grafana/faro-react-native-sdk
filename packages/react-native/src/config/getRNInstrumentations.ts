@@ -1,5 +1,6 @@
-import type { Instrumentation } from '@grafana/faro-core';
 import { Platform } from 'react-native';
+
+import type { Instrumentation } from '@grafana/faro-core';
 
 import { ANRInstrumentation } from '../instrumentations/anr';
 import { AppStateInstrumentation } from '../instrumentations/appState';
@@ -8,12 +9,12 @@ import { CrashReportingInstrumentation } from '../instrumentations/crashReportin
 import { ErrorsInstrumentation } from '../instrumentations/errors';
 import { FrameMonitoringInstrumentation } from '../instrumentations/frameMonitoring';
 import { HttpInstrumentation } from '../instrumentations/http';
-import { XHRInstrumentation } from '../instrumentations/xhr';
 import { PerformanceInstrumentation } from '../instrumentations/performance';
 import { SessionInstrumentation } from '../instrumentations/session';
 import { StartupInstrumentation } from '../instrumentations/startup';
 import { UserActionInstrumentation } from '../instrumentations/userActions';
 import { ViewInstrumentation } from '../instrumentations/view';
+import { XHRInstrumentation } from '../instrumentations/xhr';
 
 import type { ReactNativeConfig } from './types';
 
@@ -134,7 +135,6 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
       const { TracingInstrumentation } = require('@grafana/faro-react-native-tracing');
       instrumentations.push(new TracingInstrumentation(tracingOptions));
     } catch {
-      // eslint-disable-next-line no-console
       console.warn(
         '[Faro] enableTracing is true but @grafana/faro-react-native-tracing is not installed. ' +
           'Add it to use tracing: yarn add @grafana/faro-react-native-tracing'

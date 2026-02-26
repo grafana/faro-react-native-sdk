@@ -1,5 +1,5 @@
-import type { Config } from '@grafana/faro-core';
 import { defaultGlobalObjectKey, defaultUnpatchedConsole, InternalLoggerLevel, LogLevel } from '@grafana/faro-core';
+import type { Config } from '@grafana/faro-core';
 
 import { getStackFramesFromError } from '../instrumentations/errors/stackTraceParser';
 import { getPageMeta } from '../metas/page';

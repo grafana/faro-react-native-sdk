@@ -80,6 +80,7 @@ export default [
         clearTimeout: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
+        requestAnimationFrame: 'readonly',
         // Node.js globals
         process: 'readonly',
         Buffer: 'readonly',

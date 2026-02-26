@@ -106,9 +106,7 @@ describe('HttpInstrumentation', () => {
       expect(fetchEvent?.payload.attributes?.['http.status_code']).toBe('0');
       expect(fetchEvent?.payload.attributes?.['http.error']).toBe('Network error');
       expect(fetchEvent?.payload.attributes?.['duration_ns']).toBeDefined();
-
-      const exceptions = transport.items.filter((item) => item.type === 'exception');
-      expect(exceptions.length).toBeGreaterThan(0);
+      // HTTP failures are tracked as events only (no pushError); Grafana FEO derives HTTP Errors from events
     });
 
     it('should handle URL object input', async () => {

@@ -1,6 +1,7 @@
 import { BaseInstrumentation, genShortID, VERSION } from '@grafana/faro-core';
 
 import { notifyHttpRequestEnd, notifyHttpRequestStart } from '../userActions/httpRequestMonitor';
+import { getPushEventOptionsWithActionContext } from '../utils/actionContext';
 
 import { buildFetchEventAttributes } from './utils';
 import type { HttpRequestPayload } from './utils';
@@ -157,8 +158,10 @@ export class HttpInstrumentation extends BaseInstrumentation {
           notifyHttpRequestEnd(payload);
 
           // Emit faro.tracing.fetch event (Web SDK format for Grafana HTTP insights)
+          // Include action context when active so HTTP errors show in user action table
           const attributes = buildFetchEventAttributes(payload);
-          self.api?.pushEvent(FARO_TRACING_FETCH_EVENT, attributes);
+          const pushOptions = getPushEventOptionsWithActionContext();
+          self.api?.pushEvent(FARO_TRACING_FETCH_EVENT, attributes, undefined, pushOptions);
 
           self.logDebug(
             `HTTP request → ${method} ${url} | status=${response.status} duration=${duration}ms` +
@@ -182,22 +185,13 @@ export class HttpInstrumentation extends BaseInstrumentation {
 
           // Emit faro.tracing.fetch event for failed request (status 0 = network error)
           const attributes = buildFetchEventAttributes(payload);
-          self.api?.pushEvent(FARO_TRACING_FETCH_EVENT, attributes);
+          const pushOptions = getPushEventOptionsWithActionContext();
+          self.api?.pushEvent(FARO_TRACING_FETCH_EVENT, attributes, undefined, pushOptions);
 
           self.logDebug(
             `HTTP request error → ${method} ${url} | error=${payload.error} duration=${duration}ms` +
               (requestSize != null ? ` request_size=${requestSize}` : '')
           );
-
-          self.api?.pushError(error, {
-            type: 'HTTP Request Failed',
-            context: {
-              url,
-              method,
-              requestId,
-              duration: String(duration),
-            },
-          });
 
           self.requests.delete(requestId);
           throw error;

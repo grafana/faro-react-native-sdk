@@ -43,8 +43,10 @@ react {
     // extraPackagerArgs = []
 
     /* Hermes Commands */
-    //   The hermes compiler command to run. By default it is 'hermesc'
-    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
+    //   Explicit path for monorepo: hermesc lookup can fail when react-native is hoisted to workspace root
+    def hermescOsDir = org.gradle.internal.os.OperatingSystem.current().isMacOsX() ? "osx-bin" :
+        (org.gradle.internal.os.OperatingSystem.current().isWindows() ? "win64-bin" : "linux64-bin")
+    hermesCommand = file("../../../node_modules/react-native/sdks/hermesc/${hermescOsDir}/hermesc").absolutePath
     //
     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
     // hermesFlags = ["-O", "-output-source-map"]

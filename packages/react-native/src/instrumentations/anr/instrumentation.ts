@@ -1,7 +1,9 @@
-import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 import { NativeModules, Platform } from 'react-native';
 
+import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
+
 import { ErrorMechanism } from '../errors/const';
+
 import type { ANREvent, ANRInstrumentationOptions } from './types';
 
 /**

@@ -3,7 +3,6 @@ import type { ErrorUtils } from 'react-native';
 import { BaseInstrumentation } from '@grafana/faro-core';
 
 import { ErrorMechanism, primitiveUnhandledType } from './const';
-
 export { ErrorMechanism } from './const';
 export type { ErrorMechanismType } from './const';
 import { enhanceErrorWithContext } from './stackTraceParser';

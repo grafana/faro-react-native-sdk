@@ -1,6 +1,7 @@
+import { NativeModules } from 'react-native';
+
 import { dateNow, deepEqual, EVENT_OVERRIDES_SERVICE_NAME, faro, genShortID, isEmpty } from '@grafana/faro-core';
 import type { Meta, MetaOverrides } from '@grafana/faro-core';
-import { NativeModules } from 'react-native';
 
 import { isSampled } from './sampling';
 import { SESSION_EXPIRATION_TIME, SESSION_INACTIVITY_TIME } from './sessionConstants';

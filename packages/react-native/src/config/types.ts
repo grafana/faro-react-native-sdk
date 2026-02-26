@@ -1,8 +1,8 @@
 import type { Config } from '@grafana/faro-core';
+import type { TracingInstrumentationOptions } from '@grafana/faro-react-native-tracing';
 
 import type { ANRInstrumentationOptions } from '../instrumentations/anr';
 import type { FrameMonitoringOptions } from '../instrumentations/frameMonitoring';
-import type { TracingInstrumentationOptions } from '@grafana/faro-react-native-tracing';
 
 /**
  * Flags for enabling built-in transports.
