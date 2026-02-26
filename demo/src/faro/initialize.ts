@@ -13,11 +13,24 @@ const FARO_DEBUG = __DEV__;
 const DEMO_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '2.0.0', '2.1.0'];
 
 /**
+ * Demo environments to simulate different deployment contexts
+ */
+const DEMO_ENVIRONMENTS = ['production', 'staging', 'development'];
+
+/**
  * Get a random version for demo purposes
  */
 function getDemoVersion(): string {
   const randomIndex = Math.floor(Math.random() * DEMO_VERSIONS.length);
   return DEMO_VERSIONS[randomIndex];
+}
+
+/**
+ * Get a random environment for demo purposes
+ */
+function getDemoEnvironment(): string {
+  const randomIndex = Math.floor(Math.random() * DEMO_ENVIRONMENTS.length);
+  return DEMO_ENVIRONMENTS[randomIndex];
 }
 
 /**
@@ -35,16 +48,23 @@ export function initFaro() {
   }
 
   const appVersion = getDemoVersion();
+  const appEnvironment = getDemoEnvironment();
   const fetchVitalsInterval = FARO_DEBUG ? 5000 : 30000;
 
   const config: ReactNativeConfig = {
     app: {
       name: 'react-native-sdk-demo',
       version: appVersion,
-      environment: 'production',
+      environment: appEnvironment,
     },
 
     url: FARO_COLLECTOR_URL,
+
+    // Session sampling: 10% in production, 100% in staging/development (sampler = Flutter SamplingFunction)
+    sessionTracking: {
+      sampler: ({ metas }) =>
+        metas.app?.environment === 'production' ? 0.1 : 1,
+    },
 
     // Performance vitals (aligned with Flutter SDK)
     cpuUsageVitals: true,

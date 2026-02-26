@@ -383,9 +383,9 @@ lerna publish from-package
 
 ## Documentation
 
-### MOBILE_RUM_COMPARISON.md
+### docs/mobile-rum/
 
-This document is read by both technical and non-technical people (product, support, stakeholders). When writing or updating it:
+The Mobile RUM comparison docs (`docs/mobile-rum/index.md` and related files) are read by both technical and non-technical people (product, support, stakeholders). When writing or updating it:
 
 - **Audience**: Assume readers include people unfamiliar with implementation details.
 - **"How Data is Collected"**: Keep the list structure (bullets, iOS/Android breakdown) but use plain language. Avoid file paths, class names, internal APIs. It's fine to name libraries (e.g. axios, dio) when relevant.
