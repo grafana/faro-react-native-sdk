@@ -17,9 +17,10 @@ yarn add @grafana/faro-react-native-tracing
 
 ## Quick Start
 
+Enable tracing via the `enableTracing` flag—no need to add `TracingInstrumentation` to `instrumentations`:
+
 ```typescript
 import { initializeFaro } from '@grafana/faro-react-native';
-import { TracingInstrumentation } from '@grafana/faro-react-native-tracing';
 
 const faro = initializeFaro({
   url: 'https://faro-collector-prod-YOUR-REGION.grafana.net/collect/YOUR_TOKEN_HERE',
@@ -28,19 +29,17 @@ const faro = initializeFaro({
     version: '1.0.0',
     environment: 'production',
   },
-  instrumentations: [
-    // Add tracing instrumentation to enable distributed tracing
-    new TracingInstrumentation({
-      // Optional: Propagate trace headers to these URLs for distributed tracing
-      instrumentationOptions: {
-        propagateTraceHeaderCorsUrls: [/https:\/\/my-api\.com/],
-      },
-    }),
-  ],
+  enableTracing: true,
+  tracingOptions: {
+    // Optional: Propagate trace headers to these URLs for distributed tracing
+    instrumentationOptions: {
+      propagateTraceHeaderCorsUrls: [/https:\/\/my-api\.com/],
+    },
+  },
 });
 ```
 
-That's it! HTTP requests via `fetch()` are now automatically traced and sent to your Faro collector.
+That's it! HTTP requests via `fetch()` are now automatically traced (and correlated with user actions when user action tracking is enabled) and sent to your Faro collector.
 
 ## Features
 
@@ -48,6 +47,7 @@ That's it! HTTP requests via `fetch()` are now automatically traced and sent to 
 
 - **Fetch Instrumentation**: HTTP requests are automatically traced with no code changes
 - **Session Correlation**: Traces are correlated with Faro sessions for complete user journey tracking
+- **User Action Correlation**: Traces are correlated with Faro user actions (when user action tracking is enabled)
 - **User Context**: User information is automatically added to span attributes
 - **Device Metadata**: Device and platform information included in traces (device model, OS, locale, etc.)
 
@@ -84,9 +84,23 @@ The tracing instrumentation is carefully designed to prevent infinite loops that
 
 ## Configuration Options
 
+When using `enableTracing: true`, pass options via `tracingOptions` in your Faro config. For manual setup (e.g. custom config without makeRNConfig), add `TracingInstrumentation` to `instrumentations`:
+
 ### Basic Configuration
 
 ```typescript
+// Via flag (recommended):
+initializeFaro({
+  enableTracing: true,
+  tracingOptions: {
+    resourceAttributes: { 'deployment.environment': 'staging' },
+    instrumentationOptions: {
+      propagateTraceHeaderCorsUrls: [/https:\/\/api\.example\.com/],
+    },
+  },
+});
+
+// Or manually:
 new TracingInstrumentation({
   // Optional: Add custom resource attributes
   resourceAttributes: {
@@ -342,11 +356,11 @@ function performOperation() {
 │                    Your React Native App                     │
 └──────────────────────┬──────────────────────────────────────┘
                        │
-                       │ fetch() calls
+                       │ fetch() / XHR calls
                        ↓
 ┌─────────────────────────────────────────────────────────────┐
-│              FetchInstrumentation (OTEL)                     │
-│  • Intercepts fetch() calls                                  │
+│       FetchInstrumentation + XMLHttpRequestInstrumentation  │
+│  • Intercepts fetch() and XMLHttpRequest calls              │
 │  • Creates spans automatically                               │
 │  • Propagates W3C Trace Context headers                      │
 └──────────────────────┬──────────────────────────────────────┘
@@ -354,9 +368,16 @@ function performOperation() {
                        │ Spans
                        ↓
 ┌─────────────────────────────────────────────────────────────┐
+│     HttpRequestMonitorSpanProcessor (user action correlation) │
+│  • Notifies httpRequestMonitor for user action halt logic    │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       │ Spans
+                       ↓
+┌─────────────────────────────────────────────────────────────┐
 │           FaroMetaAttributesSpanProcessor                    │
-│  • Adds Faro metas (session, user, device)                   │
-│  • Enriches spans with context                               │
+│  • Adds Faro metas (session, user) to spans                  │
+│  • Device/service from resource                              │
 └──────────────────────┬──────────────────────────────────────┘
                        │
                        │ Enriched spans
@@ -387,12 +408,11 @@ function performOperation() {
 
 ### Span Lifecycle
 
-1. **Span Creation**: When a fetch() call is made, FetchInstrumentation creates a span
-2. **Context Propagation**: W3C Trace Context headers added to request (if URL matches `propagateTraceHeaderCorsUrls`)
-3. **Enrichment**: FaroMetaAttributesSpanProcessor adds Faro metas (session, user, device)
-4. **Batching**: BatchSpanProcessor collects spans (30 spans or 1000ms delay)
-5. **Export**: FaroTraceExporter converts spans to OTLP format
-6. **Transmission**: Spans sent to Faro collector via `faro.api.pushTraces()`
+1. **Span Creation**: FetchInstrumentation or XMLHttpRequestInstrumentation creates a span when fetch()/XHR is called; W3C Trace Context headers added to the request (if URL matches `propagateTraceHeaderCorsUrls`)
+2. **Enrichment**: HttpRequestMonitorSpanProcessor notifies for user action correlation; FaroMetaAttributesSpanProcessor adds session and user to spans (device/service come from resource)
+3. **Batching**: BatchSpanProcessor collects spans (max 30 spans or 1000ms delay)
+4. **Export**: FaroTraceExporter converts spans to OTLP format; also sends Faro events (e.g. `faro.tracing.fetch`) for CLIENT spans
+5. **Transmission**: Spans sent to Faro collector via `faro.api.pushTraces()`
 
 ### Span Attributes
 
@@ -408,23 +428,22 @@ Every span includes these attributes:
 **Faro Session Attributes:**
 
 - `session.id` - Faro session ID
-- `session.attributes.*` - Custom session attributes
 
 **User Attributes (if set):**
 
-- `enduser.id` - User ID
-- `enduser.username` - Username
-- `enduser.email` - Email
+- `user.id` - User ID
+- `user.name` - Username
+- `user.email` - Email
 
-**Device Attributes:**
+**Device Attributes (from resource):**
 
 - `device.model` - Device model (e.g., "iPhone 15 Pro")
 - `device.brand` - Device manufacturer (e.g., "Apple")
 - `device.platform` - OS name (e.g., "iOS")
-- `device.os_version` - OS version (e.g., "17.0")
+- `device.os.version` - OS version (e.g., "17.0")
 - `device.locale` - Device locale (e.g., "en-US")
 
-**App Attributes:**
+**App Attributes (from resource):**
 
 - `service.name` - App name from config
 - `service.version` - App version
