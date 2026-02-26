@@ -2,6 +2,7 @@ import { defaultGlobalObjectKey, defaultUnpatchedConsole, InternalLoggerLevel, L
 import type { Config } from '@grafana/faro-core';
 
 import { getStackFramesFromError } from '../instrumentations/errors/stackTraceParser';
+import { defaultSessionTrackingConfig } from '../instrumentations/session/sessionManager/sessionConstants';
 import { getPageMeta } from '../metas/page';
 import { getScreenMeta } from '../metas/screen';
 import { getSdkMeta } from '../metas/sdk';
@@ -67,7 +68,6 @@ function buildTransports(config: ReactNativeConfig): Config['transports'] {
  */
 function buildInstrumentations(config: ReactNativeConfig): Config['instrumentations'] {
   const baseInstrumentations = getRNInstrumentations(config);
-
   const extraInstrumentations = config.instrumentations ?? [];
   return [...baseInstrumentations, ...extraInstrumentations];
 }
@@ -107,7 +107,7 @@ export function makeRNConfig(config: ReactNativeConfig): Config {
       itemLimit: 50,
     },
     sessionTracking: {
-      enabled: true,
+      ...defaultSessionTrackingConfig,
       ...config.sessionTracking,
     },
     metas: [...defaultMetas, ...customMetas],

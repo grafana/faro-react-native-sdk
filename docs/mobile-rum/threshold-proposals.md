@@ -223,4 +223,3 @@ count_over_time(
 ```
 
 ---
-

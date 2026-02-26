@@ -597,11 +597,12 @@ initializeFaro({
     version: '1.0.0',
   },
   sessionTracking: {
-    enabled: true,
-    // Use AsyncStorage for persistent sessions across app restarts
-    persistent: true,
-    // Session expires after 4 hours by default (can be customized)
-    // Session is also invalidated after 15 minutes of inactivity
+    enabled: true, // default: true
+    persistent: true, // default: false (volatile)
+    // Configurable timeouts (all in ms):
+    inactivityTimeout: 15 * 60 * 1000, // default: 15 min
+    sessionExpirationTime: 4 * 60 * 60 * 1000, // default: 4 h
+    maxSessionPersistenceTime: 15 * 60 * 1000, // default: 15 min
 
     // Optional: Sampling rate (0-1) to sample sessions
     samplingRate: 1.0, // 100% of sessions
@@ -626,9 +627,11 @@ initializeFaro({
 
 **Session Types:**
 
-- **Persistent Sessions** (`persistent: true`): Stored in AsyncStorage and survive app restarts. Sessions expire after 4 hours or 15 minutes of inactivity.
+- **Persistent Sessions** (`persistent: true`): Stored in AsyncStorage and survive app restarts. Sessions expire after `sessionExpirationTime` (default 4 h) or `inactivityTimeout` (default 15 min).
 
 - **Volatile Sessions** (`persistent: false`, default): Stored in memory only. Each app launch creates a new session.
+
+**Defaults:** `persistent=false`, `inactivityTimeout=15min`, `sessionExpirationTime=4h`, `maxSessionPersistenceTime=15min`
 
 **Session Events:**
 

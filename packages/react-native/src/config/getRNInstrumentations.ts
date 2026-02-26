@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import type { Instrumentation } from '@grafana/faro-core';
+import type { Instrumentation, Patterns } from '@grafana/faro-core';
 
 import { ANRInstrumentation } from '../instrumentations/anr';
 import { AppStateInstrumentation } from '../instrumentations/appState';
@@ -17,6 +17,11 @@ import { ViewInstrumentation } from '../instrumentations/view';
 import { XHRInstrumentation } from '../instrumentations/xhr';
 
 import type { ReactNativeConfig } from './types';
+
+/** Convert Patterns (string | RegExp)[] to RegExp[] for instrumentations that require RegExp[]. */
+function toRegExpArray(patterns: Patterns): RegExp[] {
+  return patterns.map((p) => (typeof p === 'string' ? new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) : p));
+}
 
 /**
  * Returns the default set of instrumentations for React Native.
@@ -99,8 +104,8 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
   // (in TracingInstrumentation) patch fetch and XHR, sending faro.tracing.fetch events via span export.
   // When tracing is disabled, HttpInstrumentation and XHRInstrumentation patch fetch/XHR directly.
   if (!enableTracing) {
-    instrumentations.push(new HttpInstrumentation({ ignoredUrls: ignoreUrls }));
-    instrumentations.push(new XHRInstrumentation({ ignoredUrls: ignoreUrls }));
+    instrumentations.push(new HttpInstrumentation({ ignoredUrls: toRegExpArray(ignoreUrls) }));
+    instrumentations.push(new XHRInstrumentation({ ignoredUrls: toRegExpArray(ignoreUrls) }));
   }
 
   // Performance vitals (CPU/memory)

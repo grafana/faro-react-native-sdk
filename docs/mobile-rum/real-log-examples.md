@@ -279,4 +279,3 @@ timestamp=2024-01-15T10:25:00.000Z kind=event level=info event_name=view_changed
 ```
 
 ---
-

@@ -1028,14 +1028,14 @@ Faro.initialize(
 
 #### Key Differences
 
-| Aspect                   | React Native    | Flutter            |
-| ------------------------ | --------------- | ------------------ |
-| **Android Support**      | ✅ Yes          | ✅ Yes             |
-| **iOS Support**          | ❌ No           | ❌ No              |
-| **Default Enabled**      | ❌ false        | ❌ false           |
+| Aspect                   | React Native    | Flutter              |
+| ------------------------ | --------------- | -------------------- |
+| **Android Support**      | ✅ Yes          | ✅ Yes               |
+| **iOS Support**          | ❌ No           | ❌ No                |
+| **Default Enabled**      | ❌ false        | ❌ false             |
 | **Configurable Timeout** | ✅ Yes          | ❌ No (fixed 5000ms) |
-| **Stack Trace Capture**  | ✅ Yes          | ✅ Yes             |
-| **Detection Method**     | Watchdog thread | Similar watchdog   |
+| **Stack Trace Capture**  | ✅ Yes          | ✅ Yes               |
+| **Detection Method**     | Watchdog thread | Similar watchdog     |
 
 ---
 
@@ -1238,16 +1238,16 @@ Each exception includes two classification dimensions:
 
 **Error reference table** (type, value, mechanism, and key context props):
 
-| Source                     | `type`  | `value` pattern                                                   | `context.mechanism`  | Key context props                                  |
-| -------------------------- | ------- | ------------------------------------------------------------------ | -------------------- | -------------------------------------------------- |
-| Uncaught sync error        | `Error` | Raw message (e.g. `"This is a synchronous error for testing"`)     | `uncaught`           | `isFatal`, `isHermes`, `platform`, `platformVersion` |
-| Uncaught sync (via console) | `Error` | Prefixed: `"console.error: {message}"`                             | `console`            | —                                                  |
-| Unhandled promise (Error)  | `Error` | Raw message or `"Unhandled Promise Rejection: …"`                  | `unhandledrejection` | `platform`, `isHermes`, `platformVersion`           |
-| Unhandled promise (via console) | `Error` | Prefixed: `"console.error: Uncaught (in promise, id: N): \"{message}\""` | `console`     | —                                                  |
-| Primitive rejection        | `UnhandledRejection` | `"Unhandled Promise Rejection: …"`                          | `unhandledrejection` | —                                                   |
-| console.error (explicit)   | `Error` | Prefixed: `"console.error: {message}"`                             | `console`            | —                                                  |
-| Native crash               | `crash` | Crash description string                                          | `crash`              | `description`, `trace`, `timestamp`, etc.           |
-| ANR                        | `ANR`   | ANR description                                                   | `anr`                | —                                                  |
+| Source                          | `type`               | `value` pattern                                                          | `context.mechanism`  | Key context props                                    |
+| ------------------------------- | -------------------- | ------------------------------------------------------------------------ | -------------------- | ---------------------------------------------------- |
+| Uncaught sync error             | `Error`              | Raw message (e.g. `"This is a synchronous error for testing"`)           | `uncaught`           | `isFatal`, `isHermes`, `platform`, `platformVersion` |
+| Uncaught sync (via console)     | `Error`              | Prefixed: `"console.error: {message}"`                                   | `console`            | —                                                    |
+| Unhandled promise (Error)       | `Error`              | Raw message or `"Unhandled Promise Rejection: …"`                        | `unhandledrejection` | `platform`, `isHermes`, `platformVersion`            |
+| Unhandled promise (via console) | `Error`              | Prefixed: `"console.error: Uncaught (in promise, id: N): \"{message}\""` | `console`            | —                                                    |
+| Primitive rejection             | `UnhandledRejection` | `"Unhandled Promise Rejection: …"`                                       | `unhandledrejection` | —                                                    |
+| console.error (explicit)        | `Error`              | Prefixed: `"console.error: {message}"`                                   | `console`            | —                                                    |
+| Native crash                    | `crash`              | Crash description string                                                 | `crash`              | `description`, `trace`, `timestamp`, etc.            |
+| ANR                             | `ANR`                | ANR description                                                          | `anr`                | —                                                    |
 
 **Note:** The same synchronous error can appear twice—once from ErrorUtils (`mechanism=uncaught`) and once from the patched console (`mechanism=console`) because React Native logs uncaught errors to `console.error`. The console variant has the `"console.error: "` prefix in `value`. Unhandled promise rejections may also be captured via console when the runtime logs them before the `unhandledrejection` event.
 
@@ -1359,12 +1359,12 @@ initializeFaro({
 
 #### Key Differences
 
-| Aspect            | React Native                                                                                 | Flutter                           |
-| ----------------- | -------------------------------------------------------------------------------------------- | --------------------------------- |
-| **Source**        | ErrorUtils + unhandledrejection                                                              | FlutterError + PlatformDispatcher |
-| **Error Type**    | Reflects `error.name` (typically `Error`); `UnhandledRejection` for primitive rejections       | Often `flutter_error` bucket      |
-| **Mechanism**     | `context.mechanism` (uncaught, unhandledrejection, console, crash, anr)                      | N/A                               |
-| **Deduplication** | ✅ Fingerprint (message+stack), 5s window, configurable                                      | ❌ None                           |
+| Aspect            | React Native                                                                             | Flutter                           |
+| ----------------- | ---------------------------------------------------------------------------------------- | --------------------------------- |
+| **Source**        | ErrorUtils + unhandledrejection                                                          | FlutterError + PlatformDispatcher |
+| **Error Type**    | Reflects `error.name` (typically `Error`); `UnhandledRejection` for primitive rejections | Often `flutter_error` bucket      |
+| **Mechanism**     | `context.mechanism` (uncaught, unhandledrejection, console, crash, anr)                  | N/A                               |
+| **Deduplication** | ✅ Fingerprint (message+stack), 5s window, configurable                                  | ❌ None                           |
 
 ---
 
@@ -1410,10 +1410,17 @@ React Native offers two session modes. Flutter does not support either; it alway
 `session_extend` is emitted when a **new session** is created because the previous one expired (inactivity or 4 h max), and the new session links to the old. The old session is not extended; a fresh session ID is created. This lets backends treat the new session as continuing the same logical visit. Flutter does not emit `session_extend`.
 
 **Where the previous session ID appears:**
+
 - **`session_attr_previousSession`** — Stored as a session attribute, so it is attached to **all** telemetry (logs, exceptions, events) in the new session. This is the primary way to see the previous session on regular telemetry.
 - **`event_data_previousSession`** — In the `session_extend` event payload only.
 
 **When it happens:** `session_extend` occurs when `updateSession` runs (e.g. on app foreground or before sending telemetry) while the app is **still in memory** and the session has expired. It does **not** occur when the app was killed and reopened after 4+ h — in that case the stored session is cleared before creating the new one, so no `previousSession` link exists and `session_start` is emitted instead.
+
+### Session Resume (React Native & Web SDK)
+
+`session_resume` is emitted when the app **restarts** (cold start) and finds a **valid existing session** in storage. The same session ID is reused instead of creating a new one. Flutter does not emit `session_resume` (each launch is a new session).
+
+**When it happens:** `session_resume` occurs during Faro initialization when persistent mode is enabled and a stored session exists that is still valid: within 4 h of `started`, and within 15 min of `lastActivity`. If the stored session has expired (inactivity or max lifetime), it is cleared and `session_start` is emitted instead. In volatile mode (non-persistent), every app launch emits `session_start` only.
 
 ### Using session_resume for Analytics
 
@@ -1457,9 +1464,12 @@ With persistent mode, `session_resume` supports questions like:
 
 Sessions are always enabled. Options (via faro-core config):
 
-- `sessionTracking.persistent`: Persist across restarts
-- `sessionTracking.maxSessionPersistenceTime`: Max session age (ms)
-- `sessionTracking.inactivityTimeout`: Inactivity before new session
+| Option                      | Default           | Description                                               |
+| --------------------------- | ----------------- | --------------------------------------------------------- |
+| `persistent`                | `false`           | Persist sessions across app restarts (AsyncStorage)       |
+| `maxSessionPersistenceTime` | `900000` (15 min) | Max age of stored session before clear on cold start (ms) |
+| `inactivityTimeout`         | `900000` (15 min) | Inactivity before session invalid (ms)                    |
+| `sessionExpirationTime`     | `14400000` (4 h)  | Max session lifetime from start (ms)                      |
 
 ---
 
@@ -1524,12 +1534,12 @@ Faro.initialize(
 
 #### Key Differences
 
-| Aspect           | React Native                                   | Flutter                                         |
-| ---------------- | ---------------------------------------------- | ----------------------------------------------- |
-| **Default**      | 100% (all sessions sampled)                    | 100%                                            |
-| **Fixed rate**   | `sessionTracking.samplingRate` (0–1)          | `SamplingRate(rate)`                            |
-| **Dynamic**      | `sessionTracking.sampler` function             | `SamplingFunction((context) => rate)`           |
-| **Scope**        | Per session (all or nothing)                   | Per session                                     |
+| Aspect         | React Native                         | Flutter                               |
+| -------------- | ------------------------------------ | ------------------------------------- |
+| **Default**    | 100% (all sessions sampled)          | 100%                                  |
+| **Fixed rate** | `sessionTracking.samplingRate` (0–1) | `SamplingRate(rate)`                  |
+| **Dynamic**    | `sessionTracking.sampler` function   | `SamplingFunction((context) => rate)` |
+| **Scope**      | Per session (all or nothing)         | Per session                           |
 
 > 🔴 **Note:** Consider whether the Flutter SDK should align naming with Web SDK and React Native (`sampler`, `samplingRate`) instead of `SamplingRate` / `SamplingFunction` for consistency across SDKs.
 
@@ -1615,11 +1625,11 @@ initializeFaro({
 
 #### Key Differences
 
-| Aspect               | React Native                               | Flutter                               |
-| -------------------- | ------------------------------------------ | ------------------------------------- |
-| **API**              | withFaroUserAction HOC + trackUserAction() | FaroUserInteractionWidget + startSpan |
+| Aspect               | React Native                                             | Flutter                                                  |
+| -------------------- | -------------------------------------------------------- | -------------------------------------------------------- |
+| **API**              | withFaroUserAction HOC + trackUserAction()               | FaroUserInteractionWidget + startSpan                    |
 | **HTTP Correlation** | ✅ Automatic via trace and W3C Trace Context propagation | ✅ Automatic via trace and W3C Trace Context propagation |
-| **Default Enabled**  | ✅ true                                    | Opt-in (wrap app with widget)         |
+| **Default Enabled**  | ✅ true                                                  | Opt-in (wrap app with widget)                            |
 
 ---
 
@@ -1751,13 +1761,13 @@ Faro.initialize(optionsConfiguration: faroConfig);
 
 #### Key Differences
 
-| Aspect            | React Native                                  | Flutter                                          |
-| ----------------- | --------------------------------------------- | ------------------------------------------------ |
-| **Enable**        | `enableTransports.offline: true` (default: false) | Manual: `Faro().transports.add(OfflineTransport(...))` before init |
-| **Storage**       | AsyncStorage                                  | File storage (path_provider)                     |
-| **Connectivity**  | Built-in (checks fetch reachability)           | `InternetConnectivityService` (configurable URL) |
-| **Max duration**  | 3 days (default), `maxCacheDurationMs`        | Optional `maxCacheDuration` (Duration)           |
-| **Max size**      | 1000 items (default), `maxCacheSize`          | No built-in limit                                |
+| Aspect           | React Native                                      | Flutter                                                            |
+| ---------------- | ------------------------------------------------- | ------------------------------------------------------------------ |
+| **Enable**       | `enableTransports.offline: true` (default: false) | Manual: `Faro().transports.add(OfflineTransport(...))` before init |
+| **Storage**      | AsyncStorage                                      | File storage (path_provider)                                       |
+| **Connectivity** | Built-in (checks fetch reachability)              | `InternetConnectivityService` (configurable URL)                   |
+| **Max duration** | 3 days (default), `maxCacheDurationMs`            | Optional `maxCacheDuration` (Duration)                             |
+| **Max size**     | 1000 items (default), `maxCacheSize`              | No built-in limit                                                  |
 
 ---
 

@@ -121,42 +121,41 @@ Faro.initialize(
 
 ### Configuration Comparison Table
 
-| Option               | React Native                 | Flutter                          | Notes                                                       |
-| -------------------- | ---------------------------- | -------------------------------- | ----------------------------------------------------------- |
+| Option               | React Native                                          | Flutter                                                            | Notes                                                                                          |
+| -------------------- | ----------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
 | **Basic Setup**      |
-| URL                  | `url`                        | `url`                            | Collector endpoint (required when `enableTransports.fetch`) |
-| App Name             | `app.name`                   | `appName`                        | Application name (required)                                 |
-| App Version          | `app.version`                | `appVersion`                     | Version string                                              |
-| Environment          | `app.environment`            | `appEnvironment`                 | Environment identifier                                      |
+| URL                  | `url`                                                 | `url`                                                              | Collector endpoint (required when `enableTransports.fetch`)                                    |
+| App Name             | `app.name`                                            | `appName`                                                          | Application name (required)                                                                    |
+| App Version          | `app.version`                                         | `appVersion`                                                       | Version string                                                                                 |
+| Environment          | `app.environment`                                     | `appEnvironment`                                                   | Environment identifier                                                                         |
 | **Transports**       |
-| Offline Cache        | `enableTransports.offline`   | Manual: `Faro().transports.add(OfflineTransport(...))` before init | Both: cache when offline. See [Offline Caching](./index.md#offline-caching). |
-| Fetch                | `enableTransports.fetch`     | default                          | FetchTransport, requires url                                |
-| Console (debug)      | `enableTransports.console`   | ❌ No equivalent                 | RN: logs to Metro for debugging                             |
+| Offline Cache        | `enableTransports.offline`                            | Manual: `Faro().transports.add(OfflineTransport(...))` before init | Both: cache when offline. See [Offline Caching](./index.md#offline-caching).                   |
+| Fetch                | `enableTransports.fetch`                              | default                                                            | FetchTransport, requires url                                                                   |
+| Console (debug)      | `enableTransports.console`                            | ❌ No equivalent                                                   | RN: logs to Metro for debugging                                                                |
 | **Performance**      |
-| CPU Monitoring       | `cpuUsageVitals`             | `cpuUsageVitals`                 | Both default: true                                          |
-| Memory Monitoring    | `memoryUsageVitals`          | `memoryUsageVitals`              | Both default: true                                          |
-| Refresh Rate         | `refreshRateVitals`          | `refreshRateVitals`              | Both default: false                                         |
-| Sampling Interval    | `fetchVitalsInterval` (ms)   | `fetchVitalsInterval` (Duration) | Different types                                             |
-| Frame Options        | `frameMonitoringOptions` {}  | ❌ Not configurable              | RN has advanced options                                     |
+| CPU Monitoring       | `cpuUsageVitals`                                      | `cpuUsageVitals`                                                   | Both default: true                                                                             |
+| Memory Monitoring    | `memoryUsageVitals`                                   | `memoryUsageVitals`                                                | Both default: true                                                                             |
+| Refresh Rate         | `refreshRateVitals`                                   | `refreshRateVitals`                                                | Both default: false                                                                            |
+| Sampling Interval    | `fetchVitalsInterval` (ms)                            | `fetchVitalsInterval` (Duration)                                   | Different types                                                                                |
+| Frame Options        | `frameMonitoringOptions` {}                           | ❌ Not configurable                                                | RN has advanced options                                                                        |
 | **Error Tracking**   |
-| JS/Dart Errors       | `enableErrorReporting`       | `enableFlutterErrorReporting`    | Different naming                                            |
-| Crash Reports        | `enableCrashReporting`       | `enableCrashReporting`           | Same                                                        |
-| ANR Detection        | `anrTracking` + `anrOptions` | `anrTracking` (default: false)   | Both Android only. RN: configurable timeout; Flutter: fixed 5000ms |
+| JS/Dart Errors       | `enableErrorReporting`                                | `enableFlutterErrorReporting`                                      | Different naming                                                                               |
+| Crash Reports        | `enableCrashReporting`                                | `enableCrashReporting`                                             | Same                                                                                           |
+| ANR Detection        | `anrTracking` + `anrOptions`                          | `anrTracking` (default: false)                                     | Both Android only. RN: configurable timeout; Flutter: fixed 5000ms                             |
 | **Console & User**   |
-| Console Capture      | `enableConsoleCapture`       | ❌ No equivalent                | RN: patches console.*; Flutter: no print/debugPrint patching |
-| Console Options      | `consoleCaptureOptions`      | ❌ No equivalent                | RN: disabledLevels, consoleErrorAsLog, serializeErrors     |
-| User Actions         | `enableUserActions`          | Opt-in: wrap app with FaroUserInteractionWidget | RN: flag; Flutter: widget wrapper. Both: manual spans/API    |
-| User Actions Options | `userActionsOptions`         | ❌ No equivalent                | RN: dataAttributeName, excludeItem                        |
+| Console Capture      | `enableConsoleCapture`                                | ❌ No equivalent                                                   | RN: patches console.\*; Flutter: no print/debugPrint patching                                  |
+| Console Options      | `consoleCaptureOptions`                               | ❌ No equivalent                                                   | RN: disabledLevels, consoleErrorAsLog, serializeErrors                                         |
+| User Actions         | `enableUserActions`                                   | Opt-in: wrap app with FaroUserInteractionWidget                    | RN: flag; Flutter: widget wrapper. Both: manual spans/API                                      |
+| User Actions Options | `userActionsOptions`                                  | ❌ No equivalent                                                   | RN: dataAttributeName, excludeItem                                                             |
 | **Tracing**          |
-| OpenTelemetry        | `enableTracing`              | Built-in (always on)             | RN: optional; Flutter: FaroTracer, startSpan always available |
+| OpenTelemetry        | `enableTracing`                                       | Built-in (always on)                                               | RN: optional; Flutter: FaroTracer, startSpan always available                                  |
 | **Network**          |
-| URL Filtering        | `ignoreUrls` (RegExp[])      | `ignoreUrls` (String[])          | Different types                                             |
+| URL Filtering        | `ignoreUrls` (RegExp[])                               | `ignoreUrls` (String[])                                            | Different types                                                                                |
 | **User Data**        |
-| Persist User         | `persistUser`                | `persistUser` (default: true)    | Both support user persistence across sessions               |
+| Persist User         | `persistUser`                                         | `persistUser` (default: true)                                      | Both support user persistence across sessions                                                  |
 | **Session**          |
-| Session Sampling     | `sessionTracking.samplingRate` (0–1) or `.sampler` fn | `sampling: SamplingRate(rate)` or `SamplingFunction` | Both: per-session sampling; default 100%. See [Session Sampling](./index.md#session-sampling). |
+| Session Sampling     | `sessionTracking.samplingRate` (0–1) or `.sampler` fn | `sampling: SamplingRate(rate)` or `SamplingFunction`               | Both: per-session sampling; default 100%. See [Session Sampling](./index.md#session-sampling). |
 
 **React Native config model:** Flag-based. Pass `ReactNativeConfig` to `initializeFaro`; `makeRNConfig` builds instrumentations and transports from flags. No manual `getRNInstrumentations` or transport arrays needed.
 
 ---
-

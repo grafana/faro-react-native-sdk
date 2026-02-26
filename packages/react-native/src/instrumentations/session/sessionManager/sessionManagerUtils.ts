@@ -3,9 +3,21 @@ import { NativeModules } from 'react-native';
 import { dateNow, deepEqual, EVENT_OVERRIDES_SERVICE_NAME, faro, genShortID, isEmpty } from '@grafana/faro-core';
 import type { Meta, MetaOverrides } from '@grafana/faro-core';
 
+import type { ReactNativeSessionTrackingConfig } from '../../../config/types';
+
 import { isSampled } from './sampling';
 import { SESSION_EXPIRATION_TIME, SESSION_INACTIVITY_TIME } from './sessionConstants';
 import type { FaroUserSession } from './types';
+
+function getSessionTimeouts(config?: ReactNativeSessionTrackingConfig | null): {
+  sessionExpirationTime: number;
+  inactivityTimeout: number;
+} {
+  return {
+    sessionExpirationTime: config?.sessionExpirationTime ?? SESSION_EXPIRATION_TIME,
+    inactivityTimeout: config?.inactivityTimeout ?? SESSION_INACTIVITY_TIME,
+  };
+}
 
 /**
  * Persist session ID to native storage for crash report correlation.
@@ -67,14 +79,17 @@ export function isUserSessionValid(session: FaroUserSession | null): boolean {
     return false;
   }
 
+  const { sessionExpirationTime, inactivityTimeout } = getSessionTimeouts(
+    faro.config?.sessionTracking as ReactNativeSessionTrackingConfig | undefined
+  );
   const now = dateNow();
-  const lifetimeValid = now - session.started < SESSION_EXPIRATION_TIME;
+  const lifetimeValid = now - session.started < sessionExpirationTime;
 
   if (!lifetimeValid) {
     return false;
   }
 
-  const inactivityPeriodValid = now - session.lastActivity < SESSION_INACTIVITY_TIME;
+  const inactivityPeriodValid = now - session.lastActivity < inactivityTimeout;
   return inactivityPeriodValid;
 }
 

@@ -443,6 +443,7 @@ describe('FetchTransport', () => {
 
       transport.metas.value = { session: { id: mockSessionId } };
       transport.internalLogger = mockInternalLogger;
+      (transport as any).config = { sessionTracking: { enabled: false } };
 
       // Mock 3 consecutive failures (simulating offline device)
       fetch.mockImplementation(() => Promise.reject(new Error('Network error')));
@@ -488,6 +489,7 @@ describe('FetchTransport', () => {
 
       transport.metas.value = { session: { id: mockSessionId } };
       transport.internalLogger = mockInternalLogger;
+      (transport as any).config = { sessionTracking: { enabled: false } };
 
       // Mock 2 failures, then success
       fetch
@@ -532,6 +534,7 @@ describe('FetchTransport', () => {
 
       transport.metas.value = { session: { id: mockSessionId } };
       transport.internalLogger = mockInternalLogger;
+      (transport as any).config = { sessionTracking: { enabled: false } };
 
       // Mock 3 consecutive failures to trigger circuit breaker
       fetch.mockImplementation(() => Promise.reject(new Error('Network error')));
