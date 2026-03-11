@@ -14,7 +14,7 @@ import type { ReactNativeSessionTrackingConfig } from '../../config/types';
 import { getSessionAttributes } from './sessionAttributes';
 import { type FaroUserSession, getSessionManagerByConfig, isSampled } from './sessionManager';
 import { PersistentSessionsManager } from './sessionManager/PersistentSessionsManager';
-import { SESSION_INACTIVITY_TIME } from './sessionManager/sessionConstants';
+import { MAX_SESSION_PERSISTENCE_TIME } from './sessionManager/sessionConstants';
 import { createUserSessionObject, isUserSessionValid } from './sessionManager/sessionManagerUtils';
 import type { SessionManager } from './sessionManager/types';
 
@@ -60,8 +60,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     let storedUserSession: FaroUserSession | null = await SessionManager.fetchUserSession();
 
     const sessionsConfigTyped = sessionsConfig as ReactNativeSessionTrackingConfig;
-    const maxPersistenceMs =
-      sessionsConfigTyped.maxSessionPersistenceTime ?? sessionsConfigTyped.inactivityTimeout ?? SESSION_INACTIVITY_TIME;
+    const maxPersistenceMs = sessionsConfigTyped.maxSessionPersistenceTime ?? MAX_SESSION_PERSISTENCE_TIME;
 
     if (sessionsConfig.persistent && storedUserSession) {
       const now = dateNow();

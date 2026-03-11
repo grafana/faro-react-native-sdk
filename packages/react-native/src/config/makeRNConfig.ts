@@ -11,20 +11,19 @@ import { FetchTransport } from '../transports/fetch';
 import { OfflineTransport } from '../transports/offline';
 
 import { getRNInstrumentations } from './getRNInstrumentations';
-import type { ReactNativeConfig } from './types';
+import type { ReactNativeConfig, ReactNativeSessionTrackingConfig } from './types';
 
 const DEFAULT_OFFLINE_CACHE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 /**
- * Builds transports from enableTransports flags, then appends custom transports.
+ * Builds transports. FetchTransport is always added when url is provided.
+ * User can enable offline and console via enableTransports.
  */
 function buildTransports(config: ReactNativeConfig): Config['transports'] {
-  const { enableTransports = { offline: false, fetch: true, console: false } } = config;
+  const { enableTransports = { offline: false, console: false } } = config;
 
-  if (enableTransports.fetch && !config.url) {
-    throw new Error(
-      'url is required when enableTransports.fetch is true. Either provide url or set enableTransports.fetch to false.'
-    );
+  if (!config.url) {
+    throw new Error('url is required. Provide the Faro collector URL.');
   }
 
   const builtTransports: Config['transports'] = [];
@@ -37,30 +36,19 @@ function buildTransports(config: ReactNativeConfig): Config['transports'] {
     );
   }
 
-  if (enableTransports.fetch && config.url) {
-    builtTransports.push(
-      new FetchTransport({
-        url: config.url,
-        apiKey: config.apiKey,
-      })
-    );
-  }
+  builtTransports.push(
+    new FetchTransport({
+      url: config.url,
+      apiKey: config.apiKey,
+    })
+  );
 
   if (enableTransports.console) {
     builtTransports.push(new ConsoleTransport({ level: LogLevel.DEBUG }));
   }
 
   const extraTransports = config.transports ?? [];
-  const allTransports = [...builtTransports, ...extraTransports];
-
-  if (allTransports.length === 0) {
-    throw new Error(
-      'No transports configured. Set enableTransports (e.g. enableTransports: { fetch: true }) ' +
-        'and url, or provide transports array with at least one transport.'
-    );
-  }
-
-  return allTransports;
+  return [...builtTransports, ...extraTransports];
 }
 
 /**
@@ -109,7 +97,7 @@ export function makeRNConfig(config: ReactNativeConfig): Config {
     sessionTracking: {
       ...defaultSessionTrackingConfig,
       ...config.sessionTracking,
-    },
+    } as ReactNativeSessionTrackingConfig,
     metas: [...defaultMetas, ...customMetas],
     instrumentations,
     transports,

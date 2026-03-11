@@ -2,25 +2,31 @@ import type { Config } from '@grafana/faro-core';
 
 import type { ANRInstrumentationOptions } from '../instrumentations/anr';
 import type { FrameMonitoringOptions } from '../instrumentations/frameMonitoring';
+import type { Sampling } from './sampling';
 
-/** Extends faro-core session tracking with RN-specific timeout options (both in ms). */
-export type ReactNativeSessionTrackingConfig = Config['sessionTracking'] & {
-  /** Inactivity before session invalid (default: 15 min). */
-  inactivityTimeout?: number;
-  /** Max session lifetime from start (default: 4 h). */
-  sessionExpirationTime?: number;
+/**
+ * React Native session tracking config.
+ * Extends Config['sessionTracking'] with sampling (Flutter-style) and RN-specific props.
+ * Excludes samplingRate and sampler in favor of sampling.
+ */
+export type ReactNativeSessionTrackingConfig = Omit<
+  NonNullable<Config['sessionTracking']>,
+  'samplingRate' | 'sampler'
+> & {
+  /**
+   * Session sampling. Use {@link SamplingRate} for fixed rate or
+   * {@link SamplingFunction} for dynamic sampling.
+   */
+  sampling?: Sampling;
 };
 
 /**
- * Flags for enabling built-in transports.
- * When provided, makeRNConfig builds transports from these flags instead of requiring manual transport setup.
- * Requires `url` when fetch is true.
+ * Flags for enabling optional built-in transports.
+ * FetchTransport is always instantiated when url is provided.
  */
 export interface EnableTransportsConfig {
   /** Enable OfflineTransport for caching when offline (default: false) */
   offline?: boolean;
-  /** Enable FetchTransport to send to collector (default: true when url is provided) */
-  fetch?: boolean;
   /** Enable ConsoleTransport to log telemetry to Metro console for debugging (default: false) */
   console?: boolean;
 }
@@ -33,6 +39,16 @@ type ReactNativeConfigOverrides = {
   url?: string;
   apiKey?: string;
   enableTransports?: EnableTransportsConfig;
+  /**
+   * Which HTTP instrumentations to enable. When tracing is disabled, these control
+   * HttpInstrumentation (fetch) and XHRInstrumentation (xhr). Default: both true.
+   */
+  enableHttpInstrumentation?: {
+    /** HttpInstrumentation - patches fetch API (default: true) */
+    fetch?: boolean;
+    /** XHRInstrumentation - patches XMLHttpRequest (default: true) */
+    xhr?: boolean;
+  };
   enableTracing?: boolean;
   /** Passed to TracingInstrumentation. See TracingInstrumentationOptions in @grafana/faro-react-native-tracing. */
   tracingOptions?: Record<string, unknown>;

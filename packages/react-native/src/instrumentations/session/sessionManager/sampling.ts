@@ -1,15 +1,14 @@
 import { faro } from '@grafana/faro-core';
 
+import type { ReactNativeSessionTrackingConfig } from '../../../config/types';
+
 export function isSampled(): boolean {
   const sendAllSignals = 1;
-  const sessionTracking = faro.config.sessionTracking;
-  let samplingRate =
-    sessionTracking?.sampler?.({ metas: faro.metas.value }) ?? sessionTracking?.samplingRate ?? sendAllSignals;
+  const sessionTracking = faro.config.sessionTracking as ReactNativeSessionTrackingConfig | undefined;
 
-  if (typeof samplingRate !== 'number') {
-    const sendNoSignals = 0;
-    samplingRate = sendNoSignals;
-  }
+  const samplingRate = sessionTracking?.sampling
+    ? sessionTracking.sampling.resolve({ meta: faro.metas.value })
+    : sendAllSignals;
 
   return Math.random() < samplingRate;
 }

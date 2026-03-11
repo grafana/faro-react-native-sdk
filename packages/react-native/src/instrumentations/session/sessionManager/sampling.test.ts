@@ -1,6 +1,7 @@
 import { initializeFaro } from '@grafana/faro-core';
 import { mockConfig } from '@grafana/faro-test-utils';
 
+import { SamplingFunction, SamplingRate } from '../../../config/sampling';
 import { isSampled } from './sampling';
 
 describe('Sampling', () => {
@@ -8,23 +9,10 @@ describe('Sampling', () => {
     jest.spyOn(global.Math, 'random').mockRestore();
   });
 
-  it('returns false if sampleRate is not of type number', () => {
-    const config = mockConfig({
-      sessionTracking: {
-        samplingRate: 'hello' as any,
-      },
-    });
-
-    initializeFaro(config);
-
-    expect(isSampled()).toBe(false);
-  });
-
-  it('returns true when samplingRate is 1', () => {
+  it('defaults to sampling all (1) when no sampling configured', () => {
     const config = mockConfig({
       sessionTracking: {
         enabled: true,
-        samplingRate: 1,
       },
     });
 
@@ -32,131 +20,121 @@ describe('Sampling', () => {
     expect(isSampled()).toBe(true);
   });
 
-  it('returns false when samplingRate is 0', () => {
-    const config = mockConfig({
-      sessionTracking: {
-        enabled: true,
-        samplingRate: 0,
-      },
-    });
-
-    initializeFaro(config);
-    expect(isSampled()).toBe(false);
-  });
-
-  it('returns proper sampling decision based on Math.random', () => {
-    const config = mockConfig({
-      sessionTracking: {
-        enabled: true,
-        samplingRate: 0.5,
-      },
-    });
-
-    initializeFaro(config);
-
-    // Mock Math.random to return 0.4 (less than 0.5)
-    jest.spyOn(global.Math, 'random').mockReturnValue(0.4);
-    expect(isSampled()).toBe(true);
-
-    // Mock Math.random to return 0.6 (greater than 0.5)
-    jest.spyOn(global.Math, 'random').mockReturnValue(0.6);
-    expect(isSampled()).toBe(false);
-  });
-
-  it('returns proper sampling decision for rate returned by sampler function', () => {
-    const config = mockConfig({
-      sessionTracking: {
-        enabled: true,
-        sampler: () => {
-          return 1;
+  describe('Sampling interface (Flutter-style)', () => {
+    it('SamplingRate(1) samples all sessions', () => {
+      const config = mockConfig({
+        sessionTracking: {
+          enabled: true,
+          sampling: new SamplingRate(1),
         },
-      },
+      });
+
+      initializeFaro(config);
+      expect(isSampled()).toBe(true);
     });
 
-    initializeFaro(config);
-    expect(isSampled()).toBe(true);
-  });
-
-  it('returns false when sampler function returns 0', () => {
-    const config = mockConfig({
-      sessionTracking: {
-        enabled: true,
-        sampler: () => 0,
-      },
-    });
-
-    initializeFaro(config);
-    expect(isSampled()).toBe(false);
-  });
-
-  it('sampler function receives metas', () => {
-    const samplerFn = jest.fn(() => 1);
-    const config = mockConfig({
-      sessionTracking: {
-        enabled: true,
-        sampler: samplerFn,
-      },
-    });
-
-    initializeFaro(config);
-    isSampled();
-
-    expect(samplerFn).toHaveBeenCalledWith({
-      metas: expect.any(Object),
-    });
-  });
-
-  it('sampler function can use metas to make decision', () => {
-    const config = mockConfig({
-      sessionTracking: {
-        enabled: true,
-        sampler: ({ metas }) => {
-          // Sample based on whether we have a session ID
-          return metas.session?.id ? 1 : 0;
+    it('SamplingRate(0) samples no sessions', () => {
+      const config = mockConfig({
+        sessionTracking: {
+          enabled: true,
+          sampling: new SamplingRate(0),
         },
-      },
+      });
+
+      initializeFaro(config);
+      expect(isSampled()).toBe(false);
     });
 
-    const faro = initializeFaro(config);
+    it('SamplingRate uses Math.random for probabilistic decision', () => {
+      const config = mockConfig({
+        sessionTracking: {
+          enabled: true,
+          sampling: new SamplingRate(0.5),
+        },
+      });
 
-    // With session meta, should sample
-    faro.metas.add({ session: { id: 'test-session-123' } });
-    expect(isSampled()).toBe(true);
-  });
+      initializeFaro(config);
 
-  it('defaults to samplingRate of 1 when no configuration provided', () => {
-    const config = mockConfig({
-      sessionTracking: {
-        enabled: true,
-      },
+      jest.spyOn(global.Math, 'random').mockReturnValue(0.4);
+      expect(isSampled()).toBe(true);
+
+      jest.spyOn(global.Math, 'random').mockReturnValue(0.6);
+      expect(isSampled()).toBe(false);
     });
 
-    initializeFaro(config);
-    expect(isSampled()).toBe(true);
-  });
+    it('SamplingFunction receives context with meta', () => {
+      const fn = jest.fn(() => 1);
+      const config = mockConfig({
+        sessionTracking: {
+          enabled: true,
+          sampling: new SamplingFunction(fn),
+        },
+      });
 
-  it('sampler function takes precedence over samplingRate', () => {
-    const config = mockConfig({
-      sessionTracking: {
-        enabled: true,
-        samplingRate: 0, // Should be ignored
-        sampler: () => 1, // Should be used
-      },
+      initializeFaro(config);
+      isSampled();
+
+      expect(fn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          meta: expect.any(Object),
+        })
+      );
     });
 
-    initializeFaro(config);
-    expect(isSampled()).toBe(true);
-  });
+    it('SamplingFunction can use context.meta for decision', () => {
+      const config = mockConfig({
+        sessionTracking: {
+          enabled: true,
+          sampling: new SamplingFunction((context) =>
+            context.meta.app?.environment === 'production' ? 0.1 : 1
+          ),
+        },
+      });
 
-  it('returns proper sampling decision when sampler returns non-number', () => {
-    const config = mockConfig({
-      sessionTracking: {
-        enabled: true,
-        sampler: () => 'invalid' as any,
-      },
+      const faro = initializeFaro(config);
+
+      // With production env - use 0.1 rate; with random 0.05 < 0.1, should sample
+      faro.metas.add({ app: { name: 'test', version: '1', environment: 'production' } });
+      jest.spyOn(global.Math, 'random').mockReturnValue(0.05);
+      expect(isSampled()).toBe(true);
+
+      // With random 0.5 >= 0.1, should not sample
+      jest.spyOn(global.Math, 'random').mockReturnValue(0.5);
+      expect(isSampled()).toBe(false);
     });
 
-    initializeFaro(config);
-    expect(isSampled()).toBe(false);
+    it('custom Sampling implementation works', () => {
+      const customSampling = {
+        resolve: jest.fn(() => 1),
+      };
+      const config = mockConfig({
+        sessionTracking: {
+          enabled: true,
+          sampling: customSampling,
+        },
+      });
+
+      initializeFaro(config);
+      isSampled();
+
+      expect(customSampling.resolve).toHaveBeenCalledWith(
+        expect.objectContaining({
+          meta: expect.any(Object),
+        })
+      );
+      expect(isSampled()).toBe(true);
+    });
+
+    it('returns false when Sampling.resolve returns non-number', () => {
+      const config = mockConfig({
+        sessionTracking: {
+          enabled: true,
+          sampling: new SamplingFunction(() => 'invalid' as unknown as number),
+        },
+      });
+
+      initializeFaro(config);
+      expect(isSampled()).toBe(false);
+    });
   });
 });

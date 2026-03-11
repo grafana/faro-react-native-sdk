@@ -3,19 +3,21 @@ import { NativeModules } from 'react-native';
 import { dateNow, deepEqual, EVENT_OVERRIDES_SERVICE_NAME, faro, genShortID, isEmpty } from '@grafana/faro-core';
 import type { Meta, MetaOverrides } from '@grafana/faro-core';
 
-import type { ReactNativeSessionTrackingConfig } from '../../../config/types';
-
 import { isSampled } from './sampling';
-import { SESSION_EXPIRATION_TIME, SESSION_INACTIVITY_TIME } from './sessionConstants';
+import { MAX_SESSION_PERSISTENCE_TIME } from './sessionConstants';
 import type { FaroUserSession } from './types';
 
-function getSessionTimeouts(config?: ReactNativeSessionTrackingConfig | null): {
+const DEFAULT_SESSION_EXPIRATION_MS = 4 * 60 * 60 * 1000; // 4 hours (not in faro-core)
+
+function getSessionTimeouts(): {
   sessionExpirationTime: number;
   inactivityTimeout: number;
 } {
+  const inactivityTimeout =
+    faro.config?.sessionTracking?.maxSessionPersistenceTime ?? MAX_SESSION_PERSISTENCE_TIME;
   return {
-    sessionExpirationTime: config?.sessionExpirationTime ?? SESSION_EXPIRATION_TIME,
-    inactivityTimeout: config?.inactivityTimeout ?? SESSION_INACTIVITY_TIME,
+    sessionExpirationTime: DEFAULT_SESSION_EXPIRATION_MS,
+    inactivityTimeout,
   };
 }
 
@@ -79,9 +81,7 @@ export function isUserSessionValid(session: FaroUserSession | null): boolean {
     return false;
   }
 
-  const { sessionExpirationTime, inactivityTimeout } = getSessionTimeouts(
-    faro.config?.sessionTracking as ReactNativeSessionTrackingConfig | undefined
-  );
+  const { sessionExpirationTime, inactivityTimeout } = getSessionTimeouts();
   const now = dateNow();
   const lifetimeValid = now - session.started < sessionExpirationTime;
 

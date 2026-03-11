@@ -64,6 +64,7 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
 
     // Network
     ignoreUrls = [],
+    enableHttpInstrumentation = {},
 
     // Console and user actions
     enableConsoleCapture = true,
@@ -100,12 +101,17 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
     instrumentations.push(new UserActionInstrumentation());
   }
 
-  // HTTP/XHR tracking: when tracing is enabled, FetchInstrumentation + XMLHttpRequestInstrumentation
-  // (in TracingInstrumentation) patch fetch and XHR, sending faro.tracing.fetch events via span export.
-  // When tracing is disabled, HttpInstrumentation and XHRInstrumentation patch fetch/XHR directly.
+  // HTTP/XHR tracking: when tracing is enabled, TracingInstrumentation patches fetch and XHR.
+  // When tracing is disabled, add HttpInstrumentation and/or XHRInstrumentation per enableHttpInstrumentation.
   if (!enableTracing) {
-    instrumentations.push(new HttpInstrumentation({ ignoredUrls: toRegExpArray(ignoreUrls) }));
-    instrumentations.push(new XHRInstrumentation({ ignoredUrls: toRegExpArray(ignoreUrls) }));
+    const { fetch: enableFetch = true, xhr: enableXhr = true } = enableHttpInstrumentation;
+    const ignoredUrlsRegExp = toRegExpArray(ignoreUrls);
+    if (enableFetch) {
+      instrumentations.push(new HttpInstrumentation({ ignoredUrls: ignoredUrlsRegExp }));
+    }
+    if (enableXhr) {
+      instrumentations.push(new XHRInstrumentation({ ignoredUrls: ignoredUrlsRegExp }));
+    }
   }
 
   // Performance vitals (CPU/memory)

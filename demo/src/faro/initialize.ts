@@ -1,8 +1,11 @@
 import { FARO_COLLECTOR_URL } from '@env';
 import { InternalLoggerLevel } from '@grafana/faro-core';
 
-import { initializeFaro } from '@grafana/faro-react-native';
-import type { ReactNativeConfig } from '@grafana/faro-react-native';
+import {
+  initializeFaro,
+  SamplingFunction,
+  type ReactNativeConfig,
+} from '@grafana/faro-react-native';
 
 /** In dev, use VERBOSE internal logger to diagnose collector connectivity issues */
 const FARO_DEBUG = __DEV__;
@@ -60,10 +63,12 @@ export function initFaro() {
 
     url: FARO_COLLECTOR_URL,
 
-    // Session sampling: 10% in production, 100% in staging/development (sampler = Flutter SamplingFunction)
+    // Session sampling: 10% in production, 100% in staging/development
+    // Uses SamplingFunction (Flutter-style) - same as faro-flutter-sdk sampling.dart
     sessionTracking: {
-      sampler: ({ metas }) =>
-        metas.app?.environment === 'production' ? 0.1 : 1,
+      sampling: new SamplingFunction((context) =>
+        context.meta.app?.environment === 'production' ? 0.1 : 1
+      ),
     },
 
     // Performance vitals (aligned with Flutter SDK)
@@ -83,10 +88,9 @@ export function initFaro() {
     // Internal logger
     internalLoggerLevel: FARO_DEBUG ? InternalLoggerLevel.VERBOSE : InternalLoggerLevel.ERROR,
 
-    // Transports: enable what to use
+    // Transports: enable what to use (FetchTransport always added when url is set)
     enableTransports: {
       offline: true,
-      fetch: true,
       console: FARO_DEBUG,
     },
 
