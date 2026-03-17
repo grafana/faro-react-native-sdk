@@ -1,4 +1,7 @@
 // Main entry point for @grafana/faro-react-native
+// Apply PerformanceObserver polyfill first to prevent iOS bad_variant_access crash
+import { applyPerformanceObserverPolyfill } from './util/performanceObserverPolyfill';
+applyPerformanceObserverPolyfill();
 export { initializeFaro } from './initialize';
 export { faro } from '@grafana/faro-core';
 
@@ -6,12 +9,7 @@ export { faro } from '@grafana/faro-core';
 export type { EnableTransportsConfig, ReactNativeConfig, ReactNativeSessionTrackingConfig } from './config/types';
 
 // Export sampling (Flutter-style interface)
-export {
-  SamplingFunction,
-  SamplingRate,
-  type Sampling,
-  type SamplingContext,
-} from './config/sampling';
+export { SamplingFunction, SamplingRate, type Sampling, type SamplingContext } from './config/sampling';
 
 // Export instrumentation helpers
 export { getRNInstrumentations } from './config/getRNInstrumentations';

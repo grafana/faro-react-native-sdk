@@ -59,9 +59,7 @@ export function withFaroUserAction<P extends Record<string, unknown>>(
         // (e.g. when user taps another button before the previous action's HTTP request completes)
         // getActiveUserAction returns UserActionInterface but the runtime object is the full
         // UserAction implementing UserActionInternalInterface (with end)
-        const activeAction = faro?.api?.getActiveUserAction?.() as
-          | UserActionInternalInterface
-          | undefined;
+        const activeAction = faro?.api?.getActiveUserAction?.() as UserActionInternalInterface | undefined;
         activeAction?.end();
 
         // Start a user action - UserActionInstrumentation subscribes to the message bus
@@ -107,9 +105,7 @@ export function withFaroUserAction<P extends Record<string, unknown>>(
 export function trackUserAction(actionName: string, context?: Record<string, string>) {
   try {
     // End any active user action before starting a new one
-    const activeAction = faro?.api?.getActiveUserAction?.() as
-      | UserActionInternalInterface
-      | undefined;
+    const activeAction = faro?.api?.getActiveUserAction?.() as UserActionInternalInterface | undefined;
     activeAction?.end();
     return faro?.api?.startUserAction?.(actionName, context || {}, { triggerName: 'manual' });
   } catch (error) {

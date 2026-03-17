@@ -2,6 +2,7 @@ import type { Config } from '@grafana/faro-core';
 
 import type { ANRInstrumentationOptions } from '../instrumentations/anr';
 import type { FrameMonitoringOptions } from '../instrumentations/frameMonitoring';
+
 import type { Sampling } from './sampling';
 
 /**

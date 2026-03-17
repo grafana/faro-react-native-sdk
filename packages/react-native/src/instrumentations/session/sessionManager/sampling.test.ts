@@ -2,6 +2,7 @@ import { initializeFaro } from '@grafana/faro-core';
 import { mockConfig } from '@grafana/faro-test-utils';
 
 import { SamplingFunction, SamplingRate } from '../../../config/sampling';
+
 import { isSampled } from './sampling';
 
 describe('Sampling', () => {
@@ -85,9 +86,7 @@ describe('Sampling', () => {
       const config = mockConfig({
         sessionTracking: {
           enabled: true,
-          sampling: new SamplingFunction((context) =>
-            context.meta.app?.environment === 'production' ? 0.1 : 1
-          ),
+          sampling: new SamplingFunction((context) => (context.meta.app?.environment === 'production' ? 0.1 : 1)),
         },
       });
 

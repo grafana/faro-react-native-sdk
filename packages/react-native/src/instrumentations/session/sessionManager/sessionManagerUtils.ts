@@ -13,8 +13,7 @@ function getSessionTimeouts(): {
   sessionExpirationTime: number;
   inactivityTimeout: number;
 } {
-  const inactivityTimeout =
-    faro.config?.sessionTracking?.maxSessionPersistenceTime ?? MAX_SESSION_PERSISTENCE_TIME;
+  const inactivityTimeout = faro.config?.sessionTracking?.maxSessionPersistenceTime ?? MAX_SESSION_PERSISTENCE_TIME;
   return {
     sessionExpirationTime: DEFAULT_SESSION_EXPIRATION_MS,
     inactivityTimeout,
