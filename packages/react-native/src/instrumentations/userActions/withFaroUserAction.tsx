@@ -1,7 +1,7 @@
 import React, { type ComponentType } from 'react';
 import type { GestureResponderEvent } from 'react-native';
 
-import { faro } from '@grafana/faro-core';
+import { faro, type UserActionInternalInterface } from '@grafana/faro-core';
 
 export interface WithFaroUserActionProps {
   /**
@@ -55,6 +55,15 @@ export function withFaroUserAction<P extends Record<string, unknown>>(
         // Use the prop-specific name or fall back to the default
         const actionName = faroActionName || defaultActionName;
 
+        // End any active user action before starting a new one to avoid "already running" errors
+        // (e.g. when user taps another button before the previous action's HTTP request completes)
+        // getActiveUserAction returns UserActionInterface but the runtime object is the full
+        // UserAction implementing UserActionInternalInterface (with end)
+        const activeAction = faro?.api?.getActiveUserAction?.() as
+          | UserActionInternalInterface
+          | undefined;
+        activeAction?.end();
+
         // Start a user action - UserActionInstrumentation subscribes to the message bus
         // and attaches UserActionController for auto-ending and HTTP correlation
         faro?.api?.startUserAction?.(actionName, faroContext || {}, { triggerName: 'press' });
@@ -97,6 +106,11 @@ export function withFaroUserAction<P extends Record<string, unknown>>(
  */
 export function trackUserAction(actionName: string, context?: Record<string, string>) {
   try {
+    // End any active user action before starting a new one
+    const activeAction = faro?.api?.getActiveUserAction?.() as
+      | UserActionInternalInterface
+      | undefined;
+    activeAction?.end();
     return faro?.api?.startUserAction?.(actionName, context || {}, { triggerName: 'manual' });
   } catch (error) {
     console.warn('[Faro] Error tracking user action:', error);
