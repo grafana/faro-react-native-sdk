@@ -6,6 +6,19 @@ import { XHRInstrumentation } from './index';
 const FARO_TRACING_FETCH_EVENT = 'faro.tracing.fetch';
 
 describe('XHRInstrumentation', () => {
+  let prototypeSend: typeof XMLHttpRequest.prototype.send;
+  let prototypeOpen: typeof XMLHttpRequest.prototype.open;
+
+  beforeAll(() => {
+    prototypeSend = XMLHttpRequest.prototype.send;
+    prototypeOpen = XMLHttpRequest.prototype.open;
+  });
+
+  afterEach(() => {
+    XMLHttpRequest.prototype.send = prototypeSend;
+    XMLHttpRequest.prototype.open = prototypeOpen;
+  });
+
   it('should have correct name and version', () => {
     const instrumentation = new XHRInstrumentation();
     expect(instrumentation.name).toBe('@grafana/faro-react-native:instrumentation-xhr');
@@ -13,9 +26,6 @@ describe('XHRInstrumentation', () => {
   });
 
   it('should patch XMLHttpRequest.prototype when initialized', () => {
-    if (typeof XMLHttpRequest === 'undefined') {
-      return;
-    }
     const transport = new MockTransport();
     const originalSend = XMLHttpRequest.prototype.send;
     initializeFaro(
@@ -28,10 +38,6 @@ describe('XHRInstrumentation', () => {
   });
 
   it('should track XHR requests and emit faro.tracing.fetch event', (done) => {
-    if (typeof XMLHttpRequest === 'undefined') {
-      done();
-      return;
-    }
     const transport = new MockTransport();
     initializeFaro(
       mockConfig({
@@ -57,10 +63,6 @@ describe('XHRInstrumentation', () => {
   });
 
   it('should ignore collector URLs', (done) => {
-    if (typeof XMLHttpRequest === 'undefined') {
-      done();
-      return;
-    }
     const transport = new MockTransport();
     initializeFaro(
       mockConfig({

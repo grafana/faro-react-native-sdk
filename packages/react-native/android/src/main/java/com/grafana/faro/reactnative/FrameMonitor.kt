@@ -211,10 +211,7 @@ object FrameMonitor {
                 // Start new slow frame event
                 inSlowFrameEvent = true
                 slowFrameEventStartTimeNanos = frameTimeNanos
-            } else {
-                val durationSoFarMs = (frameTimeNanos - slowFrameEventStartTimeNanos) / NANOSECONDS_IN_MILLISECOND
             }
-            // If already in slow frame event, continue tracking
         } else {
             // Frame is good - check if we should end the current slow frame event
             if (inSlowFrameEvent) {

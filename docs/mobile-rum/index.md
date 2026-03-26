@@ -857,15 +857,15 @@ Faro.initialize(
 
 #### Key Differences
 
-| Aspect                     | React Native                                                | Flutter                                               |
-| -------------------------- | ----------------------------------------------------------- | ----------------------------------------------------- |
-| **Default Enabled**        | ❌ false                                                    | ❌ false                                              |
-| **iOS Implementation**     | PLCrashReporter                                             | PLCrashReporter (same)                                |
-| **Android Implementation** | ApplicationExitInfo                                         | ApplicationExitInfo (same)                            |
-| **iOS Requirement**        | PLCrashReporter pod                                         | PLCrashReporter pod                                   |
-| **Android Requirement**    | API 30+ (Android 11)                                        | API 30+ (Android 11)                                  |
+| Aspect                     | React Native                                              | Flutter                                               |
+| -------------------------- | --------------------------------------------------------- | ----------------------------------------------------- |
+| **Default Enabled**        | ❌ false                                                  | ❌ false                                              |
+| **iOS Implementation**     | PLCrashReporter                                           | PLCrashReporter (same)                                |
+| **Android Implementation** | ApplicationExitInfo                                       | ApplicationExitInfo (same)                            |
+| **iOS Requirement**        | PLCrashReporter pod                                       | PLCrashReporter pod                                   |
+| **Android Requirement**    | API 30+ (Android 11)                                      | API 30+ (Android 11)                                  |
 | **Pre-crash session id**   | ❌ Not in crash payload (`meta.session` is after restart) | ❌ Not in crash payload                               |
-| **Error Type**             | `crash` (native)                                            | `crash` (native), `flutter_error` (ANR, FlutterError) |
+| **Error Type**             | `crash` (native)                                          | `crash` (native), `flutter_error` (ANR, FlutterError) |
 
 The **Error Type** in both SDKs is `crash` for native errors but in React native the value change depending of the type of crash:
 
@@ -1085,13 +1085,13 @@ Faro.initialize(
 
 #### Key Differences
 
-| Aspect               | React Native                                                   | Flutter                                                         |
-| -------------------- | -------------------------------------------------------------- | --------------------------------------------------------------- |
-| **API**              | AppState.addEventListener                                      | WidgetsBindingObserver (didChangeAppLifecycleState)             |
-| **Always Enabled**   | ✅ Yes                                                         | ✅ Yes                                                          |
-| **Event Name**       | `app_lifecycle_changed`                                        | `app_lifecycle_changed`                                         |
-| **Event Attributes** | fromState, toState, duration, timestamp                        | fromState, toState ⚠️ No duration/timestamp                     |
-| **State Names**      | active, background, inactive, unknown, extension (AppState)   | resumed, paused, inactive, detached, hidden (AppLifecycleState) |
+| Aspect               | React Native                                                | Flutter                                                         |
+| -------------------- | ----------------------------------------------------------- | --------------------------------------------------------------- |
+| **API**              | AppState.addEventListener                                   | WidgetsBindingObserver (didChangeAppLifecycleState)             |
+| **Always Enabled**   | ✅ Yes                                                      | ✅ Yes                                                          |
+| **Event Name**       | `app_lifecycle_changed`                                     | `app_lifecycle_changed`                                         |
+| **Event Attributes** | fromState, toState, duration, timestamp                     | fromState, toState ⚠️ No duration/timestamp                     |
+| **State Names**      | active, background, inactive, unknown, extension (AppState) | resumed, paused, inactive, detached, hidden (AppLifecycleState) |
 
 ---
 

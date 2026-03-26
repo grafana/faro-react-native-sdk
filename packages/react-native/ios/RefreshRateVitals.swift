@@ -161,11 +161,7 @@ import UIKit
                 // Start new slow frame event
                 inSlowFrameEvent = true
                 slowFrameEventStartTime = link.timestamp
-            } else {
-                // 🔍 TEMP DEBUG LOG - Remove after analysis
-                let durationSoFar = link.timestamp - slowFrameEventStartTime
             }
-            // If already in slow frame event, continue tracking
         } else {
             // Frame is good - check if we should end the current slow frame event
             if inSlowFrameEvent {

@@ -43,9 +43,9 @@ object MemoryInfo {
 
         try {
             BufferedReader(FileReader(statusFile)).use { reader ->
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    val matcher = vmRssPattern.matcher(line!!)
+                while (true) {
+                    val currentLine = reader.readLine() ?: break
+                    val matcher = vmRssPattern.matcher(currentLine)
                     if (matcher.find()) {
                         val memoryKB = matcher.group(1)?.toDoubleOrNull()
                         return memoryKB
