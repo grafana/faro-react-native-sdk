@@ -14,7 +14,6 @@ import java.io.InputStreamReader
  * This class handles:
  * 1. Retrieving crash reports from previous sessions via ApplicationExitInfo
  * 2. Converting crash data to JSON format compatible with Faro
- * 3. Persisting/retrieving session ID for crash correlation in Grafana
  *
  * ## Architecture
  * Android's ApplicationExitInfo API (API 30+) provides information about how
@@ -35,7 +34,6 @@ object FaroCrashReporter {
 
     private const val TAG = "FaroCrashReporter"
     private const val PREFS_NAME = "com.grafana.faro.crash_reporter"
-    private const val KEY_SESSION_ID = "session_id"
     private const val KEY_LAST_PROCESSED_TIMESTAMP = "last_processed_timestamp"
 
     /**
@@ -43,8 +41,6 @@ object FaroCrashReporter {
      *
      * Returns a list of JSON strings, each representing a crash report.
      * The JSON format matches the iOS implementation for consistency.
-     * Includes the crashed session ID if available for correlation.
-     *
      * Only returns new crash reports since the last call.
      *
      * @param context Android context
@@ -73,7 +69,6 @@ object FaroCrashReporter {
         // Get the last processed timestamp to avoid duplicate reports
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lastProcessedTimestamp = prefs.getLong(KEY_LAST_PROCESSED_TIMESTAMP, 0)
-        val crashedSessionId = prefs.getString(KEY_SESSION_ID, null)
 
         val crashReports = mutableListOf<String>()
         var latestTimestamp = lastProcessedTimestamp
@@ -95,7 +90,7 @@ object FaroCrashReporter {
             }
 
             // Convert to JSON
-            val jsonString = exportExitInfoAsJSON(exitInfo, crashedSessionId)
+            val jsonString = exportExitInfoAsJSON(exitInfo)
             if (jsonString != null) {
                 crashReports.add(jsonString)
             }
@@ -109,35 +104,6 @@ object FaroCrashReporter {
         }
 
         return if (crashReports.isEmpty()) null else crashReports
-    }
-
-    /**
-     * Persist the current Faro session ID to native storage.
-     *
-     * This should be called when a new session starts.
-     * Enables crash reports to include the session ID where the crash occurred.
-     *
-     * @param context Android context
-     * @param sessionId The current Faro session ID
-     */
-    @JvmStatic
-    fun persistSessionId(context: Context, sessionId: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_SESSION_ID, sessionId)
-            .apply()
-    }
-
-    /**
-     * Get the persisted session ID.
-     *
-     * @param context Android context
-     * @return The persisted session ID, or null if not set
-     */
-    @JvmStatic
-    fun getPersistedSessionId(context: Context): String? {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_SESSION_ID, null)
     }
 
     /**
@@ -161,7 +127,7 @@ object FaroCrashReporter {
     /**
      * Convert ApplicationExitInfo to JSON string matching iOS format.
      */
-    private fun exportExitInfoAsJSON(exitInfo: ApplicationExitInfo, crashedSessionId: String?): String? {
+    private fun exportExitInfoAsJSON(exitInfo: ApplicationExitInfo): String? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return null
         }
@@ -187,11 +153,6 @@ object FaroCrashReporter {
 
             // Importance (Android-specific)
             json.put("importance", exitInfo.importance)
-
-            // Include crashed session ID for correlation in Grafana
-            if (!crashedSessionId.isNullOrEmpty()) {
-                json.put("crashedSessionId", crashedSessionId)
-            }
 
             // Stack trace (if available)
             val trace = getTraceInfo(exitInfo)

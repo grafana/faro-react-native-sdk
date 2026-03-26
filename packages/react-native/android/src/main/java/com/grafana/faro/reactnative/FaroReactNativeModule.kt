@@ -234,20 +234,6 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
-     * Persist the current Faro session ID to native storage.
-     *
-     * Called only when a new session starts.
-     * Enables crash reports to include the session ID where the crash occurred,
-     * allowing users to correlate crashes with pre-crash events in Grafana.
-     *
-     * @param sessionId The current Faro session ID
-     */
-    @ReactMethod
-    fun persistSessionId(sessionId: String) {
-        FaroCrashReporter.persistSessionId(reactApplicationContext, sessionId)
-    }
-
-    /**
      * Send an event to JavaScript
      */
     private fun sendEvent(eventName: String, data: Any) {

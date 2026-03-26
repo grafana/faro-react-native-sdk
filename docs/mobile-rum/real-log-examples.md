@@ -103,25 +103,19 @@ iOS (PLCrashReporter) and Android (ApplicationExitInfo) emit different log data.
 **iOS (PLCrashReporter):**
 
 ```text
-timestamp=2026-02-18T12:53:12.000Z kind=exception level=error type=crash value="SIGTRAP: Trace/BPT trap, status: 0" stacktrace="crash: SIGTRAP: Trace/BPT trap, status: 0" context_crashedSessionId=EXa9Pyv3fB context_description="Trace/BPT trap" context_pid=70948 context_processName=FaroRNDemo context_signal="SIGTRAP (#0)" context_trace="0 libswiftCore.dylib 0x000000019772c2ec\n1 FaroRNDemo.debug.dylib 0x0000000107e0c58c..." context_timestamp=1771501022000 sdk_name=@grafana/faro-react-native app_name=react-native-sdk-demo view_name=Home session_id=vbtTBw0kYK
+timestamp=2026-02-18T12:53:12.000Z kind=exception level=error type=crash value="SIGTRAP: Trace/BPT trap, status: 0" stacktrace="crash: SIGTRAP: Trace/BPT trap, status: 0" context_description="Trace/BPT trap" context_pid=70948 context_processName=FaroRNDemo context_signal="SIGTRAP (#0)" context_trace="0 libswiftCore.dylib 0x000000019772c2ec\n1 FaroRNDemo.debug.dylib 0x0000000107e0c58c..." context_timestamp=1771501022000 sdk_name=@grafana/faro-react-native app_name=react-native-sdk-demo view_name=Home session_id=vbtTBw0kYK
 ```
 
 **Android (ApplicationExitInfo):**
 
 ```text
-timestamp=2026-02-18T13:15:00.000Z kind=exception level=error type=crash value="CRASH_NATIVE: Application crash (Native), status: 0" stacktrace="CRASH_NATIVE: Application crash (Native), status: 0" context_crashedSessionId=aB3xYz9KpL context_description="Native crash" context_importance=100 context_pid=12345 context_processName=com.example.app context_trace="*** *** *** *** *** *** ***\n  #00 pc 00012345  libc.so (abort+64)..." context_timestamp=1771502100000 sdk_name=@grafana/faro-react-native app_name=react-native-sdk-demo view_name=Home session_id=aB3xYz9KpL
+timestamp=2026-02-18T13:15:00.000Z kind=exception level=error type=crash value="CRASH_NATIVE: Application crash (Native), status: 0" stacktrace="CRASH_NATIVE: Application crash (Native), status: 0" context_description="Native crash" context_importance=100 context_pid=12345 context_processName=com.example.app context_trace="*** *** *** *** *** *** ***\n  #00 pc 00012345  libc.so (abort+64)..." context_timestamp=1771502100000 sdk_name=@grafana/faro-react-native app_name=react-native-sdk-demo view_name=Home session_id=aB3xYz9KpL
 ```
 
 **Query:**
 
 ```logql
 {app_id="app_id", kind="exception"} | logfmt | type="crash"
-```
-
-**Query by crashed session:**
-
-```logql
-{app_id="app_id"} | logfmt | context_crashedSessionId="EXa9Pyv3fB"
 ```
 
 ---
@@ -131,7 +125,7 @@ timestamp=2026-02-18T13:15:00.000Z kind=exception level=error type=crash value="
 ANR events are reported via crash instrumentation (ApplicationExitInfo on Android) with `type=crash` and `value` starting with "ANR:".
 
 ```text
-timestamp=2026-02-26T12:42:18.166Z kind=exception level=error type=crash value="ANR: Application Not Responding, status: 0" stacktrace="crash: ANR: Application Not Responding, status: 0\n  at sendCrashReport (http://10.0.2.2:8081/index.bundle//&platform=android&dev=true&lazy=true&minify=false&app=com.farorndemo&modulesOnly=false&runModule=true&excludeSource=true&sourcePaths=url-server:104159:30)\n  at ?anon_0_ (http://10.0.2.2:8081/index.bundle//&platform=android&dev=true&lazy=true&minify=false&app=com.farorndemo&modulesOnly=false&runModule=true&excludeSource=true&sourcePaths=url-server:104132:37)..." context_crashedSessionId=hdPz7SJggU context_description="user request after error: Input dispatching timed out (4fdd0e3 com.farorndemo/com.farorndemo.MainActivity is not responding. Waited 5004ms for FocusEvent(hasFocus=true))." context_importance=100 context_mechanism=crash context_pid=17894 context_processName=com.farorndemo context_timestamp=1772109725217 context_trace="Subject: Input dispatching timed out (4fdd0e3 com.farorndemo/com.farorndemo.MainActivity is not responding. Waited 5004ms for FocusEvent(hasFocus=true)).\nRssHwmKb: 354984\nRssKb: 354816\n...\nDALVIK THREADS (56):\n\"main\" prio=5 tid=1 Sleeping\n  at java.lang.Thread.sleep(Native method)\n  at com.farorndemo.CrashTestModule.triggerANR$lambda$1(CrashTestModule.kt:63)..." sdk_name=@grafana/faro-react-native sdk_version=2.2.3 app_name=react-native-sdk-demo app_version=2.0.0 view_name=Home session_id=QN5bgr88wZ session_attr_device_os=Android
+timestamp=2026-02-26T12:42:18.166Z kind=exception level=error type=crash value="ANR: Application Not Responding, status: 0" stacktrace="crash: ANR: Application Not Responding, status: 0\n  at sendCrashReport (http://10.0.2.2:8081/index.bundle//&platform=android&dev=true&lazy=true&minify=false&app=com.farorndemo&modulesOnly=false&runModule=true&excludeSource=true&sourcePaths=url-server:104159:30)\n  at ?anon_0_ (http://10.0.2.2:8081/index.bundle//&platform=android&dev=true&lazy=true&minify=false&app=com.farorndemo&modulesOnly=false&runModule=true&excludeSource=true&sourcePaths=url-server:104132:37)..." context_description="user request after error: Input dispatching timed out (4fdd0e3 com.farorndemo/com.farorndemo.MainActivity is not responding. Waited 5004ms for FocusEvent(hasFocus=true))." context_importance=100 context_mechanism=crash context_pid=17894 context_processName=com.farorndemo context_timestamp=1772109725217 context_trace="Subject: Input dispatching timed out (4fdd0e3 com.farorndemo/com.farorndemo.MainActivity is not responding. Waited 5004ms for FocusEvent(hasFocus=true)).\nRssHwmKb: 354984\nRssKb: 354816\n...\nDALVIK THREADS (56):\n\"main\" prio=5 tid=1 Sleeping\n  at java.lang.Thread.sleep(Native method)\n  at com.farorndemo.CrashTestModule.triggerANR$lambda$1(CrashTestModule.kt:63)..." sdk_name=@grafana/faro-react-native sdk_version=2.2.3 app_name=react-native-sdk-demo app_version=2.0.0 view_name=Home session_id=QN5bgr88wZ session_attr_device_os=Android
 ```
 
 **Query:**

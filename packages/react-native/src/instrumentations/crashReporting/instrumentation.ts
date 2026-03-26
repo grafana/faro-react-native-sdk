@@ -218,12 +218,6 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
       context['importance'] = String(crash.importance);
     }
 
-    // Include crashed session ID for correlation.
-    // This allows querying events from the session where the crash occurred.
-    if (crash.crashedSessionId) {
-      context['crashedSessionId'] = crash.crashedSessionId;
-    }
-
     // Push as error via Faro API (matching Flutter pattern)
     this.api.pushError(error, {
       type: 'crash',

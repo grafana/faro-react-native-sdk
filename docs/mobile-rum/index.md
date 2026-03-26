@@ -716,7 +716,6 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
 - Captures native iOS crashes from previous sessions
 - Requires explicit enabling: `enableCrashReporting: true`
 - Processes crash reports on next app launch
-- **Session correlation**: Persists session ID in UserDefaults; on next launch reads it and includes as `crashedSessionId` in the crash report
 
 **Crash Report Format**:
 
@@ -730,8 +729,7 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
     "name": "SIGSEGV",
     "code": "SEGV_MAPERR",
     "address": "0x0"
-  },
-  "crashedSessionId": "abc-123-def-456"
+  }
 }
 ```
 
@@ -740,7 +738,6 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
 - Uses **ApplicationExitInfo** API (Android 11+, API 30+)
 - Retrieves crash and ANR information from previous sessions
 - Returns list of exit reasons including crashes
-- **Session correlation**: Persists session ID in SharedPreferences; when processing crash/exit info, includes it as `crashedSessionId`
 
 **Crash Report Format** :
 
@@ -749,8 +746,7 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
   "reason": "CRASH_NATIVE",
   "timestamp": 1678901234567,
   "description": "Native crash",
-  "trace": "Stack trace...",
-  "crashedSessionId": "abc-123-def-456"
+  "trace": "Stack trace..."
 }
 ```
 
@@ -759,14 +755,12 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
 **iOS:**
 
 - Uses **PLCrashReporter** (same as React Native)
-- Sends crash via native `CrashReportingIntegration` with `meta.session` from current init
-- ⚠️ **No `crashedSessionId`**: meta.session is the new session on restart, not the crashed session
+- Sends crash via native `CrashReportingIntegration` with `meta.session` from current init (the session after restart, not the one during the crash)
 
 **Android:**
 
 - Uses **ApplicationExitInfo** (same as React Native)
-- `ExitInfoHelper` builds crash JSON (reason, timestamp, trace, etc.) but does not include session ID
-- ⚠️ **No `crashedSessionId`**: crash context has no session correlation
+- `ExitInfoHelper` builds crash JSON (reason, timestamp, trace, etc.) without the pre-crash Faro session id
 
 ---
 
@@ -805,7 +799,7 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
 
 - **`type`**: `"crash"` (from `pushError` options)
 - **`value`**: Error message string (e.g. `"{reason}: {description}, status: {status}"`)
-- **`context`**: Crash report fields (trace, timestamp, description, crashedSessionId, processName, pid, importance); `signal` on iOS
+- **`context`**: Crash report fields (trace, timestamp, description, processName, pid, importance); `signal` on iOS
 - **`stacktrace`**: Parsed frames if available from native report
 
 **Sent via:** `faro.api.pushError(error, { type: 'crash', context })`
@@ -813,7 +807,6 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
 ##### **Flutter SDK**
 
 - Uses `pushError()` with crash context (description, stacktrace, timestamp, etc.)
-- Does not include `crashedSessionId` in crash payload
 
 ---
 
@@ -871,7 +864,7 @@ Faro.initialize(
 | **Android Implementation** | ApplicationExitInfo                                         | ApplicationExitInfo (same)                            |
 | **iOS Requirement**        | PLCrashReporter pod                                         | PLCrashReporter pod                                   |
 | **Android Requirement**    | API 30+ (Android 11)                                        | API 30+ (Android 11)                                  |
-| **Session Correlation**    | ✅ `crashedSessionId` (persisted, then read on next launch) | ❌ Not implemented                                    |
+| **Pre-crash session id**   | ❌ Not in crash payload (`meta.session` is after restart) | ❌ Not in crash payload                               |
 | **Error Type**             | `crash` (native)                                            | `crash` (native), `flutter_error` (ANR, FlutterError) |
 
 The **Error Type** in both SDKs is `crash` for native errors but in React native the value change depending of the type of crash:
@@ -884,15 +877,9 @@ The **Error Type** in both SDKs is `crash` for native errors but in React native
 
 ---
 
-#### Session Correlation (React Native Only)
+#### Crash reports and session
 
-React Native persists the Faro session ID in native storage (UserDefaults on iOS, SharedPreferences on Android) when a session starts. When a crash occurs, the app terminates before telemetry is sent. On the next launch:
-
-1. Native crash processing reads the **persisted** session ID (from the crashed session)
-2. Includes it as `crashedSessionId` in the crash report
-3. Enables correlation in Grafana: filter by `crashedSessionId` to see all events from the session where the crash happened
-
-Flutter SDK does not implement this: iOS sends `meta.session` (the new session on restart); Android `ExitInfoHelper` does not persist or add session ID to crash reports.
+Native crashes are delivered on the next launch. The exception is sent with `meta.session` for that launch (the reporting session), not the session that was active when the process died. Neither React Native nor Flutter adds a separate field for the pre-crash session id on the crash payload.
 
 ---
 
@@ -957,8 +944,7 @@ Sent via `faro.api.pushError()` with **`type: 'crash'`**:
   "context": {
     "trace": "Main thread stack trace...",
     "timestamp": "1678901234567",
-    "description": "...",
-    "crashedSessionId": "..."
+    "description": "..."
   }
 }
 ```

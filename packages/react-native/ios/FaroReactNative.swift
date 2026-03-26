@@ -10,13 +10,11 @@ import Foundation
 /// - **App Startup Time**: Cold start duration using kernel process info
 /// - **Memory Usage**: Physical memory footprint via Mach task API
 /// - **CPU Usage**: Per-process CPU percentage via thread aggregation
-/// - **Session Persistence**: UserDefaults storage for crash correlation
 ///
 /// ## Implementation Notes
 /// All methods use low-level iOS/Darwin APIs for accurate measurements:
 /// - `sysctl()` for process information
 /// - `task_info()` for memory and thread data
-/// - `UserDefaults` for persistent storage
 ///
 /// These implementations are aligned with Grafana Faro Flutter SDK patterns
 /// but include improvements where applicable (e.g., better memory metric).
@@ -146,52 +144,6 @@ public class FaroReactNative: NSObject {
         return CPUInfo.getCpuInfo()
     }
 
-    // MARK: - Session Persistence for Crash Correlation
-
-    /// UserDefaults key for storing the current Faro session ID.
-    private static let sessionIdKey = "faro_session_id"
-
-    /// Persists the current Faro session ID to UserDefaults.
-    ///
-    /// This enables crash report correlation - when a crash occurs, the app
-    /// terminates before the crash can be reported. On next launch, we retrieve
-    /// this persisted session ID and include it in the crash report, allowing
-    /// users to query all events from the crashed session in Grafana.
-    ///
-    /// ## Flow
-    /// ```
-    /// Session A starts → persistSessionId("abc123") → UserDefaults
-    /// App crashes → UserDefaults still has "abc123"
-    /// App restarts → Session B starts
-    /// Crash report includes crashedSessionId: "abc123"
-    /// User can filter Grafana by "abc123" to see pre-crash events
-    /// ```
-    ///
-    /// ## Implementation Notes
-    /// - Called only when a new session starts (not on every activity update)
-    /// - Uses `synchronize()` for crash resilience (writes immediately to disk)
-    /// - Mirrors Android implementation using SharedPreferences
-    ///
-    /// - Parameter sessionId: The current Faro session ID to persist
-    @objc public static func persistSessionId(_ sessionId: String) {
-        UserDefaults.standard.set(sessionId, forKey: sessionIdKey)
-        // synchronize() ensures data is written to disk immediately
-        // This is important for crash scenarios where the app may terminate
-        // before the normal background save occurs
-        UserDefaults.standard.synchronize()
-    }
-
-    /// Retrieves the persisted session ID from UserDefaults.
-    ///
-    /// Called during crash report processing to get the session ID that was
-    /// active when the crash occurred. This enables correlation between the
-    /// crash report (sent in new session) and events from the crashed session.
-    ///
-    /// - Returns: The persisted session ID, or nil if none found
-    @objc public static func getPersistedSessionId() -> String? {
-        return UserDefaults.standard.string(forKey: sessionIdKey)
-    }
-
     // MARK: - Crash Reporting
 
     /// Enables crash reporting using PLCrashReporter.
@@ -213,7 +165,6 @@ public class FaroReactNative: NSObject {
     /// - `description`: Human-readable crash description
     /// - `trace`: Stack trace as string
     /// - `signal`: Signal info (iOS-specific)
-    /// - `crashedSessionId`: The Faro session ID when the crash occurred
     ///
     /// After calling this method, pending crash reports are purged.
     ///

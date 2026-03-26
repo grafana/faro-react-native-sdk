@@ -7,7 +7,6 @@ import Foundation
 /// 1. Enabling PLCrashReporter to capture crashes
 /// 2. Loading and parsing crash reports from previous sessions
 /// 3. Converting crash data to JSON format compatible with Faro
-/// 4. Including session ID for crash correlation in Grafana
 ///
 /// ## Architecture
 /// PLCrashReporter captures crashes using signal handlers (BSD signals like SIGSEGV, SIGABRT)
@@ -95,8 +94,6 @@ public class FaroCrashReporter: NSObject {
     ///
     /// Returns an array of JSON strings, each representing a crash report.
     /// The JSON format matches the Android implementation for consistency.
-    /// Includes the crashed session ID if available for correlation.
-    ///
     /// After calling this method, pending crash reports are purged.
     ///
     /// - Returns: Array of crash report JSON strings, or nil if no crashes
@@ -121,11 +118,8 @@ public class FaroCrashReporter: NSObject {
             let plcrReport = try PLCrashReport(data: data)
             let crashReport = try FaroCrashReport(from: plcrReport)
 
-            // Get the persisted session ID from when the crash occurred
-            let crashedSessionId = FaroReactNative.getPersistedSessionId()
-
             // Convert to JSON matching Android format
-            if let jsonString = exportCrashReportAsJSON(crashReport, crashedSessionId: crashedSessionId) {
+            if let jsonString = exportCrashReportAsJSON(crashReport) {
                 crashReports.append(jsonString)
             }
         } catch {
@@ -141,7 +135,7 @@ public class FaroCrashReporter: NSObject {
     // MARK: - Private Helpers
 
     /// Converts a FaroCrashReport to JSON string matching the Android format.
-    private static func exportCrashReportAsJSON(_ crashReport: FaroCrashReport, crashedSessionId: String?) -> String? {
+    private static func exportCrashReportAsJSON(_ crashReport: FaroCrashReport) -> String? {
         var json: [String: Any] = [:]
 
         // Reason - matches Android's "reason" field
@@ -169,11 +163,6 @@ public class FaroCrashReporter: NSObject {
         // Signal info (iOS-specific)
         if let signalInfo = crashReport.signalInfo {
             json["signal"] = "\(signalInfo.name ?? "UNKNOWN") (\(signalInfo.code ?? ""))"
-        }
-
-        // Include crashed session ID for correlation in Grafana
-        if let sessionId = crashedSessionId, !sessionId.isEmpty {
-            json["crashedSessionId"] = sessionId
         }
 
         // Stack trace as a string (similar to Android's trace field)

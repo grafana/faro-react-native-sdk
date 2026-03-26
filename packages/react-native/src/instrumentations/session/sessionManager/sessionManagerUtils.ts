@@ -1,5 +1,3 @@
-import { NativeModules } from 'react-native';
-
 import { dateNow, deepEqual, EVENT_OVERRIDES_SERVICE_NAME, faro, genShortID, isEmpty } from '@grafana/faro-core';
 import type { Meta, MetaOverrides } from '@grafana/faro-core';
 
@@ -18,32 +16,6 @@ function getSessionTimeouts(): {
     sessionExpirationTime: DEFAULT_SESSION_EXPIRATION_MS,
     inactivityTimeout,
   };
-}
-
-/**
- * Persist session ID to native storage for crash report correlation.
- *
- * When a crash occurs, the app terminates before the crash can be reported.
- * On the next app launch, we need to know which session was active when the crash
- * occurred so we can include it in the crash report context.
- *
- * This enables users to query events from the crashed session in Grafana,
- * even though the crash report is sent in a new session.
- *
- * Platform support:
- * - Android: Uses SharedPreferences
- * - iOS: Uses UserDefaults
- */
-function persistSessionIdToNative(sessionId: string): void {
-  try {
-    const { FaroReactNativeModule } = NativeModules;
-    if (FaroReactNativeModule?.persistSessionId) {
-      FaroReactNativeModule.persistSessionId(sessionId);
-    }
-  } catch {
-    // Silently fail - this is best-effort for crash correlation
-    faro.unpatchedConsole?.debug?.('Failed to persist session ID to native storage');
-  }
 }
 
 type CreateUserSessionObjectParams = {
@@ -147,13 +119,6 @@ export function addSessionMetadataToNextSession(newSession: FaroUserSession, pre
   const previousSessionId = previousSession?.sessionId;
   if (previousSessionId != null) {
     sessionWithMeta.sessionMeta.attributes!['previousSession'] = previousSessionId;
-  }
-
-  // Persist session ID to native storage for crash report correlation
-  // Only persist when session ID actually changes (new session started)
-  const isNewSession = newSession.sessionId !== previousSessionId;
-  if (isNewSession) {
-    persistSessionIdToNative(newSession.sessionId);
   }
 
   return sessionWithMeta;
