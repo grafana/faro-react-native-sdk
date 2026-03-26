@@ -802,8 +802,8 @@ The SDK automatically emits `app_lifecycle_changed` events when the app state tr
 ```typescript
 {
   event_name: "app_lifecycle_changed",
-  fromState: "resumed",      // Previous state (Flutter-aligned: resumed | paused | inactive | detached)
-  toState: "paused",         // New state
+  fromState: "active",      // Previous AppState (active | background | inactive | unknown | extension)
+  toState: "background",    // New state
   duration: "5234",         // Time spent in previous state (ms)
   timestamp: "1701518400000" // Unix timestamp
 }
@@ -825,23 +825,23 @@ The SDK automatically emits `app_lifecycle_changed` events when the app state tr
 | json
 | event_name="app_lifecycle_changed"
 
-# Count background transitions (toState="paused")
+# Count background transitions (toState="background")
 {app_name="my-app", kind="event"}
 | json
 | event_name="app_lifecycle_changed"
-| toState="paused"
+| toState="background"
 
-# Count foreground transitions (toState="resumed")
+# Count foreground transitions (toState="active")
 {app_name="my-app", kind="event"}
 | json
 | event_name="app_lifecycle_changed"
-| toState="resumed"
+| toState="active"
 
 # Average time in foreground (unwrap duration)
 {app_name="my-app", kind="event"}
 | json
 | event_name="app_lifecycle_changed"
-| fromState="resumed"
+| fromState="active"
 | unwrap duration
 | avg
 ```

@@ -6,36 +6,11 @@ import { BaseInstrumentation, dateNow, VERSION } from '@grafana/faro-core';
 export const EVENT_APP_STATE_CHANGED = 'app_lifecycle_changed';
 
 /**
- * Maps React Native AppStateStatus to Flutter AppLifecycleState names for cross-SDK consistency.
- * RN active=resumed, background=paused, inactive=inactive, unknown/extension=detached
- */
-function mapToFlutterLifecycleState(rnState: AppStateStatus | undefined): string {
-  if (!rnState) return 'detached';
-  switch (rnState) {
-    case 'active':
-      return 'resumed';
-    case 'background':
-      return 'paused';
-    case 'inactive':
-      return 'inactive';
-    case 'unknown':
-    case 'extension':
-    default:
-      return 'detached';
-  }
-}
-
-/**
  * AppState instrumentation for React Native
  * Tracks app foreground/background/inactive state changes
  *
- * Uses event name and state names aligned with Faro Flutter SDK (app_lifecycle_changed, resumed/paused/inactive/detached).
- *
- * React Native AppState → Flutter AppLifecycleState mapping:
- * - 'active' → 'resumed'
- * - 'background' → 'paused'
- * - 'inactive' → 'inactive'
- * - 'unknown'/'extension' → 'detached'
+ * Emits `app_lifecycle_changed` with React Native `AppState` values in `fromState` / `toState`
+ * (active, background, inactive, unknown, extension).
  */
 export class AppStateInstrumentation extends BaseInstrumentation {
   readonly name = '@grafana/faro-react-native:instrumentation-appstate';
@@ -59,9 +34,8 @@ export class AppStateInstrumentation extends BaseInstrumentation {
   }
 
   /**
-   * Handles app state changes and emits app_lifecycle_changed events.
-   * State names aligned with Faro Flutter SDK (resumed/paused/inactive/detached).
-   * Includes duration and timestamp for time-in-state analysis.
+   * Handles app state changes and emits app_lifecycle_changed events
+   * with native AppState status strings. Includes duration and timestamp for time-in-state analysis.
    */
   private handleAppStateChange = (nextAppState: AppStateStatus): void => {
     const previousState = this.currentState;
@@ -79,9 +53,9 @@ export class AppStateInstrumentation extends BaseInstrumentation {
       duration,
     });
 
-    // Emit app lifecycle change event (Flutter-aligned state names + RN duration/timestamp)
-    const fromState = previousState !== undefined ? mapToFlutterLifecycleState(previousState) : '';
-    const toState = mapToFlutterLifecycleState(nextAppState);
+    // Emit app lifecycle change event (native RN AppState values + duration/timestamp)
+    const fromState = previousState !== undefined ? previousState : '';
+    const toState = nextAppState;
     this.api.pushEvent(
       EVENT_APP_STATE_CHANGED,
       {

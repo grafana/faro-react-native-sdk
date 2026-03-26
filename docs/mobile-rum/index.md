@@ -1033,17 +1033,8 @@ Faro.initialize(
 
 - Uses React Native's **AppState** API
 - Subscribes to `change` events
-- Maps RN states to Flutter AppLifecycleState names so both SDKs send the same state values
+- `fromState` / `toState` use native **AppState** values (`active`, `background`, `inactive`, `unknown`, `extension`)
 - Always enabled (no config flag)
-
-**State mapping (RN → Flutter):**
-
-- `active` → `resumed`
-- `background` → `paused`
-- `inactive` → `inactive`
-- `unknown`/`extension` → `detached`
-
-> **🔴 REVIEW NEEDED:** Is mapping RN state names to Flutter names really necessary? Both SDKs could keep their native state names (`active`/`background` vs `resumed`/`paused`) and still be queryable in Grafana. Consider reviewing this before committing to this mapping.
 
 ##### **Flutter SDK**
 
@@ -1062,8 +1053,8 @@ Faro.initialize(
     {
       "name": "app_lifecycle_changed",
       "attributes": {
-        "fromState": "resumed",
-        "toState": "paused",
+        "fromState": "active",
+        "toState": "background",
         "duration": "45000",
         "timestamp": "1678901234567"
       }
@@ -1100,7 +1091,7 @@ Faro.initialize(
 | **Always Enabled**   | ✅ Yes                                                         | ✅ Yes                                                          |
 | **Event Name**       | `app_lifecycle_changed`                                        | `app_lifecycle_changed`                                         |
 | **Event Attributes** | fromState, toState, duration, timestamp                        | fromState, toState ⚠️ No duration/timestamp                     |
-| **State Names**      | resumed, paused, inactive, detached (RN maps to Flutter names) | resumed, paused, inactive, detached, hidden (AppLifecycleState) |
+| **State Names**      | active, background, inactive, unknown, extension (AppState)   | resumed, paused, inactive, detached, hidden (AppLifecycleState) |
 
 ---
 

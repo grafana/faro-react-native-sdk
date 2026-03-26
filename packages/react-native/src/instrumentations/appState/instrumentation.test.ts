@@ -13,7 +13,7 @@ describe('AppStateInstrumentation', () => {
 
     // Mock AppState
     (AppState as any).currentState = 'active';
-    (AppState as any).addEventListener = jest.fn((event: string, handler: (state: string) => void) => {
+    (AppState as any).addEventListener = jest.fn((_event: string, handler: (state: string) => void) => {
       appStateListeners.push(handler);
       return {
         remove: jest.fn(() => {
@@ -81,8 +81,8 @@ describe('AppStateInstrumentation', () => {
       expect(transport.items).toHaveLength(1);
       const event = transport.items[0] as TransportItem<EventEvent>;
       expect(event.payload.name).toBe(EVENT_APP_STATE_CHANGED);
-      expect(event.payload.attributes?.fromState).toBe('resumed');
-      expect(event.payload.attributes?.toState).toBe('paused');
+      expect(event.payload.attributes?.['fromState']).toBe('active');
+      expect(event.payload.attributes?.['toState']).toBe('background');
       expect(event.payload.attributes).toHaveProperty('duration');
       expect(event.payload.attributes).toHaveProperty('timestamp');
     });
@@ -111,8 +111,8 @@ describe('AppStateInstrumentation', () => {
       expect(transport.items).toHaveLength(2);
       const event = transport.items[1] as TransportItem<EventEvent>;
       expect(event.payload.name).toBe(EVENT_APP_STATE_CHANGED);
-      expect(event.payload.attributes?.fromState).toBe('paused');
-      expect(event.payload.attributes?.toState).toBe('resumed');
+      expect(event.payload.attributes?.['fromState']).toBe('background');
+      expect(event.payload.attributes?.['toState']).toBe('active');
     });
 
     it('should handle inactive state', () => {
@@ -129,8 +129,8 @@ describe('AppStateInstrumentation', () => {
 
       expect(transport.items).toHaveLength(1);
       const event = transport.items[0] as TransportItem<EventEvent>;
-      expect(event.payload.attributes?.fromState).toBe('resumed');
-      expect(event.payload.attributes?.toState).toBe('inactive');
+      expect(event.payload.attributes?.['fromState']).toBe('active');
+      expect(event.payload.attributes?.['toState']).toBe('inactive');
     });
 
     it('should track multiple state changes', () => {
@@ -150,19 +150,19 @@ describe('AppStateInstrumentation', () => {
       expect(transport.items).toHaveLength(3);
 
       const event1 = transport.items[0] as TransportItem<EventEvent>;
-      expect(event1.payload.attributes?.fromState).toBe('resumed');
-      expect(event1.payload.attributes?.toState).toBe('inactive');
+      expect(event1.payload.attributes?.['fromState']).toBe('active');
+      expect(event1.payload.attributes?.['toState']).toBe('inactive');
 
       const event2 = transport.items[1] as TransportItem<EventEvent>;
-      expect(event2.payload.attributes?.fromState).toBe('inactive');
-      expect(event2.payload.attributes?.toState).toBe('paused');
+      expect(event2.payload.attributes?.['fromState']).toBe('inactive');
+      expect(event2.payload.attributes?.['toState']).toBe('background');
 
       const event3 = transport.items[2] as TransportItem<EventEvent>;
-      expect(event3.payload.attributes?.fromState).toBe('paused');
-      expect(event3.payload.attributes?.toState).toBe('resumed');
+      expect(event3.payload.attributes?.['fromState']).toBe('background');
+      expect(event3.payload.attributes?.['toState']).toBe('active');
     });
 
-    it('should use Flutter-aligned state names with duration and timestamp', () => {
+    it('should use native AppState names with duration and timestamp', () => {
       jest.useFakeTimers();
 
       const transport = new MockTransport();
@@ -177,11 +177,11 @@ describe('AppStateInstrumentation', () => {
       appStateListeners.forEach((listener) => listener('background'));
 
       const event = transport.items[0] as TransportItem<EventEvent>;
-      expect(event.payload.attributes?.fromState).toBe('resumed');
-      expect(event.payload.attributes?.toState).toBe('paused');
-      const duration = parseInt(event.payload.attributes?.duration as string, 10);
+      expect(event.payload.attributes?.['fromState']).toBe('active');
+      expect(event.payload.attributes?.['toState']).toBe('background');
+      const duration = parseInt(event.payload.attributes?.['duration'] as string, 10);
       expect(duration).toBeGreaterThanOrEqual(0);
-      expect(event.payload.attributes?.timestamp).toBeDefined();
+      expect(event.payload.attributes?.['timestamp']).toBeDefined();
 
       jest.useRealTimers();
     });

@@ -159,7 +159,7 @@ count_over_time({app_id="YOUR_APP_ID", kind="event"} |= "event_name=faro.tracing
 ### App State
 
 ```text
-timestamp=2026-02-24T15:56:28.501Z kind=event level=info event_name=app_lifecycle_changed event_data_fromState=paused event_data_toState=resumed event_data_duration=27263 event_data_timestamp=1771948588500 sdk_name=@grafana/faro-react-native app_name=react-native-sdk-demo view_name=Home session_id=3c93ksEFuU
+timestamp=2026-02-24T15:56:28.501Z kind=event level=info event_name=app_lifecycle_changed event_data_fromState=background event_data_toState=active event_data_duration=27263 event_data_timestamp=1771948588500 sdk_name=@grafana/faro-react-native app_name=react-native-sdk-demo view_name=Home session_id=3c93ksEFuU
 ```
 
 **Query:**
