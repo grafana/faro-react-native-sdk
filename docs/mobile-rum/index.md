@@ -1436,12 +1436,12 @@ Sessions are always enabled. Options (via faro-core config):
 
 #### Key Differences
 
-| Aspect                 | React Native                                        | Flutter                |
-| ---------------------- | --------------------------------------------------- | ---------------------- |
-| **Storage**            | Volatile: in-memory; Persistent: AsyncStorage       | No session persistence |
-| **Session expiration** | 4 h max, 15 min inactivity                          | None                   |
-| **Events**             | `session_start` only                                | `session_start` only   |
-| **Always enabled**     | Yes                                                 | Yes                    |
+| Aspect                 | React Native                                  | Flutter                |
+| ---------------------- | --------------------------------------------- | ---------------------- |
+| **Storage**            | Volatile: in-memory; Persistent: AsyncStorage | No session persistence |
+| **Session expiration** | 4 h max, 15 min inactivity                    | None                   |
+| **Events**             | `session_start` only                          | `session_start` only   |
+| **Always enabled**     | Yes                                           | Yes                    |
 
 ---
 

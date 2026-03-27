@@ -344,7 +344,6 @@ describe('sessionManagerUtils', () => {
         lastActivity: fakeSystemTime,
       });
     });
-
   });
 
   describe('getSessionMetaUpdateHandler', () => {
