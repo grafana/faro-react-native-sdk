@@ -11,12 +11,9 @@ jobs:
   test:
     permissions:
       contents: read
-    name: Testing with Node version (${{ matrix.node }})
+    name: Test (Node LTS)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: [latest, 20.x, 22.x, 24.x]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
         with:
@@ -25,7 +22,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6
         with:
-          node-version: ${{ matrix.node }}
+          # Match release.yml; demo/package.json requires >=20
+          node-version: 'lts/*'
           cache: 'yarn'
 
       - name: Install dependencies

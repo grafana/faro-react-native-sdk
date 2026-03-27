@@ -4,6 +4,8 @@ module.exports = {
   ...jestBaseConfig,
   preset: 'react-native',
   displayName: 'react-native',
+  // Avoid hanging CI after "Ran all test suites." when handles (e.g. timers) keep Node alive
+  forceExit: true,
   testEnvironment: 'node', // Override jsdom from base config - react-native preset handles environment
   testMatch: ['<rootDir>/packages/react-native/src/**/*.test.ts'],
   transform: {
