@@ -77,6 +77,31 @@ describe('ErrorsInstrumentation', () => {
       const item = transport.items[0] as TransportItem<ExceptionEvent>;
       expect(item.payload.type).toBe('Error');
       expect(item.payload.value).toBe('Test error');
+      expect(item.payload.context?.mechanism).toBe('uncaught');
+    });
+
+    it('should include mechanism in context and use error.name for type (TypeError)', () => {
+      const transport = new MockTransport();
+      let errorHandler: any;
+
+      mockGlobal.ErrorUtils.setGlobalHandler = jest.fn((handler) => {
+        errorHandler = handler;
+      });
+
+      initializeFaro(
+        mockConfig({
+          transports: [transport],
+          instrumentations: [new ErrorsInstrumentation()],
+        })
+      );
+
+      const typeError = new TypeError('Cannot read property "x" of undefined');
+      errorHandler(typeError, false);
+
+      expect(transport.items).toHaveLength(1);
+      const item = transport.items[0] as TransportItem<ExceptionEvent>;
+      expect(item.payload.type).toBe('TypeError');
+      expect(item.payload.context?.mechanism).toBe('uncaught');
     });
 
     it('should include isFatal context', () => {
@@ -349,7 +374,7 @@ describe('ErrorsInstrumentation', () => {
       expect(item.payload.value).toBe('Rejected promise');
     });
 
-    it('should convert non-Error rejections to Errors', () => {
+    it('should convert non-Error rejections to Errors with type UnhandledRejection and mechanism', () => {
       const transport = new MockTransport();
       let rejectionHandler: any;
 
@@ -370,8 +395,36 @@ describe('ErrorsInstrumentation', () => {
 
       expect(transport.items).toHaveLength(1);
       const item = transport.items[0] as TransportItem<ExceptionEvent>;
+      expect(item.payload.type).toBe('UnhandledRejection');
       expect(item.payload.value).toContain('Unhandled Promise Rejection');
       expect(item.payload.value).toContain('String rejection');
+      expect(item.payload.context?.mechanism).toBe('unhandledrejection');
+    });
+
+    it('should use actual error type for Error rejections with mechanism', () => {
+      const transport = new MockTransport();
+      let rejectionHandler: any;
+
+      mockGlobal.addEventListener = jest.fn((event, handler) => {
+        if (event === 'unhandledrejection') {
+          rejectionHandler = handler;
+        }
+      });
+
+      initializeFaro(
+        mockConfig({
+          transports: [transport],
+          instrumentations: [new ErrorsInstrumentation()],
+        })
+      );
+
+      const typeError = new TypeError('Something went wrong');
+      rejectionHandler({ reason: typeError } as PromiseRejectionEvent);
+
+      expect(transport.items).toHaveLength(1);
+      const item = transport.items[0] as TransportItem<ExceptionEvent>;
+      expect(item.payload.type).toBe('TypeError');
+      expect(item.payload.context?.mechanism).toBe('unhandledrejection');
     });
 
     it('should handle object rejections', () => {

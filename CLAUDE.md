@@ -15,7 +15,7 @@ This is the Grafana Faro React Native SDK - a monorepo containing packages for r
 
 **Critical Dependencies:**
 
-- `@grafana/faro-core@2.0.2` - Pinned, not using `^2.0.2`. Do not upgrade without testing extensively.
+- `@grafana/faro-core@^2.2.3` - Using caret versioning for minor/patch updates.
 - React Native 0.82.1+
 - Yarn Berry 4.12.0
 
@@ -381,6 +381,18 @@ lerna publish from-package
 - `packages/react-native/src/index.ts` - Main export file (check here for public API)
 - `packages/react-native/src/config/getRNInstrumentations.ts` - Default instrumentation setup
 
+## Documentation
+
+### docs/mobile-rum/
+
+The Mobile RUM comparison docs (`docs/mobile-rum/index.md` and related files) are read by both technical and non-technical people (product, support, stakeholders). When writing or updating it:
+
+- **Audience**: Assume readers include people unfamiliar with implementation details.
+- **"How Data is Collected"**: Keep the list structure (bullets, iOS/Android breakdown) but use plain language. Avoid file paths, class names, internal APIs. It's fine to name libraries (e.g. axios, dio) when relevant.
+- **Prefer**: "The SDK automatically tracks..." over "Patches `global.fetch` via `HttpInstrumentation`".
+- **Avoid**: `task_threads()`, `phys_footprint`, `/proc/[pid]/stat`, `markEventEnd`, `startSpanManual`, etc., unless the technical distinction matters for the comparison.
+- **Flutter SDK values**: Never use "Check Flutter docs" as a placeholder. If `faro-flutter-sdk` is in the workspace, go to `faro-flutter-sdk/lib/` and look up the implementation (config option, event name, default value, etc.)—do not search the web. Only search the web if `faro-flutter-sdk` is not cloned in the workspace.
+
 ## Feature Parity Notes
 
 This SDK aims for feature parity with:
@@ -391,7 +403,7 @@ This SDK aims for feature parity with:
 When implementing new features, check:
 
 - `packages/react-native/FEATURE_PARITY.md` - Detailed comparison with Web SDK
-- Faro Flutter SDK repository for mobile patterns
+- Faro Flutter SDK: If `faro-flutter-sdk` is in the workspace, go to `faro-flutter-sdk/lib/` and inspect for implementation details and patterns. Only search the web if the repo is not in the workspace.
 
 ## Performance Monitoring
 

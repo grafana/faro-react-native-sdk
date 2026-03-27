@@ -16,6 +16,7 @@ import type { Transport } from '@grafana/faro-core';
 import { FaroTraceExporter } from './exporters/faroTraceExporter';
 import { getDefaultOTELInstrumentations } from './instrumentations/getDefaultOTELInstrumentations';
 import { FaroMetaAttributesSpanProcessor } from './processors/faroMetaAttributesSpanProcessor';
+import { HttpRequestMonitorSpanProcessor } from './processors/httpRequestMonitorSpanProcessor';
 import {
   ATTR_APP_VERSION,
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
@@ -105,7 +106,15 @@ export class TracingInstrumentation extends BaseInstrumentation {
     // Device/Platform attributes from React Native
     // Note: metas.value contains all meta providers, we need to check if device meta exists
     const allMetas = this.metas.value as Record<string, unknown>;
-    const deviceMeta = allMetas['device'];
+    const deviceMeta = allMetas['device'] as
+      | {
+          model?: string;
+          brand?: string;
+          osName?: string;
+          osVersion?: string;
+          locale?: string;
+        }
+      | undefined;
 
     if (deviceMeta?.model) {
       attributes[ATTR_DEVICE_MODEL] = deviceMeta.model;
@@ -150,12 +159,14 @@ export class TracingInstrumentation extends BaseInstrumentation {
       },
       spanProcessors: [
         options.spanProcessor ??
-          new FaroMetaAttributesSpanProcessor(
-            new BatchSpanProcessor(new FaroTraceExporter({ api: this.api }), {
-              scheduledDelayMillis: TracingInstrumentation.SCHEDULED_BATCH_DELAY_MS,
-              maxExportBatchSize: 30,
-            }),
-            this.metas
+          new HttpRequestMonitorSpanProcessor(
+            new FaroMetaAttributesSpanProcessor(
+              new BatchSpanProcessor(new FaroTraceExporter({ api: this.api }), {
+                scheduledDelayMillis: TracingInstrumentation.SCHEDULED_BATCH_DELAY_MS,
+                maxExportBatchSize: 30,
+              }),
+              this.metas
+            )
           ),
       ],
     });
@@ -164,7 +175,8 @@ export class TracingInstrumentation extends BaseInstrumentation {
     // This is CRITICAL for the tracer to generate real trace IDs instead of all zeros
     trace.setGlobalTracerProvider(this.provider);
 
-    const { propagateTraceHeaderCorsUrls, fetchInstrumentationOptions } = this.options.instrumentationOptions ?? {};
+    const { propagateTraceHeaderCorsUrls, fetchInstrumentationOptions, xhrInstrumentationOptions } =
+      this.options.instrumentationOptions ?? {};
 
     // Get ignore URLs from transports to prevent infinite loops
     const ignoreUrls = this.getIgnoreUrls();
@@ -177,6 +189,7 @@ export class TracingInstrumentation extends BaseInstrumentation {
           ignoreUrls,
           propagateTraceHeaderCorsUrls,
           fetchInstrumentationOptions,
+          xhrInstrumentationOptions,
         }),
     });
 

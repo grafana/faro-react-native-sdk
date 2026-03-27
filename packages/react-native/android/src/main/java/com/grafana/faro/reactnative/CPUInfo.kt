@@ -23,6 +23,8 @@ import java.io.FileReader
  */
 object CPUInfo {
 
+    private val cpuInfoLock = Any()
+
     // Static state for differential calculation
     private var lastCpuTime: Double = 0.0
     private var lastProcessTime: Double = 0.0
@@ -37,46 +39,48 @@ object CPUInfo {
      * @return CPU usage percentage, or null on error or unsupported Android version
      */
     fun getCpuInfo(): Double? {
-        // Requires API 21+ for Os.sysconf
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            return null
-        }
-
-        // Initialize clock speed on first call
-        if (clockSpeedHz == 0L) {
-            try {
-                clockSpeedHz = Os.sysconf(android.system.OsConstants._SC_CLK_TCK)
-            } catch (e: Exception) {
+        synchronized(cpuInfoLock) {
+            // Requires API 21+ for Os.sysconf
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
                 return null
             }
-        }
 
-        val cpuTime = getCpuTime() ?: return null
-        val processTime = getProcessUptime() ?: return null
+            // Initialize clock speed on first call
+            if (clockSpeedHz == 0L) {
+                try {
+                    clockSpeedHz = Os.sysconf(android.system.OsConstants._SC_CLK_TCK)
+                } catch (e: Exception) {
+                    return null
+                }
+            }
 
-        // First call - establish baseline
-        if (lastCpuTime == 0.0) {
+            val cpuTime = getCpuTime() ?: return null
+            val processTime = getProcessUptime() ?: return null
+
+            // First call - establish baseline
+            if (lastCpuTime == 0.0) {
+                lastCpuTime = cpuTime
+                lastProcessTime = processTime
+                return 0.0
+            }
+
+            // Calculate differential CPU usage
+            val cpuTimeDiff = cpuTime - lastCpuTime
+            val processTimeDiff = processTime - lastProcessTime
+
+            // Avoid division by zero
+            if (processTimeDiff <= 0) {
+                return null
+            }
+
+            val cpuUsagePercent = 100.0 * (cpuTimeDiff / processTimeDiff)
+
+            // Store current values for next call
             lastCpuTime = cpuTime
             lastProcessTime = processTime
-            return 0.0
+
+            return cpuUsagePercent
         }
-
-        // Calculate differential CPU usage
-        val cpuTimeDiff = cpuTime - lastCpuTime
-        val processTimeDiff = processTime - lastProcessTime
-
-        // Avoid division by zero
-        if (processTimeDiff <= 0) {
-            return null
-        }
-
-        val cpuUsagePercent = 100.0 * (cpuTimeDiff / processTimeDiff)
-
-        // Store current values for next call
-        lastCpuTime = cpuTime
-        lastProcessTime = processTime
-
-        return cpuUsagePercent
     }
 
     /**

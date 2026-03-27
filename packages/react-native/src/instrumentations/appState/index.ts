@@ -2,19 +2,15 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { BaseInstrumentation, dateNow, VERSION } from '@grafana/faro-core';
 
-// Define app state changed event constant - exported for testing
-export const EVENT_APP_STATE_CHANGED = 'app_state_changed';
+// Event name aligned with Faro Flutter SDK (app_lifecycle_changed)
+export const EVENT_APP_STATE_CHANGED = 'app_lifecycle_changed';
 
 /**
  * AppState instrumentation for React Native
  * Tracks app foreground/background/inactive state changes
  *
- * AppState values:
- * - 'active': App is running in the foreground
- * - 'background': App is running in the background (user has switched to another app or home screen)
- * - 'inactive': Transitional state (e.g., incoming call, opening control center on iOS)
- * - 'unknown': Initial state before first change (iOS only)
- * - 'extension': App extension is running (iOS only)
+ * Emits `app_lifecycle_changed` with React Native `AppState` values in `fromState` / `toState`
+ * (active, background, inactive, unknown, extension).
  */
 export class AppStateInstrumentation extends BaseInstrumentation {
   readonly name = '@grafana/faro-react-native:instrumentation-appstate';
@@ -38,7 +34,8 @@ export class AppStateInstrumentation extends BaseInstrumentation {
   }
 
   /**
-   * Handles app state changes and emits app_state_changed events
+   * Handles app state changes and emits app_lifecycle_changed events
+   * with native AppState status strings. Includes duration and timestamp for time-in-state analysis.
    */
   private handleAppStateChange = (nextAppState: AppStateStatus): void => {
     const previousState = this.currentState;
@@ -49,19 +46,21 @@ export class AppStateInstrumentation extends BaseInstrumentation {
     this.currentState = nextAppState;
     this.stateStartTime = now;
 
-    // Log the state change
+    // Log the state change (internal debug keeps RN state names)
     this.logDebug('App state changed', {
       from: previousState,
       to: nextAppState,
       duration,
     });
 
-    // Emit app state change event
+    // Emit app lifecycle change event (native RN AppState values + duration/timestamp)
+    const fromState = previousState !== undefined ? previousState : '';
+    const toState = nextAppState;
     this.api.pushEvent(
       EVENT_APP_STATE_CHANGED,
       {
-        fromState: previousState ?? 'unknown',
-        toState: nextAppState,
+        fromState,
+        toState,
         duration: duration.toString(),
         timestamp: now.toString(),
       },

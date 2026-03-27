@@ -1,21 +1,14 @@
-import {
-  BaseInstrumentation,
-  dateNow,
-  EVENT_SESSION_EXTEND,
-  EVENT_SESSION_RESUME,
-  EVENT_SESSION_START,
-  genShortID,
-  VERSION,
-} from '@grafana/faro-core';
+import { BaseInstrumentation, dateNow, EVENT_SESSION_START, genShortID, VERSION } from '@grafana/faro-core';
 import type { Config, Meta, MetaSession, TransportItem } from '@grafana/faro-core';
+
+import type { ReactNativeSessionTrackingConfig } from '../../config/types';
 
 import { getSessionAttributes } from './sessionAttributes';
 import { type FaroUserSession, getSessionManagerByConfig, isSampled } from './sessionManager';
 import { PersistentSessionsManager } from './sessionManager/PersistentSessionsManager';
+import { MAX_SESSION_PERSISTENCE_TIME } from './sessionManager/sessionConstants';
 import { createUserSessionObject, isUserSessionValid } from './sessionManager/sessionManagerUtils';
 import type { SessionManager } from './sessionManager/types';
-
-type LifecycleType = typeof EVENT_SESSION_RESUME | typeof EVENT_SESSION_START;
 
 /**
  * Session instrumentation for React Native
@@ -34,12 +27,6 @@ export class SessionInstrumentation extends BaseInstrumentation {
     const session = meta.session;
 
     if (session && session.id !== this.notifiedSession?.id) {
-      if (this.notifiedSession && this.notifiedSession.id === session.attributes?.['previousSession']) {
-        this.api.pushEvent(EVENT_SESSION_EXTEND, {}, undefined, { skipDedupe: true });
-        this.notifiedSession = session;
-        return;
-      }
-
       this.notifiedSession = session;
       // no need to add attributes and session id, they are included as part of meta
       // automatically
@@ -52,14 +39,16 @@ export class SessionInstrumentation extends BaseInstrumentation {
     sessionsConfig: Required<Config>['sessionTracking']
   ): Promise<{
     initialSession: FaroUserSession;
-    lifecycleType: LifecycleType;
+    emitSessionStartOnInit: boolean;
   }> {
     let storedUserSession: FaroUserSession | null = await SessionManager.fetchUserSession();
 
-    if (sessionsConfig.persistent && sessionsConfig.maxSessionPersistenceTime && storedUserSession) {
+    const sessionsConfigTyped = sessionsConfig as ReactNativeSessionTrackingConfig;
+    const maxPersistenceMs = sessionsConfigTyped.maxSessionPersistenceTime ?? MAX_SESSION_PERSISTENCE_TIME;
+
+    if (sessionsConfig.persistent && storedUserSession) {
       const now = dateNow();
-      const shouldClearPersistentSession =
-        storedUserSession.lastActivity < now - sessionsConfig.maxSessionPersistenceTime;
+      const shouldClearPersistentSession = storedUserSession.lastActivity < now - maxPersistenceMs;
 
       if (shouldClearPersistentSession) {
         await PersistentSessionsManager.removeUserSession();
@@ -71,7 +60,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     // These match the Flutter SDK's default session attributes
     const defaultAttributes = await getSessionAttributes();
 
-    let lifecycleType: LifecycleType;
+    let emitSessionStartOnInit: boolean;
     let initialSession: FaroUserSession;
 
     if (isUserSessionValid(storedUserSession)) {
@@ -105,7 +94,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
         overrides,
       };
 
-      lifecycleType = EVENT_SESSION_RESUME;
+      emitSessionStartOnInit = false;
     } else {
       const sessionId = sessionsConfig.session?.id ?? genShortID();
 
@@ -129,10 +118,10 @@ export class SessionInstrumentation extends BaseInstrumentation {
         ...(overrides ? { overrides } : {}),
       };
 
-      lifecycleType = EVENT_SESSION_START;
+      emitSessionStartOnInit = true;
     }
 
-    return { initialSession, lifecycleType };
+    return { initialSession, emitSessionStartOnInit };
   }
 
   private registerBeforeSendHook(SessionManager: SessionManager) {
@@ -170,7 +159,10 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
       this.registerBeforeSendHook(SessionManager);
 
-      const { initialSession, lifecycleType } = await this.createInitialSession(SessionManager, sessionTrackingConfig);
+      const { initialSession, emitSessionStartOnInit } = await this.createInitialSession(
+        SessionManager,
+        sessionTrackingConfig
+      );
 
       await SessionManager.storeUserSession(initialSession);
 
@@ -182,12 +174,8 @@ export class SessionInstrumentation extends BaseInstrumentation {
       // Store the session manager instance for cleanup
       this.sessionManagerInstance = new SessionManager();
 
-      if (lifecycleType === EVENT_SESSION_START) {
+      if (emitSessionStartOnInit) {
         this.api.pushEvent(EVENT_SESSION_START, {}, undefined, { skipDedupe: true });
-      }
-
-      if (lifecycleType === EVENT_SESSION_RESUME) {
-        this.api.pushEvent(EVENT_SESSION_RESUME, {}, undefined, { skipDedupe: true });
       }
     }
 

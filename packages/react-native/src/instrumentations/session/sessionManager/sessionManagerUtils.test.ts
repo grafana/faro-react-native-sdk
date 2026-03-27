@@ -3,7 +3,6 @@ import { initializeFaro } from '@grafana/faro-core';
 import { mockConfig } from '@grafana/faro-test-utils';
 
 import * as samplingModule from './sampling';
-import { SESSION_EXPIRATION_TIME, SESSION_INACTIVITY_TIME } from './sessionConstants';
 import {
   addSessionMetadataToNextSession,
   createUserSessionObject,
@@ -15,6 +14,8 @@ import type { FaroUserSession } from './types';
 
 const fakeSystemTime = new Date('2023-01-01').getTime();
 const mockSessionId = '123';
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+const SESSION_EXPIRATION_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 describe('sessionManagerUtils', () => {
   beforeAll(() => {
@@ -104,7 +105,7 @@ describe('sessionManagerUtils', () => {
 
     it('returns false if activity timeout is reached', () => {
       const session = createUserSessionObject();
-      session.lastActivity = fakeSystemTime - SESSION_INACTIVITY_TIME;
+      session.lastActivity = fakeSystemTime - INACTIVITY_TIMEOUT_MS;
 
       const isValid = isUserSessionValid(session);
       expect(isValid).toBe(false);
@@ -112,7 +113,7 @@ describe('sessionManagerUtils', () => {
 
     it('returns false if lifetime timeout is reached', () => {
       const session = createUserSessionObject();
-      session.started = fakeSystemTime - SESSION_EXPIRATION_TIME;
+      session.started = fakeSystemTime - SESSION_EXPIRATION_MS;
 
       const isValid = isUserSessionValid(session);
       expect(isValid).toBe(false);
@@ -126,7 +127,7 @@ describe('sessionManagerUtils', () => {
 
     it('returns true if activity timeout is not reached', () => {
       const session = createUserSessionObject();
-      session.lastActivity = fakeSystemTime - SESSION_INACTIVITY_TIME + 1000;
+      session.lastActivity = fakeSystemTime - INACTIVITY_TIMEOUT_MS + 1000;
 
       const isValid = isUserSessionValid(session);
       expect(isValid).toBe(true);
@@ -134,7 +135,7 @@ describe('sessionManagerUtils', () => {
 
     it('returns true if lifetime timeout is not reached', () => {
       const session = createUserSessionObject();
-      session.started = fakeSystemTime - SESSION_EXPIRATION_TIME + 1000;
+      session.started = fakeSystemTime - SESSION_EXPIRATION_MS + 1000;
 
       const isValid = isUserSessionValid(session);
       expect(isValid).toBe(true);
@@ -312,7 +313,7 @@ describe('sessionManagerUtils', () => {
       expect(mockOnSessionChange).toHaveBeenCalledTimes(1);
     });
 
-    it('extends existing valid session', async () => {
+    it('refreshes lastActivity for an existing valid session', async () => {
       const config = mockConfig({
         sessionTracking: {
           enabled: true,
@@ -342,45 +343,6 @@ describe('sessionManagerUtils', () => {
         ...existingSession,
         lastActivity: fakeSystemTime,
       });
-    });
-
-    it('forces session extend when forceSessionExtend is true', async () => {
-      const mockOnSessionChange = jest.fn();
-      const config = mockConfig({
-        sessionTracking: {
-          enabled: true,
-          onSessionChange: mockOnSessionChange,
-        },
-      });
-
-      const _faro = initializeFaro(config);
-
-      const existingSession: FaroUserSession = {
-        sessionId: 'old-session',
-        started: fakeSystemTime,
-        lastActivity: fakeSystemTime,
-        isSampled: true,
-      };
-
-      const mockFetchUserSession = jest.fn().mockResolvedValue(existingSession);
-      const mockStoreUserSession = jest.fn().mockResolvedValue(undefined);
-
-      const updateSession = getUserSessionUpdater({
-        fetchUserSession: mockFetchUserSession,
-        storeUserSession: mockStoreUserSession,
-      });
-
-      jest.spyOn(faroCore, 'genShortID').mockReturnValueOnce(mockSessionId);
-      jest.spyOn(samplingModule, 'isSampled').mockReturnValueOnce(true);
-
-      await updateSession({ forceSessionExtend: true });
-
-      expect(mockStoreUserSession).toHaveBeenCalledTimes(1);
-      expect(mockOnSessionChange).toHaveBeenCalledTimes(1);
-
-      // Should create new session, not extend existing
-      const storedSession = mockStoreUserSession.mock.calls[0][0];
-      expect(storedSession.sessionId).toBe(mockSessionId);
     });
   });
 

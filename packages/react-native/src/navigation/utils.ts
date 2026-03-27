@@ -2,7 +2,6 @@ import type { NavigationState, PartialState, Route } from '@react-navigation/nat
 
 import { faro } from '@grafana/faro-core';
 
-import { setCurrentPage } from '../metas/page';
 import { setCurrentScreen } from '../metas/screen';
 
 /**
@@ -50,9 +49,8 @@ export function onNavigationStateChange(state: NavigationState | undefined): voi
   const screenName = getRouteName(currentRoute);
 
   if (screenName) {
-    // Update the screen and page meta
+    // Update the screen meta
     setCurrentScreen(screenName);
-    setCurrentPage(screenName);
 
     // Update the view meta which will trigger VIEW_CHANGED event
     faro.api?.setView({ name: screenName });

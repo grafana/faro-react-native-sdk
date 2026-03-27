@@ -15,6 +15,12 @@ jest.mock('react-native-device-info', () => ({
   getDeviceNameSync: jest.fn(),
   getBrand: jest.fn(),
   isEmulatorSync: jest.fn(),
+  isTablet: jest.fn(),
+  getTotalMemorySync: jest.fn(),
+  getUsedMemorySync: jest.fn(),
+  getBatteryLevel: jest.fn(),
+  isBatteryCharging: jest.fn(),
+  getCarrier: jest.fn(),
   getApiLevel: jest.fn(),
 }));
 
@@ -50,6 +56,12 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('iPhone 15 Pro');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(4000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(2000000000);
+        (DeviceInfo.getBatteryLevel as jest.Mock).mockResolvedValue(0.85);
+        (DeviceInfo.isBatteryCharging as jest.Mock).mockResolvedValue(false);
+        (DeviceInfo.getCarrier as jest.Mock).mockResolvedValue('Verizon');
 
         const attributes = await getSessionAttributes();
 
@@ -65,6 +77,13 @@ describe('sessionAttributes', () => {
           device_brand: 'Apple',
           device_is_physical: 'true',
           device_id: 'ios-device-uuid-123',
+          device_type: 'mobile',
+          device_memory_total: '4000000000',
+          device_memory_used: '2000000000',
+          device_battery_level: '85',
+          device_is_charging: 'false',
+          device_low_power_mode: undefined,
+          device_carrier: 'Verizon',
         });
       });
 
@@ -77,6 +96,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('iPhone Simulator');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(true);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(2000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(1000000000);
 
         const attributes = await getSessionAttributes();
 
@@ -93,6 +115,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('iPhone 14 Pro');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(6000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(3000000000);
 
         const attributes = await getSessionAttributes();
 
@@ -127,6 +152,12 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('SM-A155F');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('samsung');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(8000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(4000000000);
+        (DeviceInfo.getBatteryLevel as jest.Mock).mockResolvedValue(0.85);
+        (DeviceInfo.isBatteryCharging as jest.Mock).mockResolvedValue(false);
+        (DeviceInfo.getCarrier as jest.Mock).mockResolvedValue('Verizon');
         (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(35);
 
         const attributes = await getSessionAttributes();
@@ -143,6 +174,13 @@ describe('sessionAttributes', () => {
           device_brand: 'samsung',
           device_is_physical: 'true',
           device_id: 'android-device-uuid-456',
+          device_type: 'mobile',
+          device_memory_total: '8000000000',
+          device_memory_used: '4000000000',
+          device_battery_level: '85',
+          device_is_charging: 'false',
+          device_low_power_mode: undefined,
+          device_carrier: 'Verizon',
         });
       });
 
@@ -155,6 +193,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Pixel 5');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('google');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(true);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(2000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(1000000000);
         (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(33);
 
         const attributes = await getSessionAttributes();
@@ -172,6 +213,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('M2101K7AG');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('xiaomi');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(6000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(3000000000);
         (DeviceInfo.getApiLevel as jest.Mock).mockRejectedValue(new Error('API level unavailable'));
 
         const attributes = await getSessionAttributes();
@@ -271,6 +315,9 @@ describe('sessionAttributes', () => {
           device_brand: 'unknown',
           device_is_physical: 'true',
           device_id: 'unknown',
+          device_type: 'mobile',
+          device_memory_total: '0',
+          device_memory_used: '0',
         });
       });
 
@@ -309,6 +356,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Galaxy S21 Ultra');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('samsung');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(12000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(6000000000);
         (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(34);
 
         const attributes = await getSessionAttributes();
@@ -325,6 +375,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('OnePlus 9 Pro');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('OnePlus');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(8000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(4000000000);
         (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(34);
 
         const attributes = await getSessionAttributes();

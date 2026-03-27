@@ -1,6 +1,7 @@
 # Contributing to Grafana Faro React Native SDK
 
-Thank you for your interest in contributing to the Grafana Faro React Native SDK! This guide will help you get started with contributing to the project.
+Thank you for your interest in contributing to the Grafana Faro React Native SDK!
+This guide will help you get started with contributing to the project.
 
 ## Table of Contents
 
@@ -15,7 +16,8 @@ Thank you for your interest in contributing to the Grafana Faro React Native SDK
 
 ## Code of Conduct
 
-This project follows the [Grafana Labs Code of Conduct](./CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+This project follows the [Grafana Labs Code of Conduct](./CODE_OF_CONDUCT.md). By
+participating, you are expected to uphold this code.
 
 ## Getting Started
 
@@ -106,7 +108,7 @@ yarn android
 
 Follow conventional commit format:
 
-```
+```text
 type(scope): subject
 
 body (optional)
@@ -126,7 +128,7 @@ Types:
 
 Examples:
 
-```
+```text
 feat(react-native): add support for custom error handlers
 
 fix(tracing): resolve span export timing issue
@@ -199,6 +201,7 @@ yarn quality:lint:eslint --fix
 - Use descriptive variable names
 - Follow React Native best practices
 - Avoid introducing circular dependencies:
+
   ```bash
   yarn quality:circular-deps
   ```
@@ -278,4 +281,5 @@ Releases are managed by project maintainers using Lerna:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing, you agree that your contributions will be licensed under the Apache
+License 2.0.

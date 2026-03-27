@@ -4,8 +4,11 @@ import DeviceInfo from 'react-native-device-info';
 import { VERSION } from '@grafana/faro-core';
 
 /**
- * Session attributes matching Flutter SDK format
+ * Session attributes for React Native
  * These attributes are automatically included with every telemetry event
+ *
+ * Core attributes match Flutter SDK format, with additional mobile-specific
+ * monitoring fields (memory, device type, battery, etc.)
  */
 export interface SessionAttributes {
   /** SDK version (e.g., "2.0.2") */
@@ -40,6 +43,27 @@ export interface SessionAttributes {
 
   /** Unique device ID (UUID) */
   device_id: string;
+
+  /** Device type ("mobile" or "tablet") */
+  device_type: string;
+
+  /** Total device memory in bytes */
+  device_memory_total: string;
+
+  /** Currently used memory in bytes */
+  device_memory_used: string;
+
+  /** Battery level percentage (e.g., "85") - empty if unavailable */
+  device_battery_level?: string;
+
+  /** Whether device is charging ("true" or "false") - empty if unavailable */
+  device_is_charging?: string;
+
+  /** Whether low power mode is enabled ("true" or "false") - empty if unavailable */
+  device_low_power_mode?: string;
+
+  /** Mobile carrier name (e.g., "Verizon") - empty if unavailable */
+  device_carrier?: string;
 }
 
 /**
@@ -104,21 +128,20 @@ async function getDeviceOsDetail(): Promise<string> {
 }
 
 /**
- * Get all session attributes matching Flutter SDK format
+ * Get all session attributes
  * These attributes are automatically included with every telemetry event
  *
- * Attribute mapping to Flutter SDK:
- * - faro_sdk_version: SDK version
- * - react_native_version: Equivalent to dart_version in Flutter
- * - device_os: Operating system (iOS/Android)
- * - device_os_version: OS version
- * - device_os_detail: Detailed OS info with SDK level for Android
- * - device_manufacturer: Manufacturer (apple, samsung, etc.)
- * - device_model: Raw model identifier (iPhone16,1, SM-A155F)
- * - device_model_name: Human-readable model name
- * - device_brand: Device brand
- * - device_is_physical: Physical device or emulator
- * - device_id: Unique device identifier (UUID)
+ * Core attributes matching Flutter SDK:
+ * - faro_sdk_version, react_native_version
+ * - device_os, device_os_version, device_os_detail
+ * - device_manufacturer, device_model, device_model_name
+ * - device_brand, device_is_physical, device_id
+ *
+ * Additional monitoring attributes:
+ * - device_type (mobile/tablet)
+ * - device_memory_total, device_memory_used
+ * - device_battery_level, device_is_charging, device_low_power_mode
+ * - device_carrier
  */
 export async function getSessionAttributes(): Promise<SessionAttributes> {
   try {
@@ -134,9 +157,54 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
     const deviceName = DeviceInfo.getDeviceNameSync();
     const brand = DeviceInfo.getBrand();
     const isEmulator = DeviceInfo.isEmulatorSync();
+    const isTablet = DeviceInfo.isTablet();
+
+    // Memory info
+    const totalMemory = DeviceInfo.getTotalMemorySync();
+    const usedMemory = DeviceInfo.getUsedMemorySync();
 
     // React Native version (equivalent to dart_version in Flutter)
     const reactNativeVersion = getReactNativeVersion();
+
+    // Try to get async device info (battery, carrier)
+    let batteryLevel: string | undefined;
+    let isCharging: string | undefined;
+    let lowPowerMode: string | undefined;
+    let carrier: string | undefined;
+
+    try {
+      const battery = await DeviceInfo.getBatteryLevel();
+      if (battery >= 0) {
+        batteryLevel = String(Math.round(battery * 100));
+      }
+    } catch (_error) {
+      // Battery info not available
+    }
+
+    try {
+      isCharging = String(await DeviceInfo.isBatteryCharging());
+    } catch (_error) {
+      // Charging status not available
+    }
+
+    try {
+      if ('isPowerSaveMode' in DeviceInfo) {
+        lowPowerMode = String(
+          await (DeviceInfo as typeof DeviceInfo & { isPowerSaveMode: () => Promise<boolean> }).isPowerSaveMode()
+        );
+      }
+    } catch (_error) {
+      // Low power mode not available
+    }
+
+    try {
+      const carrierName = await DeviceInfo.getCarrier();
+      if (carrierName && carrierName !== 'unknown') {
+        carrier = carrierName;
+      }
+    } catch (_error) {
+      // Carrier not available
+    }
 
     const attributes: SessionAttributes = {
       faro_sdk_version: VERSION,
@@ -150,6 +218,13 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
       device_brand: brand,
       device_is_physical: String(!isEmulator),
       device_id: deviceId,
+      device_type: isTablet ? 'tablet' : 'mobile',
+      device_memory_total: String(totalMemory),
+      device_memory_used: String(usedMemory),
+      device_battery_level: batteryLevel,
+      device_is_charging: isCharging,
+      device_low_power_mode: lowPowerMode,
+      device_carrier: carrier,
     };
 
     return attributes;
@@ -167,6 +242,9 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
       device_brand: 'unknown',
       device_is_physical: 'true',
       device_id: 'unknown',
+      device_type: 'mobile',
+      device_memory_total: '0',
+      device_memory_used: '0',
     };
   }
 }

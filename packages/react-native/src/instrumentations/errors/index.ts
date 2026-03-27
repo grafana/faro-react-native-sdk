@@ -2,13 +2,16 @@ import type { ErrorUtils } from 'react-native';
 
 import { BaseInstrumentation } from '@grafana/faro-core';
 
+import { ErrorMechanism, primitiveUnhandledType } from './const';
+export { ErrorMechanism } from './const';
+export type { ErrorMechanismType } from './const';
 import { enhanceErrorWithContext } from './stackTraceParser';
 
 // Access the global ErrorUtils
 declare const global: {
   ErrorUtils: ErrorUtils;
-  addEventListener?: (event: string, handler: (event: Event | PromiseRejectionEvent) => void) => void;
-  removeEventListener?: (event: string, handler: (event: Event | PromiseRejectionEvent) => void) => void;
+  addEventListener?: (event: string, handler: (event: PromiseRejectionEvent) => void) => void;
+  removeEventListener?: (event: string, handler: (event: PromiseRejectionEvent) => void) => void;
 };
 
 type ErrorHandlerCallback = (error: Error | unknown, isFatal?: boolean) => void;
@@ -126,10 +129,11 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
           stackFrames,
           context,
         } = enhanceErrorWithContext(error, {
+          mechanism: ErrorMechanism.UNCAUGHT,
           isFatal: String(isFatal ?? false),
         });
 
-        // Push error to Faro with enhanced data
+        // Push error to Faro with enhanced data (type from error.name, matches Web SDK)
         this.api.pushError(enhancedError, {
           type: enhancedError.name || 'Error',
           context,
@@ -158,7 +162,8 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
       try {
         const reason = event.reason;
 
-        // Convert reason to an Error if it isn't one
+        // Convert reason to an Error if it isn't one (matches Web SDK approach)
+        const isPrimitiveRejection = !(reason instanceof Error);
         let error: Error;
         if (reason instanceof Error) {
           error = reason;
@@ -181,10 +186,19 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
         }
 
         // Enhance error with React Native context and stack frames
-        const { error: enhancedError, stackFrames, context } = enhanceErrorWithContext(error);
+        const {
+          error: enhancedError,
+          stackFrames,
+          context,
+        } = enhanceErrorWithContext(error, {
+          mechanism: ErrorMechanism.UNHANDLED_REJECTION,
+        });
+
+        // Type: use actual error type for Error objects; 'UnhandledRejection' for primitives (Web SDK)
+        const errorType = isPrimitiveRejection ? primitiveUnhandledType : enhancedError.name || 'Error';
 
         this.api.pushError(enhancedError, {
-          type: enhancedError.name || 'UnhandledRejection',
+          type: errorType,
           context,
           stackFrames,
         });

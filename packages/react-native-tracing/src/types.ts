@@ -1,6 +1,7 @@
 import type { Attributes, ContextManager, TextMapPropagator } from '@opentelemetry/api';
 import type { Instrumentation } from '@opentelemetry/instrumentation';
 import type { FetchCustomAttributeFunction } from '@opentelemetry/instrumentation-fetch';
+import type { XHRCustomAttributeFunction } from '@opentelemetry/instrumentation-xml-http-request';
 import type { SpanProcessor } from '@opentelemetry/sdk-trace-base';
 
 import type { API, Patterns } from '@grafana/faro-core';
@@ -28,6 +29,11 @@ export type DefaultInstrumentationsOptions = {
 
   fetchInstrumentationOptions?: {
     applyCustomAttributesOnSpan?: FetchCustomAttributeFunction;
+    ignoreNetworkEvents?: boolean;
+  };
+
+  xhrInstrumentationOptions?: {
+    applyCustomAttributesOnSpan?: XHRCustomAttributeFunction;
     ignoreNetworkEvents?: boolean;
   };
 };

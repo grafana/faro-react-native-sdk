@@ -1,16 +1,21 @@
 # Grafana Faro React Native SDK
 
-Official React Native implementation of Grafana Faro - real user monitoring SDK for React Native applications.
+Official React Native implementation of Grafana Faro - real user monitoring SDK
+for React Native applications.
 
 ## Overview
 
-The Faro React Native SDK brings comprehensive observability to React Native applications, enabling you to collect logs, traces, and errors from your mobile applications. This SDK provides deep integration with React Native's ecosystem and includes native code support for both iOS and Android platforms.
+The Faro React Native SDK brings comprehensive observability to React Native
+applications, enabling you to collect logs, traces, and errors from your mobile
+applications. This SDK provides deep integration with React Native's ecosystem and
+includes native code support for both iOS and Android platforms.
 
 ## Packages
 
 This monorepo contains the following packages:
 
-- **[@grafana/faro-react-native](./packages/react-native)**: Core SDK with instrumentations, metas, and transports
+- **[@grafana/faro-react-native](./packages/react-native)**: Core SDK with
+  instrumentations, metas, and transports
   - Error tracking with stack traces
   - Performance monitoring (CPU, memory)
   - Console logging instrumentation
@@ -19,7 +24,8 @@ This monorepo contains the following packages:
   - Navigation tracking (React Navigation support)
   - Native code integration (iOS Swift, Android Kotlin)
 
-- **[@grafana/faro-react-native-tracing](./packages/react-native-tracing)**: OpenTelemetry distributed tracing integration
+- **[@grafana/faro-react-native-tracing](./packages/react-native-tracing)**:
+  OpenTelemetry distributed tracing integration
   - Automatic trace propagation
   - Custom instrumentation support
   - OTLP export to Faro backend
@@ -135,7 +141,8 @@ Each package builds to multiple formats:
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md) for details on:
+We welcome contributions! Please see our
+[Contributing Guide](./CONTRIBUTING.md) for details on:
 
 - Development workflow
 - Code style and conventions
@@ -144,13 +151,16 @@ We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md)
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache License 2.0 - see the
+[LICENSE](LICENSE) file for details.
 
 ## Support
 
+<!-- markdownlint-disable-next-line MD013 -->
+
+- Documentation: [Grafana Faro Documentation](https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/)
 - GitHub Issues: [Report bugs or request features](https://github.com/grafana/faro-react-native-sdk/issues)
 - Grafana Community: [Join the discussion](https://community.grafana.com/)
-- Documentation: [Grafana Faro Documentation](https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/)
 
 ## Related Projects
 

@@ -152,3 +152,7 @@ demo/android/.gradle
 demo/ios/build/
 demo/ios/Pods/
 demo/ios/*.xcworkspace
+
+# React Native Tools debug cache
+.vscode/.react
+.idea/

@@ -138,3 +138,62 @@ if (typeof global.URL === 'undefined') {
     }
   } as any;
 }
+
+/**
+ * Minimal XMLHttpRequest for Jest (Node has no XHR). Patches in XHRInstrumentation
+ * tests attach to this prototype; send() completes asynchronously like a real request.
+ */
+if (typeof global.XMLHttpRequest === 'undefined') {
+  class MockXMLHttpRequest {
+    static readonly DONE = 4;
+
+    readyState = 0;
+    status = 200;
+    statusText = 'OK';
+    onreadystatechange: ((this: XMLHttpRequest, ev: Event) => unknown) | null = null;
+
+    private readonly listeners = new Map<string, Set<EventListener>>();
+
+    open(_method: string, _url: string | URL): void {
+      // Real open is replaced by instrumentation; baseline is a no-op.
+    }
+
+    send(_body?: Document | XMLHttpRequestBodyInit | null): void {
+      // Synchronous completion matches test doubles and ensures Faro pushEvent runs in the same turn as send().
+      this.readyState = MockXMLHttpRequest.DONE;
+      const ev = { type: 'readystatechange' } as Event;
+      if (this.onreadystatechange) {
+        this.onreadystatechange.call(this as unknown as XMLHttpRequest, ev);
+      }
+      const load = this.listeners.get('load');
+      if (load) {
+        load.forEach((fn) => {
+          fn.call(this as unknown as XMLHttpRequest, ev);
+        });
+      }
+    }
+
+    setRequestHeader(_name: string, _value: string): void {}
+
+    getResponseHeader(_name: string): string | null {
+      return null;
+    }
+
+    addEventListener(type: string, listener: EventListener): void {
+      let set = this.listeners.get(type);
+      if (!set) {
+        set = new Set();
+        this.listeners.set(type, set);
+      }
+      set.add(listener);
+    }
+
+    removeEventListener(type: string, listener: EventListener): void {
+      this.listeners.get(type)?.delete(listener);
+    }
+
+    abort(): void {}
+  }
+
+  global.XMLHttpRequest = MockXMLHttpRequest as unknown as typeof XMLHttpRequest;
+}

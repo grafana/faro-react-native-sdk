@@ -1,7 +1,9 @@
-import { initializeFaro, type MeasurementEvent, type TransportItem } from '@grafana/faro-core';
+import { type EventEvent, initializeFaro, type TransportItem } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import { HttpInstrumentation } from './index';
+
+const FARO_TRACING_FETCH_EVENT = 'faro.tracing.fetch';
 
 describe('HttpInstrumentation', () => {
   let originalFetch: typeof fetch;
@@ -35,7 +37,7 @@ describe('HttpInstrumentation', () => {
   });
 
   describe('fetch tracking', () => {
-    it('should track successful fetch requests', async () => {
+    it('should track successful fetch requests with faro.tracing.fetch event', async () => {
       const transport = new MockTransport();
       const mockResponse = new Response('{}', { status: 200, statusText: 'OK' });
       global.fetch = jest.fn().mockResolvedValue(mockResponse);
@@ -49,25 +51,16 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data');
 
-      // Should have measurements
-      expect(transport.items.length).toBeGreaterThanOrEqual(2);
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
-      const measurements = transport.items.filter(
-        (item) => item.type === 'measurement'
-      ) as TransportItem<MeasurementEvent>[];
-
-      // Find http_request_start measurement
-      const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
-      expect(startMeasurement).toBeDefined();
-      expect(startMeasurement?.payload.values?.timestamp).toBeDefined();
-      expect(typeof startMeasurement?.payload.values?.timestamp).toBe('number');
-
-      // Find http_request measurement
-      const requestMeasurement = measurements.find((m) => m.payload.type === 'http_request');
-      expect(requestMeasurement).toBeDefined();
-      expect(requestMeasurement?.payload.values?.status).toBe(200);
-      expect(requestMeasurement?.payload.values?.duration).toBeDefined();
-      expect(typeof requestMeasurement?.payload.values?.duration).toBe('number');
+      expect(fetchEvent).toBeDefined();
+      expect(fetchEvent?.payload.attributes?.['http.url']).toBe('https://api.example.com/data');
+      expect(fetchEvent?.payload.attributes?.['http.method']).toBe('GET');
+      expect(fetchEvent?.payload.attributes?.['http.status_code']).toBe('200');
+      expect(fetchEvent?.payload.attributes?.['http.scheme']).toBe('https');
+      expect(fetchEvent?.payload.attributes?.['http.host']).toBe('api.example.com');
+      expect(fetchEvent?.payload.attributes?.['duration_ns']).toBeDefined();
     });
 
     it('should track POST requests', async () => {
@@ -84,19 +77,15 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data', { method: 'POST' });
 
-      const measurements = transport.items.filter(
-        (item) => item.type === 'measurement'
-      ) as TransportItem<MeasurementEvent>[];
-      const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
-      expect(startMeasurement).toBeDefined();
-      // Context is included in the measurement
-      expect(startMeasurement?.payload.context).toBeDefined();
-      expect(startMeasurement?.payload.context?.method).toBe('POST');
-      expect(startMeasurement?.payload.context?.url).toBe('https://api.example.com/data');
+      expect(fetchEvent).toBeDefined();
+      expect(fetchEvent?.payload.attributes?.['http.method']).toBe('POST');
+      expect(fetchEvent?.payload.attributes?.['http.url']).toBe('https://api.example.com/data');
     });
 
-    it('should track failed fetch requests', async () => {
+    it('should track failed fetch requests with faro.tracing.fetch event', async () => {
       const transport = new MockTransport();
       const error = new Error('Network error');
       global.fetch = jest.fn().mockRejectedValue(error);
@@ -110,24 +99,14 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data').catch(() => {});
 
-      const measurements = transport.items.filter(
-        (item) => item.type === 'measurement'
-      ) as TransportItem<MeasurementEvent>[];
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
-      // Should have request_start
-      const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
-      expect(startMeasurement).toBeDefined();
-
-      // Should have request_error
-      const errorMeasurement = measurements.find((m) => m.payload.type === 'http_request_error');
-      expect(errorMeasurement).toBeDefined();
-      expect(errorMeasurement?.payload.context).toBeDefined();
-      expect(errorMeasurement?.payload.context?.error).toBe('Network error');
-      expect(errorMeasurement?.payload.values?.duration).toBeDefined();
-
-      // Should also push error
-      const exceptions = transport.items.filter((item) => item.type === 'exception');
-      expect(exceptions.length).toBeGreaterThan(0);
+      expect(fetchEvent).toBeDefined();
+      expect(fetchEvent?.payload.attributes?.['http.status_code']).toBe('0');
+      expect(fetchEvent?.payload.attributes?.['http.error']).toBe('Network error');
+      expect(fetchEvent?.payload.attributes?.['duration_ns']).toBeDefined();
+      // HTTP failures are tracked as events only (no pushError); Grafana FEO derives HTTP Errors from events
     });
 
     it('should handle URL object input', async () => {
@@ -145,14 +124,11 @@ describe('HttpInstrumentation', () => {
       const url = new URL('https://api.example.com/data');
       await fetch(url);
 
-      const measurements = transport.items.filter(
-        (item) => item.type === 'measurement'
-      ) as TransportItem<MeasurementEvent>[];
-      const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
-      expect(startMeasurement).toBeDefined();
-      expect(startMeasurement?.payload.context).toBeDefined();
-      expect(startMeasurement?.payload.context?.url).toBe('https://api.example.com/data');
+      expect(fetchEvent).toBeDefined();
+      expect(fetchEvent?.payload.attributes?.['http.url']).toBe('https://api.example.com/data');
     });
 
     it('should handle Request object input', async () => {
@@ -170,15 +146,12 @@ describe('HttpInstrumentation', () => {
       const request = new Request('https://api.example.com/data', { method: 'POST' });
       await fetch(request);
 
-      const measurements = transport.items.filter(
-        (item) => item.type === 'measurement'
-      ) as TransportItem<MeasurementEvent>[];
-      const startMeasurement = measurements.find((m) => m.payload.type === 'http_request_start');
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
-      expect(startMeasurement).toBeDefined();
-      expect(startMeasurement?.payload.context).toBeDefined();
-      expect(startMeasurement?.payload.context?.url).toBe('https://api.example.com/data');
-      expect(startMeasurement?.payload.context?.method).toBe('POST');
+      expect(fetchEvent).toBeDefined();
+      expect(fetchEvent?.payload.attributes?.['http.url']).toBe('https://api.example.com/data');
+      expect(fetchEvent?.payload.attributes?.['http.method']).toBe('POST');
     });
   });
 
@@ -197,15 +170,10 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://faro.grafana.net/collect');
 
-      // Should not have http measurements for collector URL
-      const measurements = transport.items.filter(
-        (item) => item.type === 'measurement'
-      ) as TransportItem<MeasurementEvent>[];
-      const httpMeasurements = measurements.filter(
-        (m) => m.payload.type === 'http_request_start' || m.payload.type === 'http_request'
-      );
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvents = events.filter((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
-      expect(httpMeasurements).toHaveLength(0);
+      expect(fetchEvents).toHaveLength(0);
     });
 
     it('should ignore URLs matching custom patterns', async () => {
@@ -228,14 +196,10 @@ describe('HttpInstrumentation', () => {
       await fetch('http://127.0.0.1:8080/data');
       await fetch('https://api.example.com/internal-api/users');
 
-      const measurements = transport.items.filter(
-        (item) => item.type === 'measurement'
-      ) as TransportItem<MeasurementEvent>[];
-      const httpMeasurements = measurements.filter(
-        (m) => m.payload.type === 'http_request_start' || m.payload.type === 'http_request'
-      );
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvents = events.filter((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
-      expect(httpMeasurements).toHaveLength(0);
+      expect(fetchEvents).toHaveLength(0);
     });
 
     it('should track non-ignored URLs', async () => {
@@ -256,14 +220,10 @@ describe('HttpInstrumentation', () => {
 
       await fetch('https://api.example.com/data');
 
-      const measurements = transport.items.filter(
-        (item) => item.type === 'measurement'
-      ) as TransportItem<MeasurementEvent>[];
-      const httpMeasurements = measurements.filter(
-        (m) => m.payload.type === 'http_request_start' || m.payload.type === 'http_request'
-      );
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvents = events.filter((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
-      expect(httpMeasurements.length).toBeGreaterThan(0);
+      expect(fetchEvents.length).toBeGreaterThan(0);
     });
   });
 
@@ -288,28 +248,52 @@ describe('HttpInstrumentation', () => {
 
       const request = fetch('https://api.example.com/data');
 
-      // Advance time
       jest.advanceTimersByTime(500);
 
-      // Resolve the fetch
       resolvePromise!(mockResponse);
       await request;
 
-      const measurements = transport.items.filter(
-        (item) => item.type === 'measurement'
-      ) as TransportItem<MeasurementEvent>[];
-      const requestMeasurement = measurements.find((m) => m.payload.type === 'http_request');
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
-      expect(requestMeasurement?.payload.values?.duration).toBeDefined();
-      expect(typeof requestMeasurement?.payload.values?.duration).toBe('number');
+      expect(fetchEvent?.payload.attributes?.['duration_ns']).toBeDefined();
+      expect(typeof fetchEvent?.payload.attributes?.['duration_ns']).toBe('string');
 
       jest.useRealTimers();
+    });
+
+    it('should track request_size and response_size when available', async () => {
+      const transport = new MockTransport();
+      const requestBody = JSON.stringify({ key: 'value' });
+      const mockResponse = new Response('{"ok":true}', {
+        status: 200,
+        headers: { 'Content-Length': '14' },
+      });
+      global.fetch = jest.fn().mockResolvedValue(mockResponse);
+
+      initializeFaro(
+        mockConfig({
+          transports: [transport],
+          instrumentations: [new HttpInstrumentation()],
+        })
+      );
+
+      await fetch('https://api.example.com/data', {
+        method: 'POST',
+        body: requestBody,
+      });
+
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvent = events.find((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
+
+      expect(fetchEvent).toBeDefined();
+      expect(fetchEvent?.payload.attributes?.['http.request_size']).toBe(String(requestBody.length));
+      expect(fetchEvent?.payload.attributes?.['http.response_size']).toBe('14');
     });
   });
 
   describe('unpatch', () => {
     it('should restore original fetch', () => {
-      // Use the originalFetch captured in beforeEach
       const mockFetch = jest.fn();
       global.fetch = mockFetch;
 
@@ -321,13 +305,11 @@ describe('HttpInstrumentation', () => {
       );
 
       const patchedFetch = global.fetch;
-      // Verify that fetch was patched
       expect(patchedFetch).not.toBe(mockFetch);
 
       const instrumentation = config.instrumentations?.[0] as HttpInstrumentation;
       instrumentation.unpatch();
 
-      // Verify that fetch was restored to the original mock
       expect(global.fetch).toBe(mockFetch);
     });
 
@@ -336,7 +318,6 @@ describe('HttpInstrumentation', () => {
       const mockResponse = new Response('{}', { status: 200 });
       const mockFetch = jest.fn().mockResolvedValue(mockResponse);
 
-      // Save the current fetch state
       const savedFetch = global.fetch;
       global.fetch = mockFetch;
 
@@ -347,17 +328,14 @@ describe('HttpInstrumentation', () => {
         })
       );
 
-      // Make some requests
       await fetch('https://api.example.com/data1');
       await fetch('https://api.example.com/data2');
 
       const instrumentation = config.instrumentations?.[0] as HttpInstrumentation;
       instrumentation.unpatch();
 
-      // After unpatch, requests map should be cleared (we can't directly test this, but unpatch should work)
       expect(() => instrumentation.unpatch()).not.toThrow();
 
-      // Restore original fetch for cleanup
       global.fetch = savedFetch;
     });
   });
@@ -375,35 +353,21 @@ describe('HttpInstrumentation', () => {
         })
       );
 
-      // Make multiple concurrent requests
       await Promise.all([
         fetch('https://api.example.com/data1'),
         fetch('https://api.example.com/data2'),
         fetch('https://api.example.com/data3'),
       ]);
 
-      const measurements = transport.items.filter(
-        (item) => item.type === 'measurement'
-      ) as TransportItem<MeasurementEvent>[];
-      const startMeasurements = measurements.filter((m) => m.payload.type === 'http_request_start');
-      const requestMeasurements = measurements.filter((m) => m.payload.type === 'http_request');
+      const events = transport.items.filter((item) => item.type === 'event') as TransportItem<EventEvent>[];
+      const fetchEvents = events.filter((e) => e.payload.name === FARO_TRACING_FETCH_EVENT);
 
-      // Should have 3 start and 3 complete measurements
-      expect(startMeasurements).toHaveLength(3);
-      expect(requestMeasurements).toHaveLength(3);
+      expect(fetchEvents).toHaveLength(3);
 
-      // Each should have a unique requestId
-      const requestIds = startMeasurements.map((m) => m.payload.context?.requestId).filter((id) => id !== undefined);
-      const uniqueIds = new Set(requestIds);
-      expect(uniqueIds.size).toBe(3);
-
-      // Verify each request has proper context
-      startMeasurements.forEach((measurement) => {
-        expect(measurement.payload.context).toBeDefined();
-        expect(measurement.payload.context?.url).toMatch(/https:\/\/api\.example\.com\/data[1-3]/);
-        expect(measurement.payload.context?.method).toBe('GET');
-        expect(measurement.payload.context?.requestId).toBeDefined();
-      });
+      const urls = fetchEvents.map((e) => e.payload.attributes?.['http.url']).sort();
+      expect(urls).toContain('https://api.example.com/data1');
+      expect(urls).toContain('https://api.example.com/data2');
+      expect(urls).toContain('https://api.example.com/data3');
     });
   });
 });

@@ -10,10 +10,9 @@ react {
     /* Folders */
     //   The root of your project, i.e. where "package.json" lives. Default is '../..'
     // root = file("../..")
-    //   The folder where the react-native NPM package is. Default is ../../node_modules/react-native
-    // reactNativeDir = file("../../node_modules/react-native")
-    //   The folder where the react-native Codegen package is. Default is ../../node_modules/@react-native/codegen
-    // codegenDir = file("../../node_modules/@react-native/codegen")
+    //   In Yarn workspaces, react-native is hoisted to root - use ../../../ from app/ to reach it
+    reactNativeDir = file("../../../node_modules/react-native")
+    codegenDir = file("../../../node_modules/@react-native/codegen")
     //   The cli.js file which is the React Native CLI entrypoint. Default is ../../node_modules/react-native/cli.js
     // cliFile = file("../../node_modules/react-native/cli.js")
 
@@ -44,8 +43,10 @@ react {
     // extraPackagerArgs = []
 
     /* Hermes Commands */
-    //   The hermes compiler command to run. By default it is 'hermesc'
-    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
+    //   Explicit path for monorepo: hermesc lookup can fail when react-native is hoisted to workspace root
+    def hermescOsDir = org.gradle.internal.os.OperatingSystem.current().isMacOsX() ? "osx-bin" :
+        (org.gradle.internal.os.OperatingSystem.current().isWindows() ? "win64-bin" : "linux64-bin")
+    hermesCommand = file("../../../node_modules/react-native/sdks/hermesc/${hermescOsDir}/hermesc").absolutePath
     //
     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
     // hermesFlags = ["-O", "-output-source-map"]

@@ -38,7 +38,6 @@ export class UserActionController {
   private followUpTid?: number;
   private haltTid?: number;
 
-  private isValid = false;
   private runningRequests = new Map<string, HttpRequestMessagePayload>();
   private isHalted = false;
 
@@ -71,12 +70,6 @@ export class UserActionController {
 
         if (isRequestEndMessage(msg)) {
           this.runningRequests.delete(msg.request.requestId);
-        }
-
-        if (!isRequestEndMessage(msg)) {
-          if (!this.isValid) {
-            this.isValid = true;
-          }
         }
 
         // Clear any existing follow-up timeout
@@ -120,13 +113,14 @@ export class UserActionController {
     this.clearFollowUpTimeout();
     this.clearHaltTimeout();
 
-    if (this.isValid) {
-      this.userAction.end();
-    } else {
-      // No activity detected, cancel the action
-      this.userAction.cancel();
+    // Skip if already ended (e.g. user called action.end() manually) - avoids duplicate events
+    const state = this.userAction.getState();
+    if (state === UserActionState.Ended || state === UserActionState.Cancelled) {
+      this.cleanup();
+      return;
     }
 
+    this.userAction.end();
     this.cleanup();
   }
 

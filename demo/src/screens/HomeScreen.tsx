@@ -8,8 +8,20 @@ import {
   View,
 } from 'react-native';
 
+import { withFaroUserAction } from '@grafana/faro-react-native';
+
 import { useFaroUser } from '../hooks/useFaroUser';
 import type { RootStackParamList } from '../navigation/AppNavigator';
+
+const ShowcaseButton = withFaroUserAction(TouchableOpacity, 'navigate_showcase');
+const UserActionsButton = withFaroUserAction(TouchableOpacity, 'navigate_user_actions_demo');
+const ErrorDemoButton = withFaroUserAction(TouchableOpacity, 'navigate_error_demo');
+const CrashDemoButton = withFaroUserAction(TouchableOpacity, 'navigate_crash_demo');
+const PerformanceDemoButton = withFaroUserAction(TouchableOpacity, 'navigate_performance_demo');
+const ConsoleTestButton = withFaroUserAction(TouchableOpacity, 'navigate_console_test');
+const DeviceInfoButton = withFaroUserAction(TouchableOpacity, 'navigate_device_info');
+const TracingDemoButton = withFaroUserAction(TouchableOpacity, 'navigate_tracing_demo');
+const AboutButton = withFaroUserAction(TouchableOpacity, 'navigate_about');
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -37,7 +49,7 @@ export function HomeScreen({ navigation }: Props) {
       )}
 
       <View style={styles.buttonContainer}>
-        <TouchableOpacity
+        <ShowcaseButton
           style={[styles.button, styles.showcaseButton]}
           onPress={() => navigation.navigate('Showcase')}
         >
@@ -46,9 +58,19 @@ export function HomeScreen({ navigation }: Props) {
             Demo all features with different user profiles - Perfect for
             presentations!
           </Text>
-        </TouchableOpacity>
+        </ShowcaseButton>
 
-        <TouchableOpacity
+        <UserActionsButton
+          style={[styles.button, styles.userActionsButton]}
+          onPress={() => navigation.navigate('UserActionsDemo')}
+        >
+          <Text style={styles.buttonText}>🎯 User Actions Demo</Text>
+          <Text style={styles.buttonDescription}>
+            Test user action tracking - see actions in Grafana
+          </Text>
+        </UserActionsButton>
+
+        <ErrorDemoButton
           style={[styles.button, styles.errorButton]}
           onPress={() => navigation.navigate('ErrorDemo')}
         >
@@ -56,9 +78,19 @@ export function HomeScreen({ navigation }: Props) {
           <Text style={styles.buttonDescription}>
             Test error capture and reporting
           </Text>
-        </TouchableOpacity>
+        </ErrorDemoButton>
 
-        <TouchableOpacity
+        <CrashDemoButton
+          style={[styles.button, styles.crashButton]}
+          onPress={() => navigation.navigate('CrashDemo')}
+        >
+          <Text style={styles.buttonText}>💥 Crash Demo</Text>
+          <Text style={styles.buttonDescription}>
+            Test native crashes and ANR (Android 11+)
+          </Text>
+        </CrashDemoButton>
+
+        <PerformanceDemoButton
           style={[styles.button, styles.performanceButton]}
           onPress={() => navigation.navigate('PerformanceDemo')}
         >
@@ -66,9 +98,9 @@ export function HomeScreen({ navigation }: Props) {
           <Text style={styles.buttonDescription}>
             Test performance monitoring
           </Text>
-        </TouchableOpacity>
+        </PerformanceDemoButton>
 
-        <TouchableOpacity
+        <ConsoleTestButton
           style={[styles.button, styles.consoleTestButton]}
           onPress={() => navigation.navigate('ConsoleTest')}
         >
@@ -76,9 +108,9 @@ export function HomeScreen({ navigation }: Props) {
           <Text style={styles.buttonDescription}>
             Test advanced console instrumentation features
           </Text>
-        </TouchableOpacity>
+        </ConsoleTestButton>
 
-        <TouchableOpacity
+        <DeviceInfoButton
           style={[styles.button, styles.deviceInfoButton]}
           onPress={() => navigation.navigate('DeviceInfo')}
         >
@@ -86,9 +118,9 @@ export function HomeScreen({ navigation }: Props) {
           <Text style={styles.buttonDescription}>
             View enhanced device metadata collection
           </Text>
-        </TouchableOpacity>
+        </DeviceInfoButton>
 
-        <TouchableOpacity
+        <TracingDemoButton
           style={[styles.button, styles.tracingButton]}
           onPress={() => navigation.navigate('TracingDemo')}
         >
@@ -96,9 +128,9 @@ export function HomeScreen({ navigation }: Props) {
           <Text style={styles.buttonDescription}>
             Test distributed tracing with trace ID display
           </Text>
-        </TouchableOpacity>
+        </TracingDemoButton>
 
-        <TouchableOpacity
+        <AboutButton
           style={[styles.button, styles.aboutButton]}
           onPress={() => navigation.navigate('About')}
         >
@@ -106,7 +138,7 @@ export function HomeScreen({ navigation }: Props) {
           <Text style={styles.buttonDescription}>
             About this demo application
           </Text>
-        </TouchableOpacity>
+        </AboutButton>
       </View>
     </ScrollView>
   );
@@ -170,8 +202,14 @@ const styles = StyleSheet.create({
   showcaseButton: {
     backgroundColor: '#28a745',
   },
+  userActionsButton: {
+    backgroundColor: '#06b6d4',
+  },
   errorButton: {
     backgroundColor: '#dc3545',
+  },
+  crashButton: {
+    backgroundColor: '#ff4757',
   },
   performanceButton: {
     backgroundColor: '#007bff',

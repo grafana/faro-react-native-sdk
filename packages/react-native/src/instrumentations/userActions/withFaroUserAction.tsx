@@ -3,8 +3,6 @@ import type { GestureResponderEvent } from 'react-native';
 
 import { faro, type UserActionInternalInterface } from '@grafana/faro-core';
 
-import { UserActionController } from './userActionController';
-
 export interface WithFaroUserActionProps {
   /**
    * Optional: Override the action name for this specific instance
@@ -45,11 +43,11 @@ export interface WithFaroUserActionProps {
  * }
  * ```
  */
-export function withFaroUserAction<P extends WithFaroUserActionProps>(
+export function withFaroUserAction<P extends Record<string, unknown>>(
   Component: ComponentType<P>,
   defaultActionName: string
-): ComponentType<P> {
-  return function FaroTrackedComponent(props: P) {
+): ComponentType<P & WithFaroUserActionProps> {
+  return function FaroTrackedComponent(props: P & WithFaroUserActionProps) {
     const { faroActionName, faroContext, onPress, ...restProps } = props;
 
     const handlePress = (event: GestureResponderEvent) => {
@@ -57,18 +55,16 @@ export function withFaroUserAction<P extends WithFaroUserActionProps>(
         // Use the prop-specific name or fall back to the default
         const actionName = faroActionName || defaultActionName;
 
-        // Start a user action with optional context
-        const userAction = faro?.api?.startUserAction?.(actionName, faroContext || {}, { triggerName: 'press' });
+        // End any active user action before starting a new one to avoid "already running" errors
+        // (e.g. when user taps another button before the previous action's HTTP request completes)
+        // getActiveUserAction returns UserActionInterface but the runtime object is the full
+        // UserAction implementing UserActionInternalInterface (with end)
+        const activeAction = faro?.api?.getActiveUserAction?.() as UserActionInternalInterface | undefined;
+        activeAction?.end();
 
-        // Attach the controller to intelligently manage the action lifecycle
-        // The controller will:
-        // - Monitor HTTP requests triggered by this action
-        // - Wait for async operations to complete
-        // - Auto-end the action after appropriate timeout
-        if (userAction) {
-          const controller = new UserActionController(userAction as unknown as UserActionInternalInterface);
-          controller.attach();
-        }
+        // Start a user action - UserActionInstrumentation subscribes to the message bus
+        // and attaches UserActionController for auto-ending and HTTP correlation
+        faro?.api?.startUserAction?.(actionName, faroContext || {}, { triggerName: 'press' });
       } catch (error) {
         // Don't let tracking errors break the app
         console.warn('[Faro] Error tracking user action:', error);
@@ -78,7 +74,10 @@ export function withFaroUserAction<P extends WithFaroUserActionProps>(
       onPress?.(event);
     };
 
-    return React.createElement(Component, { ...(restProps as P), onPress: handlePress });
+    return React.createElement(Component, {
+      ...(restProps as P),
+      onPress: handlePress,
+    });
   };
 }
 
@@ -105,6 +104,9 @@ export function withFaroUserAction<P extends WithFaroUserActionProps>(
  */
 export function trackUserAction(actionName: string, context?: Record<string, string>) {
   try {
+    // End any active user action before starting a new one
+    const activeAction = faro?.api?.getActiveUserAction?.() as UserActionInternalInterface | undefined;
+    activeAction?.end();
     return faro?.api?.startUserAction?.(actionName, context || {}, { triggerName: 'manual' });
   } catch (error) {
     console.warn('[Faro] Error tracking user action:', error);

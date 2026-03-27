@@ -13,23 +13,64 @@ yarn add @grafana/faro-react-native
 ## Quick Start
 
 ```tsx
-import { initializeFaro, getRNInstrumentations } from '@grafana/faro-react-native';
+import { initializeFaro } from '@grafana/faro-react-native';
 
 // Initialize Faro in your app entry point (e.g., App.tsx or index.js)
 initializeFaro({
-  url: 'https://faro-collector-prod-YOUR-REGION.grafana.net/collect/YOUR_TOKEN_HERE',
+  // Required
   app: {
     name: 'your-app-name',
     version: '1.0.0',
+    environment: 'production', // optional
   },
-  instrumentations: getRNInstrumentations({
-    captureConsole: true,
-    captureErrors: true,
-    trackSessions: true,
-    trackViews: true,
-    trackAppState: true,
-    trackUserActions: true,
-  }),
+  url: 'https://faro-collector-prod-YOUR-REGION.grafana.net/collect/YOUR_TOKEN_HERE', // required when fetch transport enabled
+
+  // Transports - optional
+  apiKey: 'your-api-key',
+  enableTransports: {
+    fetch: true, // default
+    offline: false, // optional, caches when offline
+    console: false, // optional, logs to Metro for debugging
+  },
+  transports: [], // optional, extra transports
+
+  // Instrumentation flags - optional
+  enableConsoleCapture: true,
+  enableErrorReporting: true,
+  enableUserActions: true,
+  enableCrashReporting: false,
+  anrTracking: false, // optional, Android only
+  anrOptions: {}, // optional
+  cpuUsageVitals: true,
+  memoryUsageVitals: true,
+  refreshRateVitals: false,
+  fetchVitalsInterval: 30000, // optional, ms
+  frameMonitoringOptions: {}, // optional, when refreshRateVitals true
+  enableTracing: false, // optional, requires @grafana/faro-react-native-tracing
+  tracingOptions: {}, // optional
+
+  // Instrumentation options - optional
+  consoleCaptureOptions: {},
+  userActionsOptions: {},
+  ignoreUrls: [],
+
+  // Session - optional
+  sessionTracking: {
+    enabled: true,
+    persistent: false,
+    inactivityTimeout: 15 * 60 * 1000,
+    sessionExpirationTime: 4 * 60 * 60 * 1000,
+    maxSessionPersistenceTime: 15 * 60 * 1000,
+    // Optional: sampling: new SamplingRate(0.1) or new SamplingFunction((ctx) => ...)
+    // Omit sampling to record all sessions (default).
+    // generateSessionId, onSessionChange, session.attributes - optional
+  },
+
+  // faro-core - optional
+  dedupe: true,
+  metas: [],
+  instrumentations: [], // extra instrumentations (built-ins from flags above)
+  // ignoreErrors, beforeSend, preserveOriginalError, internalLoggerLevel, parseStacktrace - optional
 });
 ```
 
@@ -37,15 +78,28 @@ initializeFaro({
 
 ### Core Instrumentations
 
-- **Console Instrumentation** - Captures console logs, warnings, and errors
-- **Errors Instrumentation** - Captures unhandled errors and promise rejections
+**Always enabled:**
+
 - **Session Instrumentation** - Tracks user sessions
 - **View Instrumentation** - Tracks screen/route changes
 - **App State Instrumentation** - Tracks when app goes to background/foreground
-- **User Actions Instrumentation** - Tracks user interactions with components
 - **Performance Instrumentation** - Monitors CPU usage, memory usage, and app startup time using native OS APIs
 - **Startup Instrumentation** - Automatically tracks app startup duration from process start
-- **HTTP Instrumentation** - Tracks HTTP requests and correlates them with user actions
+- **HTTP Instrumentation** - Tracks HTTP requests (fetch) and correlates them with user actions
+- **XHR Instrumentation** - Tracks XMLHttpRequest calls (replaced by TracingInstrumentation when `enableTracing` is true)
+
+**Enabled by default** (opt-out via config):
+
+- **Console Instrumentation** - Captures console logs, warnings, and errors — `enableConsoleCapture` (default: true)
+- **Errors Instrumentation** - Captures unhandled errors and promise rejections — `enableErrorReporting` (default: true)
+- **User Actions Instrumentation** - Tracks user interactions with components — `enableUserActions` (default: true)
+
+**Disabled by default** (opt-in via config):
+
+- **Frame Monitoring Instrumentation** - Monitors refresh rate / frame drops — `refreshRateVitals` (default: false)
+- **ANR Instrumentation** - Detects Application Not Responding (Android only) — `anrTracking` (default: false)
+- **Crash Reporting Instrumentation** - Captures native crashes — `enableCrashReporting` (default: false)
+- **Tracing Instrumentation** - OpenTelemetry distributed tracing (requires `@grafana/faro-react-native-tracing`) — `enableTracing` (default: false)
 
 ### React Integration
 
@@ -62,20 +116,29 @@ The SDK provides intelligent user action tracking with:
 
 #### 1. Using the HOC (Higher-Order Component) - Recommended
 
-Wrap your touchable components with `withFaroUserAction` for automatic tracking:
+Wrap your touchable components with `withFaroUserAction` for automatic tracking. Create one HOC per action (as in the [demo app](../../demo)):
 
 ```tsx
 import { TouchableOpacity, Text } from 'react-native';
 import { withFaroUserAction } from '@grafana/faro-react-native';
 
-// Create a tracked button component
-const TrackedButton = withFaroUserAction(TouchableOpacity, 'submit_form');
+// Create tracked components at module level (one per action name)
+const SubmitButton = withFaroUserAction(TouchableOpacity, 'submit_form');
+const LoadDataButton = withFaroUserAction(TouchableOpacity, 'load_data');
 
 function MyForm() {
   return (
-    <TrackedButton onPress={handleSubmit}>
+    <SubmitButton onPress={handleSubmit}>
       <Text>Submit</Text>
-    </TrackedButton>
+    </SubmitButton>
+  );
+}
+
+function DataLoader() {
+  return (
+    <LoadDataButton onPress={handleLoadData}>
+      <Text>Load Data</Text>
+    </LoadDataButton>
   );
 }
 ```
@@ -88,58 +151,69 @@ function MyForm() {
 - If HTTP requests are pending, enters "halt" state and waits up to 10 seconds
 - No manual `end()` call required!
 
-You can override the action name and add context per instance:
+You can override the action name and add context per instance with `faroActionName` and `faroContext`:
 
 ```tsx
-<TrackedButton
+<SubmitButton
   onPress={handleSubmit}
   faroActionName="custom_action_name"
   faroContext={{ formType: 'contact', userId: '123' }}
 >
   <Text>Submit</Text>
-</TrackedButton>
+</SubmitButton>
 ```
 
-**Example with HTTP:**
+**Example with HTTP** (matches demo's FetchButton pattern):
 
 ```tsx
-const TrackedButton = withFaroUserAction(TouchableOpacity, 'load_data');
+const FetchButton = withFaroUserAction(TouchableOpacity, 'tap_with_http_request');
 
 function DataLoader() {
   const handleLoad = async () => {
-    // This HTTP request will be correlated with the user action
-    // The action will wait for this to complete before ending
+    // HTTP request correlated with the action; action waits for it before ending
     const response = await fetch('https://api.example.com/data');
     const data = await response.json();
     setData(data);
   };
 
   return (
-    <TrackedButton onPress={handleLoad}>
+    <FetchButton onPress={handleLoad}>
       <Text>Load Data</Text>
-    </TrackedButton>
+    </FetchButton>
   );
 }
 ```
 
 #### 2. Using Manual Tracking
 
-For complex workflows where you need explicit control:
+For workflows where you need explicit control. The action auto-ends after ~100ms if no HTTP requests are pending; call `action?.end()` when done for accurate duration with async work.
+
+**Simple (fire-and-forget)** — matches [demo](../../demo) pattern:
 
 ```tsx
 import { trackUserAction } from '@grafana/faro-react-native';
 
-function handleComplexAction() {
+function handleManualAction() {
+  trackUserAction('manual_user_action_demo', {
+    source: 'my_screen',
+    count: '1',
+  });
+  // Controller auto-ends after ~100ms
+}
+```
+
+**Complex (async work)** — call `end()` when done:
+
+```tsx
+async function handleComplexAction() {
   const action = trackUserAction('complex_workflow', {
     step: '1',
     userId: '123',
   });
 
-  // Do your work...
   await performSomeWork();
 
-  // Manually end the action when done
-  // Note: With HOC, this is automatic!
+  // End when done for accurate duration (otherwise auto-ends ~100ms after start)
   action?.end();
 }
 ```
@@ -360,28 +434,20 @@ function App() {
 
 ## Configuration
 
-### Instrumentation Options
+### Instrumentation Flags
+
+Instrumentations are controlled by flags in `ReactNativeConfig`. Pass these to `initializeFaro()`:
 
 ```tsx
-interface GetRNInstrumentationsOptions {
-  /** Capture console logs (default: false) */
-  captureConsole?: boolean;
-
-  /** Track app state changes (background/foreground) (default: true) */
-  trackAppState?: boolean;
-
-  /** Capture errors (default: true) */
-  captureErrors?: boolean;
-
-  /** Track sessions (default: true) */
-  trackSessions?: boolean;
-
-  /** Track view/screen changes (default: true) */
-  trackViews?: boolean;
-
-  /** Track user actions/interactions (default: true) */
-  trackUserActions?: boolean;
-}
+// Key instrumentation flags (all in ReactNativeConfig)
+enableErrorReporting?: boolean;     // default: true
+enableConsoleCapture?: boolean;     // default: true
+enableUserActions?: boolean;        // default: true
+enableCrashReporting?: boolean;     // default: false
+anrTracking?: boolean;              // default: false (Android only)
+cpuUsageVitals?: boolean;           // default: true
+memoryUsageVitals?: boolean;        // default: true
+refreshRateVitals?: boolean;        // default: false
 ```
 
 ### Console Instrumentation Configuration
@@ -397,7 +463,7 @@ initializeFaro({
     name: 'my-app',
     version: '1.0.0',
   },
-  consoleInstrumentation: {
+  consoleCaptureOptions: {
     // Configure which log levels to capture
     // By default: [LogLevel.DEBUG, LogLevel.TRACE, LogLevel.LOG] are disabled
     disabledLevels: [LogLevel.DEBUG, LogLevel.TRACE],
@@ -442,13 +508,11 @@ initializeFaro({
 
 ```tsx
 // Capture all console levels including debug
-getRNInstrumentations({
-  captureConsole: true,
-});
-
 initializeFaro({
-  // ...
-  consoleInstrumentation: {
+  url: 'https://your-faro-collector-url',
+  app: { name: 'my-app', version: '1.0.0' },
+  enableConsoleCapture: true,
+  consoleCaptureOptions: {
     disabledLevels: [], // Capture everything
   },
 });
@@ -456,7 +520,7 @@ initializeFaro({
 // Send console.error as logs instead of errors
 initializeFaro({
   // ...
-  consoleInstrumentation: {
+  consoleCaptureOptions: {
     consoleErrorAsLog: true,
   },
 });
@@ -464,7 +528,7 @@ initializeFaro({
 // Enable detailed error serialization
 initializeFaro({
   // ...
-  consoleInstrumentation: {
+  consoleCaptureOptions: {
     serializeErrors: true, // Extract stack frames and error details
   },
 });
@@ -598,7 +662,7 @@ initializeFaro({
 The SDK supports both persistent and volatile session tracking with configurable expiration and inactivity timeouts:
 
 ```tsx
-import { initializeFaro } from '@grafana/faro-react-native';
+import { initializeFaro, SamplingFunction, SamplingRate } from '@grafana/faro-react-native';
 
 initializeFaro({
   url: 'https://your-faro-collector-url',
@@ -607,14 +671,18 @@ initializeFaro({
     version: '1.0.0',
   },
   sessionTracking: {
-    enabled: true,
-    // Use AsyncStorage for persistent sessions across app restarts
-    persistent: true,
-    // Session expires after 4 hours by default (can be customized)
-    // Session is also invalidated after 15 minutes of inactivity
+    enabled: true, // default: true
+    persistent: true, // default: false (volatile)
+    // Configurable timeouts (all in ms):
+    inactivityTimeout: 15 * 60 * 1000, // default: 15 min
+    sessionExpirationTime: 4 * 60 * 60 * 1000, // default: 4 h
+    maxSessionPersistenceTime: 15 * 60 * 1000, // default: 15 min
 
-    // Optional: Sampling rate (0-1) to sample sessions
-    samplingRate: 1.0, // 100% of sessions
+    // Optional: session sampling (omit = all sessions recorded)
+    // sampling: new SamplingRate(0.1), // 10% fixed
+    // sampling: new SamplingFunction((context) =>
+    //   context.meta.app?.environment === 'production' ? 0.1 : 1
+    // ),
 
     // Optional: Custom session ID generator
     generateSessionId: () => 'custom-session-id',
@@ -636,17 +704,17 @@ initializeFaro({
 
 **Session Types:**
 
-- **Persistent Sessions** (`persistent: true`): Stored in AsyncStorage and survive app restarts. Sessions expire after 4 hours or 15 minutes of inactivity.
+- **Persistent Sessions** (`persistent: true`): Stored in AsyncStorage and survive app restarts. Sessions expire after `sessionExpirationTime` (default 4 h) or `inactivityTimeout` (default 15 min).
 
 - **Volatile Sessions** (`persistent: false`, default): Stored in memory only. Each app launch creates a new session.
 
-**Session Events:**
+**Sampling:** Set `sessionTracking.sampling` to a `SamplingRate` (fixed 0–1) or `SamplingFunction` (dynamic, receives `context.meta`). Omit `sampling` to record all sessions. The decision is made once per session.
 
-The SDK automatically emits session lifecycle events:
+**Defaults:** `persistent=false`, `inactivityTimeout=15min`, `sessionExpirationTime=4h`, `maxSessionPersistenceTime=15min`
 
-- `faro.session.start` - New session created
-- `faro.session.resume` - Existing session resumed (persistent only)
-- `faro.session.extend` - Session extended from the same previous session
+**Session events:**
+
+The SDK emits `session_start` when a new session is created (including when session metadata changes to a new session id). Resuming a valid persisted session does not emit additional lifecycle events.
 
 ### Default Session Attributes
 
@@ -694,16 +762,12 @@ Every telemetry event automatically includes default session attributes with dev
 {app_name="my-app"} | json | device_is_physical="false"
 ```
 
-**Feature Parity with Flutter SDK:**
-
-This implementation provides complete feature parity with the Grafana Faro Flutter SDK, ensuring consistent attribute naming and data format across platforms. This enables unified dashboards and queries for multi-platform applications.
-
 ### AppState Tracking
 
 The SDK automatically tracks React Native app state changes (foreground/background/inactive). This is enabled by default and requires no additional configuration.
 
 ```tsx
-import { initializeFaro, getRNInstrumentations } from '@grafana/faro-react-native';
+import { initializeFaro } from '@grafana/faro-react-native';
 
 initializeFaro({
   url: 'https://your-faro-collector-url',
@@ -711,11 +775,6 @@ initializeFaro({
     name: 'my-app',
     version: '1.0.0',
   },
-  instrumentations: [
-    ...getRNInstrumentations({
-      trackAppState: true, // Enabled by default
-    }),
-  ],
 });
 ```
 
@@ -729,14 +788,14 @@ initializeFaro({
 
 **App State Events:**
 
-The SDK automatically emits `app_state_changed` events when the app state transitions:
+The SDK automatically emits `app_lifecycle_changed` events when the app state transitions:
 
 ```typescript
 {
-  event_name: "app_state_changed",
-  fromState: "active",       // Previous state
-  toState: "background",     // New state
-  duration: "5234",          // Time spent in previous state (ms)
+  event_name: "app_lifecycle_changed",
+  fromState: "active",      // Previous AppState (active | background | inactive | unknown | extension)
+  toState: "background",    // New state
+  duration: "5234",         // Time spent in previous state (ms)
   timestamp: "1701518400000" // Unix timestamp
 }
 ```
@@ -755,18 +814,24 @@ The SDK automatically emits `app_state_changed` events when the app state transi
 # View all app state changes
 {app_name="my-app", kind="event"}
 | json
-| event_name="app_state_changed"
+| event_name="app_lifecycle_changed"
 
-# Count background transitions
+# Count background transitions (toState="background")
 {app_name="my-app", kind="event"}
 | json
-| event_name="app_state_changed"
+| event_name="app_lifecycle_changed"
 | toState="background"
 
-# Average time in foreground
+# Count foreground transitions (toState="active")
 {app_name="my-app", kind="event"}
 | json
-| event_name="app_state_changed"
+| event_name="app_lifecycle_changed"
+| toState="active"
+
+# Average time in foreground (unwrap duration)
+{app_name="my-app", kind="event"}
+| json
+| event_name="app_lifecycle_changed"
 | fromState="active"
 | unwrap duration
 | avg
@@ -795,7 +860,7 @@ The SDK automatically monitors system resources using **native OS-level APIs** f
 **Configuration:**
 
 ```tsx
-import { initializeFaro, getRNInstrumentations } from '@grafana/faro-react-native';
+import { initializeFaro } from '@grafana/faro-react-native';
 
 initializeFaro({
   url: 'https://your-faro-collector-url',
@@ -803,22 +868,11 @@ initializeFaro({
     name: 'my-app',
     version: '1.0.0',
   },
-  instrumentations: getRNInstrumentations({
-    // Enable performance monitoring (default: true)
-    trackPerformance: true,
-
-    // Enable memory usage monitoring (default: true)
-    // Monitors RSS (Resident Set Size) - physical memory used by the app
-    memoryUsageVitals: true,
-
-    // Enable CPU usage monitoring (default: true)
-    // Monitors CPU usage percentage via differential calculation
-    cpuUsageVitals: true,
-
-    // Collection interval in milliseconds (default: 30000 - 30 seconds)
-    // Metrics are collected and sent at this interval
-    fetchVitalsInterval: 30000,
-  }),
+  // Enable performance monitoring (defaults)
+  cpuUsageVitals: true,
+  memoryUsageVitals: true,
+  // Collection interval in milliseconds (default: 30000 - 30 seconds)
+  fetchVitalsInterval: 30000,
 });
 ```
 
@@ -874,23 +928,12 @@ initializeFaro({
 
 #### Startup Performance Monitoring
 
-The SDK automatically tracks app startup time from process start to Faro initialization:
+The SDK automatically tracks app startup time from process start to Faro initialization. No configuration needed; it is always enabled.
 
-**Configuration:**
-
-```tsx
-initializeFaro({
-  // ...config
-  instrumentations: getRNInstrumentations({
-    // Enable startup tracking (default: true)
-    trackStartup: true,
-  }),
-});
-```
-
-**Startup Metric** (`faro.startup` event):
+**Startup Metric** (`app_startup` measurement):
 
 - `appStartDuration` - Time from process start to Faro init (milliseconds)
+- `coldStart` - 1 for cold start, 0 for warm start
 - Measured using native OS APIs:
   - **iOS**: `sysctl()` with `KERN_PROC` to get process start time
   - **Android**: Parses process start time from system
@@ -899,10 +942,10 @@ initializeFaro({
 
 ```logql
 # Average app startup time
-{app_name="my-app", kind="event"}
-| json
-| event_name="faro.startup"
-| unwrap appStartDuration
+{app_name="my-app", kind="measurement"}
+| logfmt
+| type="app_startup"
+| unwrap value_total_duration_ms
 | avg
 ```
 
@@ -911,10 +954,11 @@ initializeFaro({
 **For Production:**
 
 ```tsx
-getRNInstrumentations({
-  trackPerformance: true,
-  memoryUsageVitals: true,
+initializeFaro({
+  url: '...',
+  app: { name: 'my-app', version: '1.0.0' },
   cpuUsageVitals: true,
+  memoryUsageVitals: true,
   fetchVitalsInterval: 30000, // 30 seconds - good balance
 });
 ```
@@ -922,10 +966,11 @@ getRNInstrumentations({
 **For Debugging/Testing:**
 
 ```tsx
-getRNInstrumentations({
-  trackPerformance: true,
-  memoryUsageVitals: true,
+initializeFaro({
+  url: '...',
+  app: { name: 'my-app', version: '1.0.0' },
   cpuUsageVitals: true,
+  memoryUsageVitals: true,
   fetchVitalsInterval: 5000, // 5 seconds - more frequent for testing
 });
 ```
@@ -937,16 +982,6 @@ getRNInstrumentations({
 - **Track Startup Performance**: Measure app launch time improvements
 - **Performance Regression Testing**: Compare metrics across app versions
 - **Resource-Based Crash Analysis**: Correlate crashes with high memory/CPU usage
-
-**Feature Parity with Flutter SDK:**
-
-This implementation provides complete feature parity with the [Grafana Faro Flutter SDK](https://github.com/grafana/faro-flutter-sdk):
-
-- Same native OS-level APIs
-- Same differential CPU calculation approach
-- Same memory measurement (RSS/VmRSS)
-- Same configuration options
-- Same default values (30-second interval)
 
 ## Navigation Integration
 
@@ -1007,101 +1042,92 @@ The SDK collects the following device information synchronously:
 - **Device Info**: Brand, model, device ID, type (mobile/tablet)
 - **System Info**: OS name, OS version, app version
 - **Locale/Language**: Device locales, timezone, primary language
-- **Memory**: Total and used memory
-- **Screen**: Viewport width and height
-- **Environment**: Whether running on emulator/simulator
 
-### Async Device Information
+## Device Information
 
-For battery and network information that requires async calls, use `getAsyncDeviceMeta()`:
+The SDK automatically collects device information and sends it as **session attributes** with every telemetry event. This matches the Faro Flutter SDK convention and provides comprehensive device context for mobile observability.
 
-```tsx
-import { getAsyncDeviceMeta } from '@grafana/faro-react-native';
+### Session Attributes
 
-// Fetch async device information
-const asyncDeviceInfo = await getAsyncDeviceMeta();
-console.log('Battery Level:', asyncDeviceInfo.batteryLevel);
-console.log('Carrier:', asyncDeviceInfo.carrier);
-console.log('Is Charging:', asyncDeviceInfo.isCharging);
-console.log('Low Power Mode:', asyncDeviceInfo.lowPowerMode);
-```
+All device information is sent as session attributes (not browser meta) to match Flutter SDK:
 
-### Available Device Meta Fields
+**Core Attributes (matching Flutter SDK):**
 
-```typescript
-interface ExtendedBrowserMeta {
-  // Standard fields
-  name: string; // OS name (e.g., "iOS", "Android")
-  version: string; // App version
-  os: string; // OS with version (e.g., "iOS 17.0")
-  mobile: boolean; // true for mobile, false for tablet
-  userAgent: string; // User agent string
-  language: string; // Primary language
-  brands: string; // Device brand and model
-  viewportWidth: string; // Screen width
-  viewportHeight: string; // Screen height
+- `faro_sdk_version` - SDK version (e.g., "1.0.0")
+- `react_native_version` - React Native version (e.g., "0.75.1")
+- `device_os` - Operating system name ("iOS" or "Android")
+- `device_os_version` - OS version (e.g., "17.0", "14")
+- `device_os_detail` - Detailed OS info (e.g., "iOS 17.0", "Android 14 (SDK 34)")
+- `device_manufacturer` - Manufacturer (e.g., "apple", "samsung")
+- `device_model` - Raw model identifier (e.g., "iPhone16,1", "SM-A155F")
+- `device_model_name` - Human-readable name (e.g., "iPhone 15 Pro")
+- `device_brand` - Device brand (e.g., "iPhone", "samsung")
+- `device_is_physical` - Physical device or emulator ("true" or "false")
+- `device_id` - Unique device identifier (UUID)
 
-  // Enhanced fields
-  locale?: string; // Primary locale (e.g., "en-US")
-  locales?: string; // All device locales
-  timezone?: string; // Device timezone (e.g., "America/New_York")
-  deviceType?: string; // "mobile" or "tablet"
-  isEmulator?: string; // "true" if running on emulator/simulator
-  totalMemory?: string; // Total device memory in bytes
-  usedMemory?: string; // Used memory in bytes
+**Additional Monitoring Attributes (React Native specific):**
 
-  // Async fields (from getAsyncDeviceMeta)
-  batteryLevel?: string; // Battery percentage (e.g., "85%")
-  isCharging?: string; // "true" if device is charging
-  lowPowerMode?: string; // "true" if low power mode is enabled
-  carrier?: string; // Mobile carrier name (e.g., "Verizon")
-}
-```
+- `device_type` - Device type ("mobile" or "tablet")
+- `device_memory_total` - Total device memory in bytes
+- `device_memory_used` - Currently used memory in bytes
+- `device_battery_level` - Battery percentage (e.g., "85") - if available
+- `device_is_charging` - Whether charging ("true" or "false") - if available
+- `device_low_power_mode` - Low power mode enabled ("true" or "false") - if available
+- `device_carrier` - Mobile carrier name (e.g., "Verizon") - if available
 
-### Use Cases
+These attributes are automatically collected during Faro initialization and included with all telemetry events.
 
-**1. Debug Device-Specific Issues**
+### Querying Device Information
 
-```tsx
-// Query Grafana Cloud for errors on specific devices
-{service_name="MyApp", browser_deviceType="tablet"}
+**Debug device-specific issues:**
+
+```logql
+{service_name="MyApp", device_manufacturer="samsung"}
 | logfmt
 | kind="exception"
 ```
 
-**2. Track Low Battery Correlation**
+**Filter by OS version:**
 
-```tsx
-// Find if errors correlate with low battery
-{service_name="MyApp", browser_batteryLevel=~"[0-9]%|[12][0-9]%"}
+```logql
+{service_name="MyApp", device_os="Android", device_os_version="14"}
+| logfmt
+```
+
+**Find emulator vs physical device issues:**
+
+```logql
+{service_name="MyApp", device_is_physical="false"}
 | logfmt
 | kind="exception"
 ```
 
-**3. Locale-Specific Analysis**
+**Track memory-related issues:**
 
-```tsx
-// Analyze issues by locale
-{service_name="MyApp", browser_locale=~"ja.*"}
-| logfmt
-```
-
-**4. Memory Pressure Detection**
-
-```tsx
-// Correlate high memory usage with crashes
+```logql
 {service_name="MyApp"}
 | logfmt
-| browser_usedMemory > 1000000000
+| device_memory_used > 1000000000
+| kind="exception"
+```
+
+**Monitor low battery scenarios:**
+
+```logql
+{service_name="MyApp"}
+| logfmt
+| device_battery_level <= "20"
+| kind="exception"
 ```
 
 ### Notes
 
-- All device meta is collected automatically when Faro initializes
-- Async device info (battery, carrier) is fetched lazily to avoid blocking initialization
+- All device info is collected automatically when Faro initializes
+- Session attributes are included with every telemetry event
 - All fields are optional and gracefully handle permission errors
-- Memory values are in bytes
-- Battery level is a percentage string (e.g., "85%")
+- The React Native SDK sends an empty `page` meta field to override faro-core's default web-specific page meta
+- Screen tracking is handled via `view` meta instead of `page` meta (matching Flutter SDK)
+- Battery, carrier, and low power mode info may not be available on all devices/OS versions
 
 ## TypeScript
 
@@ -1157,19 +1183,29 @@ initializeFaro({
 
 #### ConsoleTransport
 
-Logs telemetry to the console for debugging (useful during development):
+Logs telemetry to the console for debugging (useful during development). Enable via flag; no need to add it to `transports`:
+
+```tsx
+initializeFaro({
+  url: 'https://faro-collector-prod-YOUR-REGION.grafana.net/collect/YOUR_TOKEN_HERE',
+  app: { name: 'my-app', version: '1.0.0' },
+  enableTransports: {
+    fetch: true,
+    console: true, // Logs to Metro with DEBUG level
+  },
+});
+```
+
+For custom options (e.g. different log level), add it to `transports` and set `console: false` to avoid duplicates:
 
 ```tsx
 import { initializeFaro, ConsoleTransport, LogLevel } from '@grafana/faro-react-native';
 
 initializeFaro({
-  url: 'https://faro-collector-prod-YOUR-REGION.grafana.net/collect/YOUR_TOKEN_HERE',
+  url: '...',
   app: { name: 'my-app', version: '1.0.0' },
-  transports: [
-    new ConsoleTransport({
-      level: LogLevel.INFO, // Optional: DEBUG, INFO, WARN, ERROR (default: DEBUG)
-    }),
-  ],
+  enableTransports: { fetch: true, console: false },
+  transports: [new ConsoleTransport({ level: LogLevel.INFO })],
 });
 ```
 

@@ -327,8 +327,10 @@ Solutions:
 1. **Sample sessions** - Don't trace every session:
 
 ```typescript
+import { SamplingRate } from '@grafana/faro-react-native';
+
 sessionTracking: {
-  samplingRate: 0.1, // 10% of sessions
+  sampling: new SamplingRate(0.1), // 10% of sessions
 }
 ```
 

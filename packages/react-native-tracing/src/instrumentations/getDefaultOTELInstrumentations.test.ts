@@ -1,22 +1,26 @@
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
+import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
 
 import { getDefaultOTELInstrumentations } from './getDefaultOTELInstrumentations';
 
 describe('getDefaultOTELInstrumentations', () => {
-  it('should return an array with FetchInstrumentation', () => {
+  it('should return an array with FetchInstrumentation and XMLHttpRequestInstrumentation', () => {
     const instrumentations = getDefaultOTELInstrumentations();
 
-    expect(instrumentations).toHaveLength(1);
+    expect(instrumentations).toHaveLength(2);
     expect(instrumentations[0]).toBeInstanceOf(FetchInstrumentation);
+    expect(instrumentations[1]).toBeInstanceOf(XMLHttpRequestInstrumentation);
   });
 
   it('should configure ignoreUrls', () => {
     const ignoreUrls = [/test-url/];
     const instrumentations = getDefaultOTELInstrumentations({ ignoreUrls });
 
-    expect(instrumentations).toHaveLength(1);
+    expect(instrumentations).toHaveLength(2);
     // FetchInstrumentation should have ignoreUrls configured
     expect((instrumentations[0] as any)._config.ignoreUrls).toEqual(ignoreUrls);
+    // XMLHttpRequestInstrumentation should have ignoreUrls configured
+    expect((instrumentations[1] as any)._config.ignoreUrls).toEqual(ignoreUrls);
   });
 
   it('should set ignoreNetworkEvents to true by default', () => {
@@ -52,7 +56,7 @@ describe('getDefaultOTELInstrumentations', () => {
       },
     });
 
-    expect(instrumentations).toHaveLength(1);
+    expect(instrumentations).toHaveLength(2);
     // Custom function should be wrapped by our defaults
     expect((instrumentations[0] as any)._config.applyCustomAttributesOnSpan).toBeDefined();
   });

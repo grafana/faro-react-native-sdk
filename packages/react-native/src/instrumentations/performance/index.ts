@@ -113,26 +113,21 @@ export class PerformanceInstrumentation extends BaseInstrumentation {
   private collectMemoryUsage(): void {
     try {
       if (!FaroReactNativeModule?.getMemoryUsage) {
+        this.logDebug('Memory: getMemoryUsage not available on native module');
         return;
       }
 
       const memoryUsage = FaroReactNativeModule.getMemoryUsage();
-
       if (memoryUsage == null || memoryUsage <= 0) {
+        this.logDebug('Memory: skipping - value is null or <= 0');
         return;
       }
 
-      this.api.pushMeasurement(
-        {
-          type: 'app_memory',
-          values: {
-            mem_usage: memoryUsage,
-          },
-        },
-        {
-          skipDedupe: true,
-        }
-      );
+      this.logDebug(`Memory: pushing measurement with mem_usage = ${memoryUsage}`);
+      this.api.pushMeasurement({
+        type: 'app_memory',
+        values: { mem_usage: memoryUsage },
+      });
     } catch (error) {
       this.logError('Failed to collect memory usage', error);
     }
@@ -141,30 +136,27 @@ export class PerformanceInstrumentation extends BaseInstrumentation {
   private collectCpuUsage(): void {
     try {
       if (!FaroReactNativeModule?.getCpuUsage) {
+        this.logDebug('CPU: getCpuUsage not available on native module');
         return;
       }
 
       const cpuUsage = FaroReactNativeModule.getCpuUsage();
+      this.logDebug(`CPU: raw value = ${cpuUsage}`);
 
       // Validate CPU usage (Flutter SDK filters 0-100 range, but allows >100)
       // Skip null, negative, or exactly 0 (baseline reading)
       if (cpuUsage == null || cpuUsage <= 0) {
+        this.logDebug('CPU: skipping - value is null or <= 0');
         return;
       }
 
+      this.logDebug(`CPU: pushing measurement with cpu_usage = ${cpuUsage}`);
       // Flutter SDK also filters values >= 100, but we allow them as they can be valid
       // in multi-core scenarios where one core is maxed out
-      this.api.pushMeasurement(
-        {
-          type: 'app_cpu_usage',
-          values: {
-            cpu_usage: cpuUsage,
-          },
-        },
-        {
-          skipDedupe: true,
-        }
-      );
+      this.api.pushMeasurement({
+        type: 'app_cpu_usage',
+        values: { cpu_usage: cpuUsage },
+      });
     } catch (error) {
       this.logError('Failed to collect CPU usage', error);
     }

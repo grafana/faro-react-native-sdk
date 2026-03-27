@@ -10,8 +10,11 @@ describe('FaroTraceExporter', () => {
   let transport: MockTransport;
   let provider: BasicTracerProvider;
   let faro: any;
+  let consoleErrorSpy: jest.SpiedFunction<typeof console.error>;
 
   beforeEach(() => {
+    // internalLogger.error forwards here; expected-error tests should not spam CI output
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     transport = new MockTransport();
     faro = initializeFaro(
       mockConfig({
@@ -22,6 +25,7 @@ describe('FaroTraceExporter', () => {
   });
 
   afterEach(() => {
+    consoleErrorSpy.mockRestore();
     transport.items = [];
   });
 

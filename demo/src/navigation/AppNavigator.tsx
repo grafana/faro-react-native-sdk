@@ -5,11 +5,11 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 
-// @ts-expect-error - TS module resolution issue, export exists in source
 import { useFaroNavigation } from '@grafana/faro-react-native';
 
 import { AboutScreen } from '../screens/AboutScreen';
 import ConsoleTestScreen from '../screens/ConsoleTestScreen';
+import { CrashDemoScreen } from '../screens/CrashDemoScreen';
 import DeviceInfoScreen from '../screens/DeviceInfoScreen';
 import { ErrorDemoScreen } from '../screens/ErrorDemoScreen';
 import { HomeScreen } from '../screens/HomeScreen';
@@ -17,17 +17,20 @@ import { PerformanceDemoScreen } from '../screens/PerformanceDemoScreen';
 import { ShowcaseScreen } from '../screens/ShowcaseScreen';
 import { SlowLoadDemoScreen } from '../screens/SlowLoadDemoScreen';
 import TracingDemoScreen from '../screens/TracingDemoScreen';
+import { UserActionsDemoScreen } from '../screens/UserActionsDemoScreen';
 
 export type RootStackParamList = {
   Home: undefined;
   Showcase: undefined;
   ErrorDemo: undefined;
+  CrashDemo: undefined;
   PerformanceDemo: undefined;
   SlowLoadDemo: undefined;
   About: undefined;
   ConsoleTest: undefined;
   DeviceInfo: undefined;
   TracingDemo: undefined;
+  UserActionsDemo: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -69,6 +72,11 @@ export function AppNavigator() {
           options={{ title: 'Error Demo' }}
         />
         <Stack.Screen
+          name="CrashDemo"
+          component={CrashDemoScreen}
+          options={{ title: 'Crash & Performance Demo' }}
+        />
+        <Stack.Screen
           name="PerformanceDemo"
           component={PerformanceDemoScreen}
           options={{ title: 'Performance Demo' }}
@@ -97,6 +105,11 @@ export function AppNavigator() {
           name="TracingDemo"
           component={TracingDemoScreen}
           options={{ title: 'Tracing Demo' }}
+        />
+        <Stack.Screen
+          name="UserActionsDemo"
+          component={UserActionsDemoScreen}
+          options={{ title: 'User Actions Demo' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

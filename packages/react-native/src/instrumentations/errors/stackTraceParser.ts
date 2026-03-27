@@ -3,9 +3,7 @@ import { Platform } from 'react-native';
 import type { ExceptionStackFrame as StackFrame } from '@grafana/faro-core';
 
 // Declare global Hermes runtime
-declare global {
-  var HermesInternal: object | undefined;
-}
+declare const HermesInternal: object | undefined;
 
 /**
  * Parse React Native stack traces into structured stack frames
@@ -166,7 +164,7 @@ export function getPlatformErrorContext(): Record<string, string> {
   return {
     platform: Platform.OS,
     platformVersion: Platform.Version?.toString() || 'unknown',
-    isHermes: typeof global.HermesInternal !== 'undefined' ? 'true' : 'false',
+    isHermes: typeof HermesInternal !== 'undefined' ? 'true' : 'false',
   };
 }
 

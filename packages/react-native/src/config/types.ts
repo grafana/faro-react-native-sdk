@@ -1,91 +1,79 @@
 import type { Config } from '@grafana/faro-core';
 
+import type { ANRInstrumentationOptions } from '../instrumentations/anr';
+import type { FrameMonitoringOptions } from '../instrumentations/frameMonitoring';
+
+import type { Sampling } from './sampling';
+
 /**
- * React Native-specific configuration options
+ * React Native session tracking config.
+ * Extends Config['sessionTracking'] with sampling (Flutter-style) and RN-specific props.
+ * Excludes samplingRate and sampler in favor of sampling.
  */
-export interface ReactNativeConfig extends Omit<Config, 'metas'> {
+export type ReactNativeSessionTrackingConfig = Omit<
+  NonNullable<Config['sessionTracking']>,
+  'samplingRate' | 'sampler'
+> & {
   /**
-   * Optional metas to include. If not provided, default RN metas will be used
+   * Session sampling. Use {@link SamplingRate} for fixed rate or
+   * {@link SamplingFunction} for dynamic sampling.
    */
-  metas?: Config['metas'];
+  sampling?: Sampling;
+};
+
+/**
+ * Flags for enabling optional built-in transports.
+ * FetchTransport is always instantiated when url is provided.
+ */
+export interface EnableTransportsConfig {
+  /** Enable OfflineTransport for caching when offline (default: false) */
+  offline?: boolean;
+  /** Enable ConsoleTransport to log telemetry to Metro console for debugging (default: false) */
+  console?: boolean;
 }
 
-/**
- * Options for getRNInstrumentations
- */
-export interface GetRNInstrumentationsOptions {
+/** RN-specific config: overrides + new props. Omit faro-core props we replace with RN equivalents. */
+type ReactNativeConfigOverrides = {
+  /** Application metadata (required) */
+  app: Config['app'];
+  sessionTracking?: ReactNativeSessionTrackingConfig;
+  url?: string;
+  apiKey?: string;
+  enableTransports?: EnableTransportsConfig;
   /**
-   * Capture console logs (default: false)
+   * Which HTTP instrumentations to enable. When tracing is disabled, these control
+   * HttpInstrumentation (fetch) and XHRInstrumentation (xhr). Default: both true.
    */
-  captureConsole?: boolean;
-
-  /**
-   * Track app state changes (background/foreground) (default: true)
-   */
-  trackAppState?: boolean;
-
-  /**
-   * Track performance metrics (app launch, screen navigation) (default: true)
-   */
-  trackPerformance?: boolean;
-
-  /**
-   * Capture errors (default: true)
-   */
-  captureErrors?: boolean;
-
-  /**
-   * Track sessions (default: true)
-   */
-  trackSessions?: boolean;
-
-  /**
-   * Track view/screen changes (default: true)
-   */
-  trackViews?: boolean;
-
-  /**
-   * Track user actions/interactions (default: true)
-   */
-  trackUserActions?: boolean;
-
-  /**
-   * Track HTTP/fetch requests (default: true)
-   */
-  trackHttpRequests?: boolean;
-
-  /**
-   * Track app startup time from process start to Faro init (default: true)
-   * Uses native OS APIs - no AppDelegate/MainActivity setup required!
-   * Requires: iOS 13.4+, Android API 24+
-   */
-  trackStartup?: boolean;
-
-  /**
-   * Enable memory usage monitoring (default: true)
-   * Monitors RSS (Resident Set Size) - physical memory used by the app
-   * Uses native OS APIs - no manual setup required!
-   * Requires: iOS 13.4+, Android any version
-   */
-  memoryUsageVitals?: boolean;
-
-  /**
-   * Enable CPU usage monitoring (default: true)
-   * Monitors CPU usage percentage via differential calculation
-   * Uses native OS APIs - no manual setup required!
-   * Requires: iOS 13.4+, Android API 21+
-   */
+  enableHttpInstrumentation?: {
+    /** HttpInstrumentation - patches fetch API (default: true) */
+    fetch?: boolean;
+    /** XHRInstrumentation - patches XMLHttpRequest (default: true) */
+    xhr?: boolean;
+  };
+  enableTracing?: boolean;
+  /** Passed to TracingInstrumentation. See TracingInstrumentationOptions in @grafana/faro-react-native-tracing. */
+  tracingOptions?: Record<string, unknown>;
   cpuUsageVitals?: boolean;
-
-  /**
-   * Interval (in milliseconds) for collecting performance vitals (default: 30000 - 30 seconds)
-   * Controls how often memory and CPU metrics are collected and sent
-   * Minimum recommended: 5000ms (5 seconds) to avoid overhead
-   */
+  memoryUsageVitals?: boolean;
+  refreshRateVitals?: boolean;
   fetchVitalsInterval?: number;
+  frameMonitoringOptions?: FrameMonitoringOptions;
+  enableErrorReporting?: boolean;
+  enableCrashReporting?: boolean;
+  anrTracking?: boolean;
+  anrOptions?: ANRInstrumentationOptions;
+  enableConsoleCapture?: boolean;
+  consoleCaptureOptions?: Config['consoleInstrumentation'];
+  enableUserActions?: boolean;
+  userActionsOptions?: Config['userActionsInstrumentation'];
+};
 
-  /**
-   * URLs to ignore for HTTP tracking (regex patterns)
-   */
-  ignoredHttpUrls?: RegExp[];
-}
+/**
+ * React Native config: Config (omit replaced props) & overrides.
+ * Omit: sessionTracking, consoleInstrumentation, userActionsInstrumentation.
+ * instrumentations and transports inherited from Config for extras (built-ins come from flags).
+ */
+export type ReactNativeConfig = Partial<
+  Omit<Config, 'sessionTracking' | 'consoleInstrumentation' | 'userActionsInstrumentation'>
+> &
+  ReactNativeConfigOverrides;

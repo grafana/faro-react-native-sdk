@@ -1,26 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { NativeModules, StyleSheet, Text, View } from 'react-native';
 
+import { faro } from '@grafana/faro-react-native';
+import type { ReactNativeConfig } from '@grafana/faro-react-native';
+
 const { FaroReactNativeModule } = NativeModules;
+
+const DEFAULT_FETCH_VITALS_INTERVAL_MS = 30000;
 
 interface PerformanceMetricsCardProps {
   /** Optional title for the metrics section */
   title?: string;
   /** Optional subtitle/description */
   subtitle?: string;
-  /** Update interval in milliseconds (default: 2000ms) */
+  /** Update interval in milliseconds (default: faro.config.fetchVitalsInterval) */
   updateInterval?: number;
 }
 
 /**
  * Shared component for displaying live CPU and memory metrics
- * Updates automatically at the specified interval
+ * Updates automatically at the specified interval, aligned with Faro vitals collection
  */
 export function PerformanceMetricsCard({
   title = '⚡ Live Performance Metrics',
-  subtitle = 'Updates every 2 seconds',
-  updateInterval = 2000,
+  subtitle,
+  updateInterval,
 }: PerformanceMetricsCardProps) {
+  const config = faro?.config as ReactNativeConfig | undefined;
+  const intervalMs = updateInterval ?? config?.fetchVitalsInterval ?? DEFAULT_FETCH_VITALS_INTERVAL_MS;
+  const displaySubtitle = subtitle ?? `Updates every ${intervalMs / 1000} seconds`;
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
   const [memoryUsage, setMemoryUsage] = useState<number | null>(null);
 
@@ -41,10 +49,10 @@ export function PerformanceMetricsCard({
     updatePerformanceMetrics();
 
     // Update performance metrics at specified interval
-    const interval = setInterval(updatePerformanceMetrics, updateInterval);
+    const interval = setInterval(updatePerformanceMetrics, intervalMs);
 
     return () => clearInterval(interval);
-  }, [updateInterval]);
+  }, [intervalMs]);
 
   return (
     <View style={styles.container}>
@@ -67,7 +75,7 @@ export function PerformanceMetricsCard({
           </Text>
         </View>
       </View>
-      {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      {displaySubtitle && <Text style={styles.subtitle}>{displaySubtitle}</Text>}
     </View>
   );
 }

@@ -45,16 +45,12 @@ val startupDuration = currentTime - processStartTime
 
 ### What Gets Measured
 
-The startup instrumentation captures:
+The startup instrumentation captures both cold and warm starts (matches Faro Flutter SDK format):
 
-- **`total_duration_ms`**: Total time from process start to Faro SDK initialization
-  - Includes: Native module initialization
-  - Includes: React Native runtime setup
-  - Includes: JavaScript bundle loading
-  - Includes: JavaScript execution up to `initializeFaro()`
-  - Includes: Faro SDK initialization
-
-This gives you the complete end-to-end startup experience from the user's perspective.
+- **Cold start** (`coldStart: 1`): `appStartDuration` from process start to Faro SDK initialization
+  - Native module init, RN runtime, JS bundle load, JS execution, Faro init
+- **Warm start** (`coldStart: 0`): `appStartDuration` from app resume to first frame
+  - Automatic via AppState (background → active)
 
 ## Installation
 
@@ -135,13 +131,28 @@ initializeFaro({
 
 ## Data Format
 
-Startup metrics are sent as measurements with the following structure:
+Startup metrics match the Faro Flutter SDK format:
+
+**Cold start** (process launch):
 
 ```json
 {
   "type": "app_startup",
   "values": {
-    "total_duration_ms": 1250.5
+    "appStartDuration": 1250,
+    "coldStart": 1
+  }
+}
+```
+
+**Warm start** (resume from background):
+
+```json
+{
+  "type": "app_startup",
+  "values": {
+    "appStartDuration": 85,
+    "coldStart": 0
   }
 }
 ```

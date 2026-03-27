@@ -1,6 +1,8 @@
 import { allLogLevels, BaseInstrumentation, defaultErrorArgsSerializer, LogLevel, VERSION } from '@grafana/faro-core';
 import type { LogArgsSerializer } from '@grafana/faro-core';
 
+import { ErrorMechanism } from '../errors/const';
+
 import { getDetailsFromConsoleErrorArgs, reactNativeLogArgsSerializer } from './utils';
 
 /**
@@ -52,12 +54,15 @@ export class ConsoleInstrumentation extends BaseInstrumentation {
             // Handle console.error as an error with advanced serialization
             const { value, type, stackFrames } = getDetailsFromConsoleErrorArgs(args, this.errorSerializer);
 
+            const context = { mechanism: ErrorMechanism.CONSOLE };
+
             if (value && !type && !stackFrames) {
               // Simple error without stack frames
-              this.api.pushError(new Error(ConsoleInstrumentation.consoleErrorPrefix + value));
+              this.api.pushError(new Error(ConsoleInstrumentation.consoleErrorPrefix + value), { context });
             } else {
-              // Error with type and/or stack frames
+              // Error with type and/or stack frames (type from error.name, matches Web SDK)
               this.api.pushError(new Error(ConsoleInstrumentation.consoleErrorPrefix + (value ?? '')), {
+                context,
                 type,
                 stackFrames,
               });

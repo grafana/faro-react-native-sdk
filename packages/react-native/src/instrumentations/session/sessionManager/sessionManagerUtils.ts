@@ -2,8 +2,21 @@ import { dateNow, deepEqual, EVENT_OVERRIDES_SERVICE_NAME, faro, genShortID, isE
 import type { Meta, MetaOverrides } from '@grafana/faro-core';
 
 import { isSampled } from './sampling';
-import { SESSION_EXPIRATION_TIME, SESSION_INACTIVITY_TIME } from './sessionConstants';
+import { MAX_SESSION_PERSISTENCE_TIME } from './sessionConstants';
 import type { FaroUserSession } from './types';
+
+const DEFAULT_SESSION_EXPIRATION_MS = 4 * 60 * 60 * 1000; // 4 hours (not in faro-core)
+
+function getSessionTimeouts(): {
+  sessionExpirationTime: number;
+  inactivityTimeout: number;
+} {
+  const inactivityTimeout = faro.config?.sessionTracking?.maxSessionPersistenceTime ?? MAX_SESSION_PERSISTENCE_TIME;
+  return {
+    sessionExpirationTime: DEFAULT_SESSION_EXPIRATION_MS,
+    inactivityTimeout,
+  };
+}
 
 type CreateUserSessionObjectParams = {
   sessionId?: string;
@@ -39,14 +52,15 @@ export function isUserSessionValid(session: FaroUserSession | null): boolean {
     return false;
   }
 
+  const { sessionExpirationTime, inactivityTimeout } = getSessionTimeouts();
   const now = dateNow();
-  const lifetimeValid = now - session.started < SESSION_EXPIRATION_TIME;
+  const lifetimeValid = now - session.started < sessionExpirationTime;
 
   if (!lifetimeValid) {
     return false;
   }
 
-  const inactivityPeriodValid = now - session.lastActivity < SESSION_INACTIVITY_TIME;
+  const inactivityPeriodValid = now - session.lastActivity < inactivityTimeout;
   return inactivityPeriodValid;
 }
 
@@ -55,20 +69,18 @@ type GetUserSessionUpdaterParams = {
   fetchUserSession: () => FaroUserSession | null | Promise<FaroUserSession | null>;
 };
 
-type UpdateSessionParams = { forceSessionExtend: boolean };
-
 export function getUserSessionUpdater({
   fetchUserSession,
   storeUserSession,
-}: GetUserSessionUpdaterParams): (options?: UpdateSessionParams) => Promise<void> {
-  return async function updateSession({ forceSessionExtend } = { forceSessionExtend: false }): Promise<void> {
+}: GetUserSessionUpdaterParams): () => Promise<void> {
+  return async function updateSession(): Promise<void> {
     if (!fetchUserSession || !storeUserSession) {
       return;
     }
 
     const sessionFromStorage = await fetchUserSession();
 
-    if (forceSessionExtend === false && isUserSessionValid(sessionFromStorage)) {
+    if (isUserSessionValid(sessionFromStorage)) {
       await storeUserSession({ ...sessionFromStorage!, lastActivity: dateNow() });
     } else {
       let newSession = addSessionMetadataToNextSession(

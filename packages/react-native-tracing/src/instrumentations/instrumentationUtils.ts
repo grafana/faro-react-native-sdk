@@ -1,6 +1,9 @@
 import { SpanStatusCode } from '@opentelemetry/api';
 import type { Span } from '@opentelemetry/api';
 import type { FetchCustomAttributeFunction } from '@opentelemetry/instrumentation-fetch';
+import type { XHRCustomAttributeFunction } from '@opentelemetry/instrumentation-xml-http-request';
+
+import { faro, type UserActionInternalInterface, UserActionState } from '@grafana/faro-core';
 
 /**
  * FetchError interface matching OpenTelemetry's internal type
@@ -53,10 +56,51 @@ export function fetchCustomAttributeFunctionWithDefaults(
     }
 
     // Add default error handling
-    // Check if result is a FetchError
     if (isFetchError(result)) {
       setSpanStatusOnFetchError(span, result.message);
+    } else if (result instanceof Response && result.status >= 400 && result.status < 600) {
+      setSpanStatusOnFetchError(span, `HTTP ${result.status}: ${result.statusText}`);
     }
   };
   return fn;
+}
+
+/**
+ * Set span status to ERROR for XHR failures (status 0 or 4xx/5xx).
+ */
+export function setSpanStatusOnXMLHttpRequestError(span: Span, xhr: XMLHttpRequest): void {
+  const status = xhr.status;
+  if (status == null) return;
+  if (status === 0 || (status >= 400 && status < 600)) {
+    span.setStatus({ code: SpanStatusCode.ERROR });
+  }
+}
+
+/**
+ * Add user action context to span when active (for HTTP Errors column in user action table).
+ */
+function addUserActionContextToSpan(span: Span): void {
+  try {
+    const currentAction = faro.api?.getActiveUserAction?.();
+    const state = (currentAction as unknown as UserActionInternalInterface)?.getState?.();
+    if (currentAction && (state === UserActionState.Started || state === UserActionState.Halted)) {
+      span.setAttribute('faro.action.user.name', currentAction.name);
+      span.setAttribute('faro.action.user.parentId', currentAction.parentId);
+    }
+  } catch (_) {
+    // Silently fail - don't log to avoid instrumentation loops
+  }
+}
+
+/**
+ * Custom attribute function for XHR instrumentation with defaults.
+ */
+export function xhrCustomAttributeFunctionWithDefaults(
+  userFunction?: XHRCustomAttributeFunction
+): XHRCustomAttributeFunction {
+  return (span: Span, xhr: XMLHttpRequest) => {
+    setSpanStatusOnXMLHttpRequestError(span, xhr);
+    addUserActionContextToSpan(span);
+    userFunction?.(span, xhr);
+  };
 }

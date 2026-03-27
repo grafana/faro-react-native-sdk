@@ -1,6 +1,6 @@
 {
   "name": "@grafana/faro-react-native",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha.1",
   "description": "Faro instrumentations, metas, transports for React Native.",
   "keywords": [
     "observability",
@@ -53,16 +53,20 @@
     "quality:circular-deps": "madge --circular ."
   },
   "dependencies": {
-    "@grafana/faro-core": "2.0.2",
+    "@grafana/faro-core": "^2.2.3",
     "@react-native-async-storage/async-storage": "^1.21.0",
     "react-native-device-info": "^11.1.0"
   },
   "peerDependencies": {
+    "@grafana/faro-react-native-tracing": ">=1.0.0",
     "@react-navigation/native": ">=6.0.0",
     "react": ">=18.0.0",
     "react-native": ">=0.70.0"
   },
   "peerDependenciesMeta": {
+    "@grafana/faro-react-native-tracing": {
+      "optional": true
+    },
     "@react-navigation/native": {
       "optional": true
     }

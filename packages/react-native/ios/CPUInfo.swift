@@ -1,5 +1,5 @@
-import Foundation
 import Darwin
+import Foundation
 
 /// CPU usage monitoring for iOS
 ///
@@ -11,6 +11,9 @@ import Darwin
 @objc(CPUInfo)
 public class CPUInfo: NSObject {
 
+    /// Serializes reads/writes of differential baseline state when `getCpuInfo()` is invoked concurrently.
+    private static let stateLock = NSLock()
+
     // Static state for differential calculation
     private static var lastCpuTime: Double = 0.0
     private static var lastWallTime: Double = 0.0
@@ -21,6 +24,9 @@ public class CPUInfo: NSObject {
     ///
     /// - Returns: CPU usage percentage, or -1.0 on error
     @objc public static func getCpuInfo() -> Double {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+
         guard let cpuTime = getProcessCpuTime(),
               let wallTime = getWallTime() else {
             return -1.0

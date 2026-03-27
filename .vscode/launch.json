@@ -1,0 +1,53 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Android (Hermes)",
+      "cwd": "${workspaceFolder}/demo",
+      "type": "reactnativedirect",
+      "request": "launch",
+      "platform": "android",
+      "sourceMaps": true,
+      "sourceMapPathOverrides": {
+        "webpack:///./*": "${workspaceFolder}/packages/react-native/src/*",
+        "webpack:///*": "${workspaceFolder}/*"
+      }
+    },
+    {
+      "name": "Debug iOS (Hermes)",
+      "cwd": "${workspaceFolder}/demo",
+      "type": "reactnativedirect",
+      "request": "launch",
+      "platform": "ios",
+      "sourceMaps": true,
+      "sourceMapPathOverrides": {
+        "webpack:///./*": "${workspaceFolder}/packages/react-native/src/*",
+        "webpack:///*": "${workspaceFolder}/*"
+      }
+    },
+    {
+      "name": "Attach to Hermes (Android)",
+      "cwd": "${workspaceFolder}/demo",
+      "type": "reactnativedirect",
+      "request": "attach",
+      "platform": "android",
+      "sourceMaps": true,
+      "sourceMapPathOverrides": {
+        "webpack:///./*": "${workspaceFolder}/packages/react-native/src/*",
+        "webpack:///*": "${workspaceFolder}/*"
+      }
+    },
+    {
+      "name": "Attach to Hermes (iOS)",
+      "cwd": "${workspaceFolder}/demo",
+      "type": "reactnativedirect",
+      "request": "attach",
+      "platform": "ios",
+      "sourceMaps": true,
+      "sourceMapPathOverrides": {
+        "webpack:///./*": "${workspaceFolder}/packages/react-native/src/*",
+        "webpack:///*": "${workspaceFolder}/*"
+      }
+    }
+  ]
+}
