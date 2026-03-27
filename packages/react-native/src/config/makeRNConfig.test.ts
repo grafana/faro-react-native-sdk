@@ -16,6 +16,14 @@ class ExtraInstrumentation extends BaseInstrumentation {
   initialize(): void {}
 }
 
+function disposeOfflineTransportsFromConfig(cfg: { transports?: unknown[] }): void {
+  for (const t of cfg.transports ?? []) {
+    if (t instanceof OfflineTransport) {
+      t.dispose();
+    }
+  }
+}
+
 describe('makeRNConfig', () => {
   const base: Pick<ReactNativeConfig, 'app' | 'url'> = {
     app: { name: 'test-app', version: '1.0.0' },
@@ -35,16 +43,24 @@ describe('makeRNConfig', () => {
       ...base,
       enableTransports: { offline: true, console: false },
     });
-    expect(offlineFirst.transports?.[0]).toBeInstanceOf(OfflineTransport);
-    expect(offlineFirst.transports?.[1]).toBeInstanceOf(FetchTransport);
+    try {
+      expect(offlineFirst.transports?.[0]).toBeInstanceOf(OfflineTransport);
+      expect(offlineFirst.transports?.[1]).toBeInstanceOf(FetchTransport);
 
-    const withConsole = makeRNConfig({
-      ...base,
-      enableTransports: { offline: true, console: true },
-    });
-    expect(withConsole.transports?.[0]).toBeInstanceOf(OfflineTransport);
-    expect(withConsole.transports?.[1]).toBeInstanceOf(FetchTransport);
-    expect(withConsole.transports?.[2]).toBeInstanceOf(ConsoleTransport);
+      const withConsole = makeRNConfig({
+        ...base,
+        enableTransports: { offline: true, console: true },
+      });
+      try {
+        expect(withConsole.transports?.[0]).toBeInstanceOf(OfflineTransport);
+        expect(withConsole.transports?.[1]).toBeInstanceOf(FetchTransport);
+        expect(withConsole.transports?.[2]).toBeInstanceOf(ConsoleTransport);
+      } finally {
+        disposeOfflineTransportsFromConfig(withConsole);
+      }
+    } finally {
+      disposeOfflineTransportsFromConfig(offlineFirst);
+    }
   });
 
   it('defaults to FetchTransport only when enableTransports omitted', () => {

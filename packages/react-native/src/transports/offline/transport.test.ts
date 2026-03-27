@@ -89,8 +89,12 @@ describe('OfflineTransport', () => {
       maxCacheDurationMs: 24 * 60 * 60 * 1000, // 1 day
     });
 
-    // Replace internal dependencies with mocks
+    // Constructor starts DefaultConnectivityService polling; dispose it before swapping in mocks
+    const createdConnectivity = (transport as unknown as { connectivityService: ConnectivityService })
+      .connectivityService;
     (transport as unknown as { connectivityService: ConnectivityService }).connectivityService = mockConnectivity;
+    createdConnectivity.dispose();
+
     (transport as unknown as { cache: MockOfflineCache }).cache = mockCache;
   });
 
