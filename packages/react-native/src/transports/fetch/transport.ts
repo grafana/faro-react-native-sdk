@@ -20,7 +20,7 @@ export class FetchTransport extends BaseTransport {
 
   private readonly rateLimitBackoffMs: number;
   private readonly getNow: () => number;
-  private disabledUntil: Date = new Date();
+  private disabledUntil: Date;
   private consecutiveFailures: number = 0;
   private sessionReadyPromise: Promise<void> | null = null;
   private sessionReadyResolve: (() => void) | null = null;
@@ -32,6 +32,8 @@ export class FetchTransport extends BaseTransport {
 
     this.rateLimitBackoffMs = options.defaultRateLimitBackoffMs ?? DEFAULT_RATE_LIMIT_BACKOFF_MS;
     this.getNow = options.getNow ?? (() => Date.now());
+    // Align with getNow so tests (and apps) that supply a clock do not see spurious backoff
+    this.disabledUntil = new Date(this.getNow());
 
     this.promiseBuffer = createPromiseBuffer({
       size: options.bufferSize ?? DEFAULT_BUFFER_SIZE,

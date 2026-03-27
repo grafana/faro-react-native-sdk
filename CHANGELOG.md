@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-01-23
+## [1.0.0-alpha.1] - 2026-03-27
+
+First release on npm. This is a **pre-release** (alpha); APIs and behavior may still change before `1.0.0` stable.
 
 ### Added
 
@@ -45,8 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Updated all repository URLs to point to grafana/faro-react-native-sdk
-- Set package versions to 1.0.0 for initial standalone release
-- Updated @grafana/faro-core dependency to use published npm package (^2.1.0)
+- Set published package versions to `1.0.0-alpha.1` for the first npm pre-release
+- Updated @grafana/faro-core dependency to use published npm package (^2.2.3)
 
-[unreleased]: https://github.com/grafana/faro-react-native-sdk/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/grafana/faro-react-native-sdk/releases/tag/v1.0.0
+[unreleased]: https://github.com/grafana/faro-react-native-sdk/compare/v1.0.0-alpha.1...HEAD
+[1.0.0-alpha.1]: https://github.com/grafana/faro-react-native-sdk/releases/tag/v1.0.0-alpha.1
