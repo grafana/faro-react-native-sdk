@@ -1763,12 +1763,12 @@ __metadata:
   languageName: node
   linkType: soft
 
-"@grafana/faro-react-native-tracing@workspace:packages/react-native-tracing":
+"@grafana/faro-react-native-tracing@workspace:*, @grafana/faro-react-native-tracing@workspace:packages/react-native-tracing":
   version: 0.0.0-use.local
   resolution: "@grafana/faro-react-native-tracing@workspace:packages/react-native-tracing"
   dependencies:
     "@grafana/faro-core": "npm:^2.2.3"
-    "@grafana/faro-react-native": "npm:^1.0.0"
+    "@grafana/faro-react-native": "npm:^1.0.0-alpha.1"
     "@opentelemetry/api": "npm:^1.9.0"
     "@opentelemetry/core": "npm:^2.0.0"
     "@opentelemetry/instrumentation": "npm:^0.208.0"
@@ -1791,11 +1791,12 @@ __metadata:
   languageName: node
   linkType: soft
 
-"@grafana/faro-react-native@npm:^1.0.0, @grafana/faro-react-native@workspace:packages/react-native":
+"@grafana/faro-react-native@npm:^1.0.0-alpha.1, @grafana/faro-react-native@workspace:packages/react-native":
   version: 0.0.0-use.local
   resolution: "@grafana/faro-react-native@workspace:packages/react-native"
   dependencies:
     "@grafana/faro-core": "npm:^2.2.3"
+    "@grafana/faro-react-native-tracing": "workspace:*"
     "@react-native-async-storage/async-storage": "npm:^1.21.0"
     "@types/node": "npm:24.10.1"
     "@types/react": "npm:^19.1.1"
