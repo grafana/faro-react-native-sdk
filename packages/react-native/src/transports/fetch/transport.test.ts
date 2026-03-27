@@ -293,67 +293,6 @@ describe('FetchTransport', () => {
     expect(ignoreUrls).toStrictEqual([collectorUrl, ...globalIgnoreUrls]);
   });
 
-  it('handles session expired header from collector', async () => {
-    fetch.mockImplementationOnce(() =>
-      Promise.resolve({
-        status: 202,
-        headers: {
-          get: (name?: string): string | null => (name === 'X-Faro-Session-Status' ? 'invalid' : null),
-        },
-        text: () => Promise.resolve(),
-      })
-    );
-
-    const transport = new FetchTransport({
-      url: 'http://example.com/collect',
-    });
-
-    transport.internalLogger = mockInternalLogger;
-
-    const config = mockConfig({
-      transports: [transport],
-      sessionTracking: {
-        enabled: true,
-        persistent: false,
-      },
-    });
-
-    const faro = initializeFaro(config);
-
-    // Use faro API to set session properly (triggers metas listeners)
-    faro.api.setSession({ id: mockSessionId });
-
-    await transport.send([item]);
-
-    // Session extension is not yet implemented for RN, but should not throw
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not extend session for standard collector responses', async () => {
-    const transport = new FetchTransport({
-      url: 'http://example.com/collect',
-    });
-
-    transport.internalLogger = mockInternalLogger;
-
-    const config = mockConfig({
-      transports: [transport],
-      sessionTracking: {
-        enabled: true,
-        persistent: false,
-      },
-    });
-
-    const faro = initializeFaro(config);
-
-    // Use faro API to set session properly (triggers metas listeners)
-    faro.api.setSession({ id: mockSessionId });
-
-    await transport.send([item]);
-
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
   it('handles fetch errors gracefully', async () => {
     fetch.mockImplementationOnce(() => Promise.reject(new Error('Network error')));
 

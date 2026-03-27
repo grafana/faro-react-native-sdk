@@ -313,7 +313,7 @@ describe('sessionManagerUtils', () => {
       expect(mockOnSessionChange).toHaveBeenCalledTimes(1);
     });
 
-    it('extends existing valid session', async () => {
+    it('refreshes lastActivity for an existing valid session', async () => {
       const config = mockConfig({
         sessionTracking: {
           enabled: true,
@@ -345,44 +345,6 @@ describe('sessionManagerUtils', () => {
       });
     });
 
-    it('forces session extend when forceSessionExtend is true', async () => {
-      const mockOnSessionChange = jest.fn();
-      const config = mockConfig({
-        sessionTracking: {
-          enabled: true,
-          onSessionChange: mockOnSessionChange,
-        },
-      });
-
-      const _faro = initializeFaro(config);
-
-      const existingSession: FaroUserSession = {
-        sessionId: 'old-session',
-        started: fakeSystemTime,
-        lastActivity: fakeSystemTime,
-        isSampled: true,
-      };
-
-      const mockFetchUserSession = jest.fn().mockResolvedValue(existingSession);
-      const mockStoreUserSession = jest.fn().mockResolvedValue(undefined);
-
-      const updateSession = getUserSessionUpdater({
-        fetchUserSession: mockFetchUserSession,
-        storeUserSession: mockStoreUserSession,
-      });
-
-      jest.spyOn(faroCore, 'genShortID').mockReturnValueOnce(mockSessionId);
-      jest.spyOn(samplingModule, 'isSampled').mockReturnValueOnce(true);
-
-      await updateSession({ forceSessionExtend: true });
-
-      expect(mockStoreUserSession).toHaveBeenCalledTimes(1);
-      expect(mockOnSessionChange).toHaveBeenCalledTimes(1);
-
-      // Should create new session, not extend existing
-      const storedSession = mockStoreUserSession.mock.calls[0][0];
-      expect(storedSession.sessionId).toBe(mockSessionId);
-    });
   });
 
   describe('getSessionMetaUpdateHandler', () => {

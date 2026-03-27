@@ -513,13 +513,15 @@ console.log('Session:', session);
 console.log('Is sampled:', session?.attributes?.isSampled);
 ```
 
-If `isSampled` is false, traces won't be collected. Adjust `samplingRate` in session config:
+If `isSampled` is false, traces won't be collected. Adjust session sampling in the core SDK config (omit `sampling` for 100%):
 
 ```typescript
+import { initializeFaro, SamplingRate } from '@grafana/faro-react-native';
+
 initializeFaro({
   // ...
   sessionTracking: {
-    samplingRate: 1.0, // 100% of sessions
+    sampling: new SamplingRate(1), // 100% of sessions
   },
 });
 ```
@@ -774,8 +776,11 @@ See the demo app for complete examples:
 1. **Sample sessions** - Don't trace every session:
 
 ```typescript
+import { SamplingRate } from '@grafana/faro-react-native';
+
+// ...
 sessionTracking: {
-  samplingRate: 0.1, // 10% of sessions
+  sampling: new SamplingRate(0.1), // 10% of sessions
 }
 ```
 

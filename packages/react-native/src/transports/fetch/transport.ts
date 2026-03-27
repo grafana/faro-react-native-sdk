@@ -1,5 +1,5 @@
-import { BaseExtension, BaseTransport, createPromiseBuffer, getTransportBody, VERSION } from '@grafana/faro-core';
-import type { Config, Patterns, PromiseBuffer, TransportItem } from '@grafana/faro-core';
+import { BaseTransport, createPromiseBuffer, getTransportBody, VERSION } from '@grafana/faro-core';
+import type { Patterns, PromiseBuffer, TransportItem } from '@grafana/faro-core';
 
 import type { FetchTransportOptions } from './types';
 
@@ -180,14 +180,6 @@ export class FetchTransport extends BaseTransport {
             // Reset failure counter on success
             this.consecutiveFailures = 0;
 
-            if (response.status === ACCEPTED) {
-              const sessionExpired = response.headers.get('X-Faro-Session-Status') === 'invalid';
-
-              if (sessionExpired) {
-                this.extendFaroSession(this.config, this.logDebug);
-              }
-            }
-
             if (response.status === TOO_MANY_REQUESTS) {
               this.disabledUntil = this.getRetryAfterDate(response);
               this.logDebug(`FetchTransport: rate limited, disabled until ${this.disabledUntil}`);
@@ -254,19 +246,5 @@ export class FetchTransport extends BaseTransport {
     }
 
     return new Date(now + this.rateLimitBackoffMs);
-  }
-
-  private extendFaroSession(config: Config, logDebug: BaseExtension['logDebug']) {
-    const SessionExpiredString = `Session expired`;
-
-    const sessionTrackingConfig = config.sessionTracking;
-
-    if (sessionTrackingConfig?.enabled) {
-      // TODO: Implement session extension for React Native
-      // This will need to work with AsyncStorage-based session manager
-      logDebug(`${SessionExpiredString} - session extension not yet implemented for RN.`);
-    } else {
-      logDebug(`${SessionExpiredString}.`);
-    }
   }
 }

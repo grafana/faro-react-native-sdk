@@ -59,8 +59,6 @@ initializeFaro({
   // OpenTelemetry tracing (requires @grafana/faro-react-native-tracing)
   enableTracing: false, // default: false
 
-  // User Data
-  persistUser: true, // default: true
 });
 ```
 
@@ -152,9 +150,9 @@ Faro.initialize(
 | **Network**          |
 | URL Filtering        | `ignoreUrls` (RegExp[])                               | `ignoreUrls` (String[])                                            | Different types                                                                                |
 | **User Data**        |
-| Persist User         | `persistUser`                                         | `persistUser` (default: true)                                      | Both support user persistence across sessions                                                  |
+| Persist User         | `initializeUserPersistence()` / `UserPersistence` API | `persistUser` (default: true)                                      | RN: opt-in AsyncStorage helpers; not a `ReactNativeConfig` flag                                |
 | **Session**          |
-| Session Sampling     | `sessionTracking.samplingRate` (0–1) or `.sampler` fn | `sampling: SamplingRate(rate)` or `SamplingFunction`               | Both: per-session sampling; default 100%. See [Session Sampling](./index.md#session-sampling). |
+| Session Sampling     | `sessionTracking.sampling`: `SamplingRate` or `SamplingFunction` | Same idea: `SamplingRate` / `SamplingFunction`                     | Both: per-session sampling; default 100%. See [Session Sampling](./index.md#session-sampling). |
 
 **React Native config model:** Flag-based. Pass `ReactNativeConfig` to `initializeFaro`; `makeRNConfig` builds instrumentations and transports from flags. No manual `getRNInstrumentations` or transport arrays needed.
 

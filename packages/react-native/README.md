@@ -61,13 +61,12 @@ initializeFaro({
     inactivityTimeout: 15 * 60 * 1000,
     sessionExpirationTime: 4 * 60 * 60 * 1000,
     maxSessionPersistenceTime: 15 * 60 * 1000,
-    samplingRate: 1.0,
-    sampler: ({ metas }) => (metas.app?.environment === 'production' ? 0.1 : 1), // optional
+    // Optional: sampling: new SamplingRate(0.1) or new SamplingFunction((ctx) => ...)
+    // Omit sampling to record all sessions (default).
     // generateSessionId, onSessionChange, session.attributes - optional
   },
 
   // faro-core - optional
-  persistUser: true,
   dedupe: true,
   metas: [],
   instrumentations: [], // extra instrumentations (built-ins from flags above)
@@ -663,7 +662,7 @@ initializeFaro({
 The SDK supports both persistent and volatile session tracking with configurable expiration and inactivity timeouts:
 
 ```tsx
-import { initializeFaro } from '@grafana/faro-react-native';
+import { initializeFaro, SamplingFunction, SamplingRate } from '@grafana/faro-react-native';
 
 initializeFaro({
   url: 'https://your-faro-collector-url',
@@ -679,15 +678,11 @@ initializeFaro({
     sessionExpirationTime: 4 * 60 * 60 * 1000, // default: 4 h
     maxSessionPersistenceTime: 15 * 60 * 1000, // default: 15 min
 
-    // Optional: Fixed sampling rate (0-1) to sample sessions
-    samplingRate: 1.0, // 100% of sessions
-
-    // Optional: Custom sampler function for dynamic sampling (takes precedence over samplingRate)
-    // Receives { metas } with session, user, app, device context
-    sampler: ({ metas }) => {
-      if (metas.app?.environment === 'production') return 0.1;
-      return 1.0; // 100% in dev/staging
-    },
+    // Optional: session sampling (omit = all sessions recorded)
+    // sampling: new SamplingRate(0.1), // 10% fixed
+    // sampling: new SamplingFunction((context) =>
+    //   context.meta.app?.environment === 'production' ? 0.1 : 1
+    // ),
 
     // Optional: Custom session ID generator
     generateSessionId: () => 'custom-session-id',
@@ -713,17 +708,13 @@ initializeFaro({
 
 - **Volatile Sessions** (`persistent: false`, default): Stored in memory only. Each app launch creates a new session.
 
-**Sampling options:** Use `samplingRate` for a fixed rate (0-1) or `sampler` for dynamic decisions based on metas. When both are set, `sampler` takes precedence. The sampling decision is made once per session.
+**Sampling:** Set `sessionTracking.sampling` to a `SamplingRate` (fixed 0–1) or `SamplingFunction` (dynamic, receives `context.meta`). Omit `sampling` to record all sessions. The decision is made once per session.
 
 **Defaults:** `persistent=false`, `inactivityTimeout=15min`, `sessionExpirationTime=4h`, `maxSessionPersistenceTime=15min`
 
-**Session Events:**
+**Session events:**
 
-The SDK automatically emits session lifecycle events (query by `event_name` in Grafana):
-
-- `session_start` - New session created
-- `session_resume` - Existing session resumed (persistent only)
-- `session_extend` - Session extended from the same previous session
+The SDK emits `session_start` when a new session is created (including when session metadata changes to a new session id). Resuming a valid persisted session does not emit additional lifecycle events.
 
 ### Default Session Attributes
 

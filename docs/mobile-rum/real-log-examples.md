@@ -226,22 +226,10 @@ timestamp=2024-01-15T10:25:40.000Z kind=exception level=error type=Error value="
 timestamp=2026-02-26T12:42:18.096Z kind=event level=info event_name=session_start sdk_name=@grafana/faro-react-native sdk_version=2.2.3 sdk_integrations=@grafana/faro-react-native-errors:1.0.0,@grafana/faro-react-native:instrumentation-console:2.2.3,... app_name=react-native-sdk-demo app_version=2.0.0 app_environment=production user_email=emma.wilson@example.com user_id=user-005 user_username=emma_wilson user_attr_plan=enterprise user_attr_role=user session_id=QN5bgr88wZ session_attr_device_battery_level=100 session_attr_device_brand=google session_attr_device_carrier=T-Mobile session_attr_device_id=74c3c33a665223bc session_attr_device_is_charging=false session_attr_device_is_physical=false session_attr_device_manufacturer=google session_attr_device_memory_total=2067193856 session_attr_device_memory_used=230367232 session_attr_device_model=sdk_gphone64_arm64 session_attr_device_model_name=sdk_gphone64_arm64 session_attr_device_os=Android session_attr_device_os_detail="Android 16 (SDK 36)" session_attr_device_os_version=16 session_attr_device_type=mobile session_attr_faro_sdk_version=2.2.3 session_attr_react_native_version=0.82.1
 ```
 
-**Session extend (event):**
-
-```text
-timestamp=2026-02-26T12:45:00.000Z kind=event level=info event_name=session_extend event_data_previousSession=8B7yPLjVLV sdk_name=@grafana/faro-react-native sdk_version=2.2.3 sdk_integrations=@grafana/faro-react-native-errors:1.0.0,@grafana/faro-react-native:instrumentation-console:2.2.3,... app_name=react-native-sdk-demo app_version=2.0.0 app_environment=production user_email=carol.white@example.com user_id=user-006 user_username=carol_white user_attr_plan=enterprise user_attr_role=user session_id=QN5bgr88wZ session_attr_previousSession=8B7yPLjVLV session_attr_device_battery_level=100 session_attr_device_brand=google session_attr_device_carrier=T-Mobile session_attr_device_id=74c3c33a665223bc session_attr_device_is_charging=false session_attr_device_is_physical=false session_attr_device_manufacturer=google session_attr_device_memory_total=2067193856 session_attr_device_memory_used=230367232 session_attr_device_model=sdk_gphone64_arm64 session_attr_device_model_name=sdk_gphone64_arm64 session_attr_device_os=Android session_attr_device_os_detail="Android 16 (SDK 36)" session_attr_device_os_version=16 session_attr_device_type=mobile session_attr_faro_sdk_version=2.2.3 session_attr_react_native_version=0.82.1
-```
-
 **Query (session starts):**
 
 ```logql
 {app_id="YOUR_APP_ID", kind="event"} | logfmt | event_name="session_start"
-```
-
-**Query (session extends):**
-
-```logql
-{app_id="YOUR_APP_ID", kind="event"} | logfmt | event_name="session_extend"
 ```
 
 ---

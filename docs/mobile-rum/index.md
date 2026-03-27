@@ -1354,7 +1354,7 @@ initializeFaro({
 - **SessionInstrumentation** manages session lifecycle
 - **Volatile mode** (default): In-memory only; new session each app launch
 - **Persistent mode** (optional): AsyncStorage; survives app restarts; 4h max, 15min inactivity timeout
-- Events: `session_start`, `session_extend`, `session_resume`
+- Events: `session_start` only (persistent mode still reuses a stored session id without a separate resume event; when the session rotates, `session_start` is emitted and `previousSession` may appear on session attributes)
 - Auto-collects session attributes: device_id, device_os, device_model, RN version, etc.
 
 ##### **Flutter SDK**
@@ -1377,34 +1377,18 @@ React Native offers two session modes. Flutter does not support either; it alway
 
 - **Unique session count** — count of `session_start` reflects distinct sessions, not every launch
 - **Session duration** — measure time from first start to last activity across app switches
-- **Returns per session** — `(session_start + session_resume) / session_start` shows engagement depth
+- **Returns within a persisted session** — track activity via the same `session_id` over time; new logical sessions are reflected by new `session_start` events
 - **Market alignment** — common in RUM tools (e.g. Datadog: 15 min inactivity, 4 h max)
 
 **Flutter behavior:** A user who backgrounds and returns twice creates 3 separate sessions (each launch = new session). React Native with persistent mode treats this as one session with multiple returns.
 
-### Session Extend (React Native & Web SDK)
+### Session linking after rotation (React Native SDK)
 
-`session_extend` is emitted when a **new session** is created because the previous one expired (inactivity or 4 h max), and the new session links to the old. The old session is not extended; a fresh session ID is created. This lets backends treat the new session as continuing the same logical visit. Flutter does not emit `session_extend`.
+When a stored session expires and a **new** session id is created, the SDK may set **`session_attr_previousSession`** on the new session metadata so you can correlate telemetry with the prior session. A dedicated `session_extend` event is **not** emitted; use the **`session_start`** event for the new session id instead.
 
-**Where the previous session ID appears:**
+### Session extend and resume (Web SDK)
 
-- **`session_attr_previousSession`** — Stored as a session attribute, so it is attached to **all** telemetry (logs, exceptions, events) in the new session. This is the primary way to see the previous session on regular telemetry.
-- **`event_data_previousSession`** — In the `session_extend` event payload only.
-
-**When it happens:** `session_extend` occurs when `updateSession` runs (e.g. on app foreground or before sending telemetry) while the app is **still in memory** and the session has expired. It does **not** occur when the app was killed and reopened after 4+ h — in that case the stored session is cleared before creating the new one, so no `previousSession` link exists and `session_start` is emitted instead.
-
-### Session Resume (React Native & Web SDK)
-
-`session_resume` is emitted when the app **restarts** (cold start) and finds a **valid existing session** in storage. The same session ID is reused instead of creating a new one. Flutter does not emit `session_resume` (each launch is a new session).
-
-**When it happens:** `session_resume` occurs during Faro initialization when persistent mode is enabled and a stored session exists that is still valid: within 4 h of `started`, and within 15 min of `lastActivity`. If the stored session has expired (inactivity or max lifetime), it is cleared and `session_start` is emitted instead. In volatile mode (non-persistent), every app launch emits `session_start` only.
-
-### Using session_resume for Analytics
-
-With persistent mode, `session_resume` supports questions like:
-
-- **How many sessions end after a single foreground period?** — compare sessions with 1 event vs more
-- **How often do users actually return within the same session?** — count `session_resume` per `session_start`
+The **Faro Web SDK** may emit `session_extend` and `session_resume` for finer-grained lifecycle analytics. **React Native does not emit these events**—only **`session_start`** for lifecycle, as described above.
 
 ---
 
@@ -1456,7 +1440,7 @@ Sessions are always enabled. Options (via faro-core config):
 | ---------------------- | --------------------------------------------------- | ---------------------- |
 | **Storage**            | Volatile: in-memory; Persistent: AsyncStorage       | No session persistence |
 | **Session expiration** | 4 h max, 15 min inactivity                          | None                   |
-| **Events**             | `session_start`, `session_resume`, `session_extend` | `session_start` only   |
+| **Events**             | `session_start` only                                | `session_start` only   |
 | **Always enabled**     | Yes                                                 | Yes                    |
 
 ---
@@ -1472,7 +1456,7 @@ Session sampling lets you send telemetry only for a fraction of sessions to redu
 - Sampling decision is made once per session when the session is created
 - Non-sampled sessions: telemetry is not sent to transports (logs, exceptions, events, traces are dropped)
 - Sampled sessions: telemetry is sent as usual
-- Supports `samplingRate` (0–1) or custom `sampler` function that receives metas
+- Supports `sessionTracking.sampling` as `SamplingRate` (fixed rate) or `SamplingFunction` (dynamic, `context.meta`)
 
 ##### **Flutter SDK**
 
@@ -1485,11 +1469,15 @@ Session sampling lets you send telemetry only for a fraction of sessions to redu
 ##### **React Native SDK**
 
 ```typescript
+import { initializeFaro, SamplingFunction, SamplingRate } from '@grafana/faro-react-native';
+
 initializeFaro({
   sessionTracking: {
-    samplingRate: 0.1, // 10% of sessions
-    // Or custom function:
-    sampler: ({ metas }) => (metas.app?.environment === 'production' ? 0.1 : 1.0),
+    sampling: new SamplingRate(0.1), // 10% of sessions
+    // Or dynamic:
+    // sampling: new SamplingFunction((context) =>
+    //   context.meta.app?.environment === 'production' ? 0.1 : 1.0
+    // ),
   },
 });
 ```
@@ -1511,14 +1499,12 @@ Faro.initialize(
 
 #### Key Differences
 
-| Aspect         | React Native                         | Flutter                               |
-| -------------- | ------------------------------------ | ------------------------------------- |
-| **Default**    | 100% (all sessions sampled)          | 100%                                  |
-| **Fixed rate** | `sessionTracking.samplingRate` (0–1) | `SamplingRate(rate)`                  |
-| **Dynamic**    | `sessionTracking.sampler` function   | `SamplingFunction((context) => rate)` |
-| **Scope**      | Per session (all or nothing)         | Per session                           |
-
-> 🔴 **Note:** Consider whether the Flutter SDK should align naming with Web SDK and React Native (`sampler`, `samplingRate`) instead of `SamplingRate` / `SamplingFunction` for consistency across SDKs.
+| Aspect         | React Native                                    | Flutter                               |
+| -------------- | ----------------------------------------------- | ------------------------------------- |
+| **Default**    | 100% (omit `sampling`)                          | 100%                                  |
+| **Fixed rate** | `sessionTracking.sampling: new SamplingRate(r)` | `SamplingRate(rate)`                  |
+| **Dynamic**    | `new SamplingFunction((context) => rate)`       | `SamplingFunction((context) => rate)` |
+| **Scope**      | Per session (all or nothing)                    | Per session                           |
 
 ---
 

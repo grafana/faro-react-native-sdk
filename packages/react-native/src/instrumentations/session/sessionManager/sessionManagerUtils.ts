@@ -69,20 +69,18 @@ type GetUserSessionUpdaterParams = {
   fetchUserSession: () => FaroUserSession | null | Promise<FaroUserSession | null>;
 };
 
-type UpdateSessionParams = { forceSessionExtend: boolean };
-
 export function getUserSessionUpdater({
   fetchUserSession,
   storeUserSession,
-}: GetUserSessionUpdaterParams): (options?: UpdateSessionParams) => Promise<void> {
-  return async function updateSession({ forceSessionExtend } = { forceSessionExtend: false }): Promise<void> {
+}: GetUserSessionUpdaterParams): () => Promise<void> {
+  return async function updateSession(): Promise<void> {
     if (!fetchUserSession || !storeUserSession) {
       return;
     }
 
     const sessionFromStorage = await fetchUserSession();
 
-    if (forceSessionExtend === false && isUserSessionValid(sessionFromStorage)) {
+    if (isUserSessionValid(sessionFromStorage)) {
       await storeUserSession({ ...sessionFromStorage!, lastActivity: dateNow() });
     } else {
       let newSession = addSessionMetadataToNextSession(

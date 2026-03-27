@@ -66,7 +66,6 @@ type ReactNativeConfigOverrides = {
   consoleCaptureOptions?: Config['consoleInstrumentation'];
   enableUserActions?: boolean;
   userActionsOptions?: Config['userActionsInstrumentation'];
-  persistUser?: boolean;
 };
 
 /**
