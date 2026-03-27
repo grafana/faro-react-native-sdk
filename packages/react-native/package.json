@@ -72,7 +72,6 @@
     }
   },
   "devDependencies": {
-    "@grafana/faro-react-native-tracing": "workspace:*",
     "@types/node": "24.10.1",
     "@types/react": "^19.1.1",
     "@types/react-native": "^0.73.0"
