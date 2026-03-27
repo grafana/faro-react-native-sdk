@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0-alpha.1] - 2026-03-27
 
-First release on npm. This is a **pre-release** (alpha); APIs and behavior may still change before `1.0.0` stable.
+First release on npm. This is a **pre-release** (alpha); APIs and behavior
+may still change before `1.0.0` stable.
 
 ### Added
 
