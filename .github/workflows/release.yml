@@ -3,7 +3,10 @@ name: Release
 on:
   push:
     tags:
-      - '*'
+      - 'v*'
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -21,8 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6
         with:
-          node-version: 'lts/*'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: '24'
           package-manager-cache: false
 
       - name: Install dependencies
@@ -41,12 +43,19 @@ jobs:
         run: yarn quality:test
 
   publish:
+    # Trusted Publishing (OIDC): configure on npmjs.com (as grafanabot) for these packages,
+    # pointing at this repo and the same environment name. Do not use NPM_TOKEN here.
+    # Repo admins: Settings → Environments → create "npm-publish" (or rename below),
+    # restrict to protected branches / tags (e.g. v*) as in internal Grafana runbooks.
+    environment: npm-publish
+
+    needs: [test]
+
+    runs-on: ubuntu-latest
+
     permissions:
       contents: read
       id-token: write
-
-    runs-on: ubuntu-latest
-    needs: [test]
 
     env:
       NPM_CONFIG_ACCESS: public
@@ -61,8 +70,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6
         with:
-          node-version: 'lts/*'
-          registry-url: 'https://registry.npmjs.org'
+          # Node 24.x+ aligns with npm versions suitable for Trusted Publishing; still upgrade npm below.
+          node-version: '24'
           package-manager-cache: false
 
       - name: Install dependencies
@@ -71,8 +80,16 @@ jobs:
       - name: Build
         run: yarn build
 
-      - name: Install npm latest version #needed for Trusted Publishing
-        run: npm install -g npm@latest
+      - name: Install npm for Trusted Publishing
+        run: npm install -g npm@^11.5.1
 
-      - name: Publish package to NPM
-        run: npm run publish -- from-git --yes
+      - name: Publish packages to npm
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Prerelease versions (e.g. v1.0.0-alpha.1) require an explicit dist-tag (not semver-range-like).
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            yarn run publish -- from-git --yes --dist-tag next
+          else
+            yarn run publish -- from-git --yes
+          fi
