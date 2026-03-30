@@ -253,7 +253,7 @@ Releases are managed by project maintainers using Lerna:
 1. Version bumping:
 
    ```bash
-   yarn publish
+   yarn exec lerna version
    ```
 
 2. Lerna will:

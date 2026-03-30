@@ -87,9 +87,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Prerelease versions (e.g. v1.0.0-alpha.1) require an explicit dist-tag (not semver-range-like).
+          # Tag checkouts are detached HEAD; Lerna needs a branch.
+          git checkout -B "release-${GITHUB_REF_NAME}" HEAD
+          # prerelease versions require an explicit dist-tag (e.g. 1.0.0-alpha.1).
           if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
-            yarn run publish -- from-git --yes --dist-tag next
+            yarn exec lerna publish from-package --yes --dist-tag next --no-private
           else
-            yarn run publish -- from-git --yes
+            yarn exec lerna publish from-package --yes --no-private
           fi

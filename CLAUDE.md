@@ -357,11 +357,11 @@ Managed via Lerna:
 # Version packages (prompts for version bump)
 lerna version
 
-# Publish to npm
-lerna publish
+# Publish to npm (root script — do not name it "publish" or npm lifecycles recurse)
+yarn run publish:packages
 
-# Publish from specific packages
-lerna publish from-package
+# Publish versions already in package.json (CI / no bump prompt)
+yarn exec lerna publish from-package --yes --no-private
 ```
 
 **Pre-publish checklist:**
