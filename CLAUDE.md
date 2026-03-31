@@ -11,7 +11,7 @@ This is the Grafana Faro React Native SDK - a monorepo containing packages for r
 - `@grafana/faro-react-native` - Core SDK with instrumentations, metas, and transports
 - `@grafana/faro-react-native-tracing` - OpenTelemetry distributed tracing integration
 - `@grafana/faro-test-utils` - Internal test utilities (not published)
-- `demo/` - Full-featured demo application
+- `demo/` - Full-featured demo application (not published)
 
 **Critical Dependencies:**
 
@@ -54,6 +54,8 @@ yarn quality:circular-deps
 
 ### Demo App Commands
 
+Commands to run from root folder:
+
 ```bash
 # Start Metro bundler
 yarn start:demo
@@ -64,9 +66,6 @@ yarn ios
 # Run on Android (from root)
 yarn android
 
-# Run from demo directory
-cd demo
-yarn ios        # or yarn android
 ```
 
 ### iOS Native Module Setup
@@ -354,14 +353,8 @@ Husky + lint-staged runs automatically:
 Managed via Lerna:
 
 ```bash
-# Version packages (prompts for version bump)
-lerna version
-
-# Publish to npm (root script — do not name it "publish" or npm lifecycles recurse)
-yarn run publish:packages
-
-# Publish versions already in package.json (CI / no bump prompt)
-yarn exec lerna publish from-package --yes --no-private
+# Version packages (prompts for version bump, commit, tags). Push to GitHub to trigger the release workflow.
+yarn bump:version
 ```
 
 **Pre-publish checklist:**
