@@ -34,7 +34,7 @@ participating, you are expected to uphold this code.
 
 - Node.js (LTS version recommended)
 - Yarn 4.12.0 (included via Yarn Berry)
-- For iOS development: macOS with Xcode installed
+- For iOS development: macOS and iOS with Xcode installed
 - For Android development: Android Studio and SDK installed
 
 ### Initial Setup
@@ -253,7 +253,7 @@ Releases are managed by project maintainers using Lerna:
 1. Version bumping:
 
    ```bash
-   yarn publish
+   yarn bump:version
    ```
 
 2. Lerna will:
