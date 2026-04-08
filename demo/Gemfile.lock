@@ -1,7 +1,7 @@
 GEM
   remote: https://rubygems.org/
   specs:
-    CFPropertyList (3.0.8)
+    CFPropertyList (3.0.9)
     activesupport (6.1.7.10)
       concurrent-ruby (~> 1.0, >= 1.0.2)
       i18n (>= 1.6, < 2)
@@ -105,7 +105,7 @@ DEPENDENCIES
   xcodeproj (< 1.26.0)
 
 RUBY VERSION
-  ruby 2.6.10p210
+   ruby 2.6.10p210
 
 BUNDLED WITH
-  4.0.3
+   1.17.2
