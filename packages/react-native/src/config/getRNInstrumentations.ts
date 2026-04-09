@@ -114,13 +114,15 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
     }
   }
 
-  // Performance vitals (CPU/memory)
-  const perfInstrumentation = new PerformanceInstrumentation({
-    memoryUsageVitals,
-    cpuUsageVitals,
-    fetchVitalsInterval,
-  });
-  instrumentations.push(perfInstrumentation);
+  // Performance vitals (CPU/memory) - only add if at least one metric is enabled
+  if (cpuUsageVitals || memoryUsageVitals) {
+    const perfInstrumentation = new PerformanceInstrumentation({
+      memoryUsageVitals,
+      cpuUsageVitals,
+      fetchVitalsInterval,
+    });
+    instrumentations.push(perfInstrumentation);
+  }
 
   // Startup tracking - always enabled
   instrumentations.push(new StartupInstrumentation());
