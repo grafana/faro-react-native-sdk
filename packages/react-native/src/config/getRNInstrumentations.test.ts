@@ -1,16 +1,3 @@
-/** Keeps tests working without a workspace devDependency (avoids npm/Lerna cycle: tracing → react-native → tracing). */
-jest.mock('@grafana/faro-react-native-tracing', () => {
-  const { BaseInstrumentation, VERSION } = require('@grafana/faro-core');
-
-  class TracingInstrumentation extends BaseInstrumentation {
-    readonly name = '@grafana/faro-react-native-tracing';
-    readonly version = VERSION;
-    initialize(): void {}
-  }
-
-  return { TracingInstrumentation };
-});
-
 import { Platform } from 'react-native';
 
 import { TracingInstrumentation } from '@grafana/faro-react-native-tracing';

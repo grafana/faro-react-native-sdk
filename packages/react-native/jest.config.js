@@ -19,6 +19,8 @@ module.exports = {
   ],
   moduleNameMapper: {
     '^@grafana/faro-core/testUtils$': '<rootDir>/node_modules/@grafana/faro-core/dist/esm/testUtils/index.js',
+    '^@grafana/faro-react-native-tracing$':
+      '<rootDir>/packages/react-native/src/testUtils/mockFaroReactNativeTracing.ts',
     ...jestBaseConfig.moduleNameMapper,
   },
   setupFiles: ['<rootDir>/packages/react-native/src/testUtils/setupTests.ts'],
