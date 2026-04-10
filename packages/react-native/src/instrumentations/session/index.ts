@@ -132,7 +132,16 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
       const attributes = item.meta.session?.attributes;
 
-      if (attributes && attributes?.['isSampled'] === 'true') {
+      // Only filter out items when session is explicitly NOT sampled (isSampled='false')
+      // If isSampled='true', remove the attribute before sending (it's internal)
+      // If no isSampled attribute, pass through the item unchanged
+      if (attributes?.['isSampled'] === 'false') {
+        // Session is not sampled - drop this item
+        return null;
+      }
+
+      if (attributes?.['isSampled'] === 'true') {
+        // Session is sampled - remove internal isSampled attribute before sending
         let newItem: TransportItem = JSON.parse(JSON.stringify(item));
 
         const newAttributes = newItem.meta.session?.attributes;
@@ -145,13 +154,12 @@ export class SessionInstrumentation extends BaseInstrumentation {
         return newItem;
       }
 
-      return null;
+      // No isSampled attribute or other value - pass through unchanged
+      return item;
     });
   }
 
   async initialize(): Promise<void> {
-    this.logDebug('init session instrumentation');
-
     const sessionTrackingConfig = this.config.sessionTracking;
 
     if (sessionTrackingConfig?.enabled) {
@@ -163,7 +171,6 @@ export class SessionInstrumentation extends BaseInstrumentation {
         SessionManager,
         sessionTrackingConfig
       );
-
       await SessionManager.storeUserSession(initialSession);
 
       const initialSessionMeta = initialSession.sessionMeta;
