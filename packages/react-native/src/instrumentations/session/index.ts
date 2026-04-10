@@ -162,48 +162,31 @@ export class SessionInstrumentation extends BaseInstrumentation {
   async initialize(): Promise<void> {
     const sessionTrackingConfig = this.config.sessionTracking;
 
-    this.logError('SessionInstrumentation.initialize() called', { enabled: sessionTrackingConfig?.enabled });
-
     if (sessionTrackingConfig?.enabled) {
       const SessionManager = getSessionManagerByConfig(sessionTrackingConfig);
 
       this.registerBeforeSendHook(SessionManager);
 
-      this.logError('Creating initial session...');
       const { initialSession, emitSessionStartOnInit } = await this.createInitialSession(
         SessionManager,
         sessionTrackingConfig
       );
-
-      this.logError('Storing session to storage...');
       await SessionManager.storeUserSession(initialSession);
 
       const initialSessionMeta = initialSession.sessionMeta;
-      
-      this.logError('Session created', { 
-        sessionId: initialSessionMeta?.id,
-        isSampled: initialSession.isSampled,
-        attributes: initialSessionMeta?.attributes 
-      });
 
       this.notifiedSession = initialSessionMeta;
       this.api.setSession(initialSessionMeta);
-      
-      this.logError('Session set in metas');
 
       // Store the session manager instance for cleanup
       this.sessionManagerInstance = new SessionManager();
 
       if (emitSessionStartOnInit) {
         this.api.pushEvent(EVENT_SESSION_START, {}, undefined, { skipDedupe: true });
-        this.logError('SESSION_START event pushed');
       }
-    } else {
-      this.logError('Session tracking is disabled');
     }
 
     this.metas.addListener(this.sendSessionStartEvent.bind(this));
-    this.logError('SessionInstrumentation.initialize() complete');
   }
 
   /**
