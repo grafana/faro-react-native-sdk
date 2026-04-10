@@ -16,19 +16,6 @@ declare const global: {
 
 type ErrorHandlerCallback = (error: Error | unknown, isFatal?: boolean) => void;
 
-/**
- * True for Metro dev bundles (`__DEV__`), but not for Jest (`NODE_ENV=test`) so unit tests stay quiet.
- */
-function shouldLogReportedErrorToMetro(): boolean {
-  if ((globalThis as { __DEV__?: boolean }).__DEV__ !== true) {
-    return false;
-  }
-  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
-    return false;
-  }
-  return true;
-}
-
 export interface ErrorsInstrumentationOptions {
   /**
    * Patterns to ignore errors by message
