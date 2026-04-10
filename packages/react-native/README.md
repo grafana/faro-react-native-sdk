@@ -268,6 +268,47 @@ faro.api.pushEvent('purchase_completed', {
 });
 ```
 
+### Logging
+
+Send log messages with different severity levels using the `LogLevel` enum:
+
+```tsx
+import { faro, LogLevel } from '@grafana/faro-react-native';
+
+// Default level (LogLevel.LOG) when no level is specified
+faro.api.pushLog(['Application started']);
+
+// Explicit log levels
+faro.api.pushLog(['User signed in'], { level: LogLevel.INFO });
+faro.api.pushLog(['Cache hit ratio: 0.95'], { level: LogLevel.DEBUG });
+faro.api.pushLog(['Retrying request, attempt 3'], { level: LogLevel.WARN });
+faro.api.pushLog(['Payment processing failed'], { level: LogLevel.ERROR });
+faro.api.pushLog(['Entering auth flow'], { level: LogLevel.TRACE });
+```
+
+**Available log levels** (from `LogLevel` enum):
+
+| Level              | Description                                      |
+| ------------------ | ------------------------------------------------ |
+| `LogLevel.TRACE`   | Fine-grained diagnostic information               |
+| `LogLevel.DEBUG`   | Detailed information useful during development     |
+| `LogLevel.INFO`    | General informational messages                     |
+| `LogLevel.LOG`     | Standard log messages (default when omitted)       |
+| `LogLevel.WARN`    | Potentially harmful situations                     |
+| `LogLevel.ERROR`   | Error events that might still allow the app to run |
+
+You can also attach additional context to log messages:
+
+```tsx
+faro.api.pushLog(['Order placed'], {
+  level: LogLevel.INFO,
+  context: {
+    orderId: 'order-456',
+    userId: 'user-123',
+  },
+});
+```
+
 ### Performance Measurements
 
 Track performance metrics:
@@ -1147,7 +1188,7 @@ See the [demo](../../demo) directory for a complete example application.
 
 - `initializeFaro(config: ReactNativeConfig): void` - Initialize the Faro SDK
 - `faro.api.pushEvent(name: string, attributes?: Record<string, string>)` - Track custom events
-- `faro.api.pushLog(message: string, options?: PushLogOptions)` - Send log messages
+- `faro.api.pushLog(message: string[], options?: PushLogOptions)` - Send log messages. Use `options.level` with the `LogLevel` enum (`TRACE`, `DEBUG`, `INFO`, `LOG`, `WARN`, `ERROR`) to set severity. Defaults to `LogLevel.LOG`.
 - `faro.api.pushError(error: Error, options?: PushErrorOptions)` - Report errors
 - `faro.api.pushMeasurement(measurement: Measurement)` - Track performance
 - `faro.api.setUser(user: User)` - Identify users
