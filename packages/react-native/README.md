@@ -288,14 +288,14 @@ faro.api.pushLog(['Entering auth flow'], { level: LogLevel.TRACE });
 
 **Available log levels** (from `LogLevel` enum):
 
-| Level              | Description                                      |
-| ------------------ | ------------------------------------------------ |
-| `LogLevel.TRACE`   | Fine-grained diagnostic information               |
-| `LogLevel.DEBUG`   | Detailed information useful during development     |
-| `LogLevel.INFO`    | General informational messages                     |
-| `LogLevel.LOG`     | Standard log messages (default when omitted)       |
-| `LogLevel.WARN`    | Potentially harmful situations                     |
-| `LogLevel.ERROR`   | Error events that might still allow the app to run |
+| Level            | Description                                        |
+| ---------------- | -------------------------------------------------- |
+| `LogLevel.TRACE` | Fine-grained diagnostic information                |
+| `LogLevel.DEBUG` | Detailed information useful during development     |
+| `LogLevel.INFO`  | General informational messages                     |
+| `LogLevel.LOG`   | Standard log messages (default when omitted)       |
+| `LogLevel.WARN`  | Potentially harmful situations                     |
+| `LogLevel.ERROR` | Error events that might still allow the app to run |
 
 You can also attach additional context to log messages:
 
