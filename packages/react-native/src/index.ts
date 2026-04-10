@@ -2,7 +2,7 @@
 // Apply PerformanceObserver polyfill first to prevent iOS bad_variant_access crash
 import { applyPerformanceObserverPolyfill } from './util/performanceObserverPolyfill';
 applyPerformanceObserverPolyfill();
-export { initializeFaro } from './initialize';
+export { initializeFaro, initializeFaroAsync } from './initialize';
 export { faro } from '@grafana/faro-core';
 
 // Export types

@@ -31,6 +31,7 @@
     "ios",
     "android",
     "FaroReactNative.podspec",
+    "react-native.config.js",
     "README.md",
     "LICENSE"
   ],

@@ -25,6 +25,7 @@ export class ConsoleInstrumentation extends BaseInstrumentation {
   private originalConsole: Partial<Console> = {};
   private errorSerializer: LogArgsSerializer = reactNativeLogArgsSerializer;
   private patchedLevels: LogLevel[] = [];
+  private isProcessing = false;
 
   initialize(): void {
     const instrumentationOptions = this.config.consoleInstrumentation;
@@ -35,9 +36,11 @@ export class ConsoleInstrumentation extends BaseInstrumentation {
       ? (instrumentationOptions?.errorSerializer ?? defaultErrorArgsSerializer)
       : reactNativeLogArgsSerializer;
 
-    // Store original console methods
+    // Store original console methods - use unpatchedConsole from config if available
+    // to avoid capturing React Native's patched console (LogBox, DevTools)
+    const sourceConsole = this.config.unpatchedConsole ?? console;
     allLogLevels.forEach((level) => {
-      this.originalConsole[level] = console[level];
+      this.originalConsole[level] = sourceConsole[level];
     });
 
     // Determine which levels to patch
@@ -49,6 +52,13 @@ export class ConsoleInstrumentation extends BaseInstrumentation {
     // Patch console methods
     this.patchedLevels.forEach((level) => {
       console[level] = (...args: unknown[]) => {
+        // Prevent re-entry to avoid infinite loops
+        if (this.isProcessing) {
+          this.originalConsole[level]?.(...args);
+          return;
+        }
+
+        this.isProcessing = true;
         try {
           if (level === LogLevel.ERROR && !instrumentationOptions?.consoleErrorAsLog) {
             // Handle console.error as an error with advanced serialization
@@ -84,20 +94,13 @@ export class ConsoleInstrumentation extends BaseInstrumentation {
             this.api.pushLog(args, { level });
           }
         } catch (err) {
-          // Use unpatchedConsole to avoid infinite loop
-          this.unpatchedConsole.error('[Faro Console] Error capturing log:', err);
-          this.logError(err);
+          // Silently ignore errors to prevent infinite loops during bootstrap
         } finally {
-          // Always call original console method
+          // Always call original console method (still protected by isProcessing flag)
           this.originalConsole[level]?.(...args);
+          this.isProcessing = false;
         }
       };
-    });
-
-    this.logInfo('Console instrumentation initialized', {
-      patchedLevels: this.patchedLevels,
-      serializeErrors,
-      consoleErrorAsLog: instrumentationOptions?.consoleErrorAsLog ?? false,
     });
   }
 
@@ -113,6 +116,5 @@ export class ConsoleInstrumentation extends BaseInstrumentation {
     });
 
     this.patchedLevels = [];
-    this.logInfo('Console instrumentation unpatched');
   }
 }

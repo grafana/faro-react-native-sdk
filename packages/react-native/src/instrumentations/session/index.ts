@@ -132,7 +132,16 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
       const attributes = item.meta.session?.attributes;
 
-      if (attributes && attributes?.['isSampled'] === 'true') {
+      // Only filter out items when session is explicitly NOT sampled (isSampled='false')
+      // If isSampled='true', remove the attribute before sending (it's internal)
+      // If no isSampled attribute, pass through the item unchanged
+      if (attributes?.['isSampled'] === 'false') {
+        // Session is not sampled - drop this item
+        return null;
+      }
+
+      if (attributes?.['isSampled'] === 'true') {
+        // Session is sampled - remove internal isSampled attribute before sending
         let newItem: TransportItem = JSON.parse(JSON.stringify(item));
 
         const newAttributes = newItem.meta.session?.attributes;
@@ -145,41 +154,56 @@ export class SessionInstrumentation extends BaseInstrumentation {
         return newItem;
       }
 
-      return null;
+      // No isSampled attribute or other value - pass through unchanged
+      return item;
     });
   }
 
   async initialize(): Promise<void> {
-    this.logDebug('init session instrumentation');
-
     const sessionTrackingConfig = this.config.sessionTracking;
+
+    this.logError('SessionInstrumentation.initialize() called', { enabled: sessionTrackingConfig?.enabled });
 
     if (sessionTrackingConfig?.enabled) {
       const SessionManager = getSessionManagerByConfig(sessionTrackingConfig);
 
       this.registerBeforeSendHook(SessionManager);
 
+      this.logError('Creating initial session...');
       const { initialSession, emitSessionStartOnInit } = await this.createInitialSession(
         SessionManager,
         sessionTrackingConfig
       );
 
+      this.logError('Storing session to storage...');
       await SessionManager.storeUserSession(initialSession);
 
       const initialSessionMeta = initialSession.sessionMeta;
+      
+      this.logError('Session created', { 
+        sessionId: initialSessionMeta?.id,
+        isSampled: initialSession.isSampled,
+        attributes: initialSessionMeta?.attributes 
+      });
 
       this.notifiedSession = initialSessionMeta;
       this.api.setSession(initialSessionMeta);
+      
+      this.logError('Session set in metas');
 
       // Store the session manager instance for cleanup
       this.sessionManagerInstance = new SessionManager();
 
       if (emitSessionStartOnInit) {
         this.api.pushEvent(EVENT_SESSION_START, {}, undefined, { skipDedupe: true });
+        this.logError('SESSION_START event pushed');
       }
+    } else {
+      this.logError('Session tracking is disabled');
     }
 
     this.metas.addListener(this.sendSessionStartEvent.bind(this));
+    this.logError('SessionInstrumentation.initialize() complete');
   }
 
   /**

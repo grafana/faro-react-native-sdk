@@ -16,6 +16,19 @@ declare const global: {
 
 type ErrorHandlerCallback = (error: Error | unknown, isFatal?: boolean) => void;
 
+/**
+ * True for Metro dev bundles (`__DEV__`), but not for Jest (`NODE_ENV=test`) so unit tests stay quiet.
+ */
+function shouldLogReportedErrorToMetro(): boolean {
+  if ((globalThis as { __DEV__?: boolean }).__DEV__ !== true) {
+    return false;
+  }
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') {
+    return false;
+  }
+  return true;
+}
+
 export interface ErrorsInstrumentationOptions {
   /**
    * Patterns to ignore errors by message
@@ -95,8 +108,6 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
   }
 
   initialize(): void {
-    this.logInfo('Initializing errors instrumentation');
-
     // Capture unhandled JavaScript errors
     this.setupGlobalErrorHandler();
 
@@ -113,13 +124,11 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
       try {
         // Check if error should be ignored
         if (this.shouldIgnoreError(error)) {
-          this.logDebug('Ignoring error based on ignoreErrors patterns', { message: error.message });
           return;
         }
 
         // Check for duplicate errors
         if (this.options.enableDeduplication && this.isDuplicateError(error)) {
-          this.logDebug('Ignoring duplicate error', { message: error.message });
           return;
         }
 
@@ -146,7 +155,6 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
         }
       } catch (e) {
         // Don't let error reporting cause more errors
-        this.logError('Failed to report error to Faro', e);
       } finally {
         // Always call the original handler to maintain normal error behavior
         if (this.originalErrorHandler) {
@@ -175,13 +183,11 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
 
         // Check if error should be ignored
         if (this.shouldIgnoreError(error)) {
-          this.logDebug('Ignoring unhandled rejection based on ignoreErrors patterns', { message: error.message });
           return;
         }
 
         // Check for duplicate errors
         if (this.options.enableDeduplication && this.isDuplicateError(error)) {
-          this.logDebug('Ignoring duplicate unhandled rejection', { message: error.message });
           return;
         }
 
@@ -208,7 +214,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
           this.addErrorFingerprint(error);
         }
       } catch (e) {
-        this.logError('Failed to report unhandled rejection to Faro', e);
+        // Don't let error reporting cause more errors
       }
     };
 
