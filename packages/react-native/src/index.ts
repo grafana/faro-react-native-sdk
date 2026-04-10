@@ -110,5 +110,5 @@ export type {
   PushMeasurementOptions,
 } from '@grafana/faro-core';
 
-// Export LogLevel enum (not just the type)
-export { LogLevel } from '@grafana/faro-core';
+// Export LogLevel and InternalLoggerLevel from our local copy (avoid bundling faro-core's web code)
+export { LogLevel, InternalLoggerLevel, allLogLevels, defaultLogLevel } from './internalLogger';

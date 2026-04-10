@@ -1,8 +1,9 @@
-import { defaultGlobalObjectKey, defaultUnpatchedConsole, InternalLoggerLevel, LogLevel } from '@grafana/faro-core';
+import { defaultGlobalObjectKey, defaultUnpatchedConsole } from '@grafana/faro-core';
 import type { Config } from '@grafana/faro-core';
 
 import { getStackFramesFromError } from '../instrumentations/errors/stackTraceParser';
 import { defaultSessionTrackingConfig } from '../instrumentations/session/sessionManager/sessionConstants';
+import { InternalLoggerLevel, LogLevel } from '../internalLogger';
 import { getPageMeta } from '../metas/page';
 import { getScreenMeta } from '../metas/screen';
 import { getSdkMeta } from '../metas/sdk';
