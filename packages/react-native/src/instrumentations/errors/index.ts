@@ -140,7 +140,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
         if (this.options.enableDeduplication) {
           this.addErrorFingerprint(error);
         }
-      } catch (e) {
+      } catch (_e) {
         // Don't let error reporting cause more errors
       } finally {
         // Always call the original handler to maintain normal error behavior
@@ -200,7 +200,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
         if (this.options.enableDeduplication) {
           this.addErrorFingerprint(error);
         }
-      } catch (e) {
+      } catch (_e) {
         // Don't let error reporting cause more errors
       }
     };

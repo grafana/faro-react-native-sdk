@@ -93,7 +93,7 @@ export class ConsoleInstrumentation extends BaseInstrumentation {
             // Handle other log levels normally
             this.api.pushLog(args, { level });
           }
-        } catch (err) {
+        } catch (_err) {
           // Silently ignore errors to prevent infinite loops during bootstrap
         } finally {
           // Always call original console method (still protected by isProcessing flag)
