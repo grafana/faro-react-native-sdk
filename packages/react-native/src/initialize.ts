@@ -20,12 +20,19 @@ export async function initializeFaroAsync(config: ReactNativeConfig): Promise<Fa
   const fullConfig = makeRNConfig(config);
   
   // initializeFaroCore calls initialize() on all instrumentations
-  // For async instrumentations like SessionInstrumentation, this returns promises
+  // Note: faro-core doesn't await async initialize() methods, so we need to wait manually
   const faro = initializeFaroCore(fullConfig);
   
-  // Wait longer for async initialization (session storage, etc.) to complete
+  // Wait for session to be initialized (with timeout fallback)
   // SessionInstrumentation.initialize() is async and sets session in metas
-  await new Promise(resolve => setTimeout(resolve, 200));
+  const maxWaitMs = 1000;
+  const checkIntervalMs = 50;
+  let waitedMs = 0;
+  
+  while (!faro.metas.value.session && waitedMs < maxWaitMs) {
+    await new Promise(resolve => setTimeout(resolve, checkIntervalMs));
+    waitedMs += checkIntervalMs;
+  }
   
   return faro;
 }
