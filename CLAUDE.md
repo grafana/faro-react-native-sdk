@@ -344,6 +344,21 @@ Husky + lint-staged runs automatically:
 
 **To skip (emergency only):** `git commit --no-verify`
 
+### Pre-PR Checklist
+
+Run these checks locally before opening a pull request to avoid CI failures:
+
+```bash
+# Lint and format all packages (catches Prettier + ESLint issues)
+yarn quality:lint
+
+# Run the full test suite
+yarn quality:test
+
+# Ensure packages compile cleanly
+yarn build
+```
+
 ### Creating Commits
 
 **NEVER include Co-Authored-By: Claude Sonnet 4.5** in commits unless explicitly requested by the user. This was a temporary requirement during migration.
