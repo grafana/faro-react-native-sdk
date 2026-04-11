@@ -73,7 +73,7 @@
   },
   "devDependencies": {
     "@types/node": "24.10.1",
-    "@types/react": "^19.1.1",
+    "@types/react": "19.2.9",
     "@types/react-native": "^0.73.0"
   },
   "publishConfig": {
