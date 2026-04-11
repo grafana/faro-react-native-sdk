@@ -31,8 +31,8 @@
     "react-native-screens": "^4.6.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.25.2",
-    "@babel/preset-env": "^7.25.3",
+    "@babel/core": "^7.29.0",
+    "@babel/preset-env": "^7.29.2",
     "@react-native-community/cli": "^20.0.2",
     "@react-native-community/cli-platform-android": "20.0.0",
     "@react-native-community/cli-platform-ios": "20.0.0",
