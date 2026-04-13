@@ -4,6 +4,10 @@ import { initializeFaro } from '../../initialize';
 
 import { SessionInstrumentation } from './index';
 
+function testEventItems(transport: MockTransport) {
+  return transport.items.filter((i) => i.type === 'event' && i.payload.name === 'test_event');
+}
+
 describe('SessionInstrumentation beforeSend hook', () => {
   let transport: MockTransport;
 
@@ -11,10 +15,10 @@ describe('SessionInstrumentation beforeSend hook', () => {
     jest.clearAllMocks();
   });
 
-  it('should pass through items when session is sampled (isSampled="true")', () => {
+  it('should pass through items when session is sampled (isSampled="true")', async () => {
     transport = new MockTransport();
 
-    const faro = initializeFaro(
+    const faro = await initializeFaro(
       mockConfig({
         url: 'http://localhost:12345/collect',
         transports: [transport],
@@ -35,16 +39,17 @@ describe('SessionInstrumentation beforeSend hook', () => {
     // Push an event
     faro.api.pushEvent('test_event', { data: 'test' });
 
-    // Should send the item (after removing isSampled attribute)
-    expect(transport.items).toHaveLength(1);
-    expect(transport.items[0].meta.session?.id).toBe('test-session-id');
-    expect(transport.items[0].meta.session?.attributes?.['isSampled']).toBeUndefined();
+    // Should send the item (after removing isSampled attribute); ignore session_start from init / setSession
+    const testEvents = testEventItems(transport);
+    expect(testEvents).toHaveLength(1);
+    expect(testEvents[0].meta.session?.id).toBe('test-session-id');
+    expect(testEvents[0].meta.session?.attributes?.['isSampled']).toBeUndefined();
   });
 
-  it('should drop items when session is not sampled (isSampled="false")', () => {
+  it('should drop items when session is not sampled (isSampled="false")', async () => {
     transport = new MockTransport();
 
-    const faro = initializeFaro(
+    const faro = await initializeFaro(
       mockConfig({
         url: 'http://localhost:12345/collect',
         transports: [transport],
@@ -65,14 +70,14 @@ describe('SessionInstrumentation beforeSend hook', () => {
     // Push an event
     faro.api.pushEvent('test_event', { data: 'test' });
 
-    // Should NOT send the item
-    expect(transport.items).toHaveLength(0);
+    // Should NOT send the test event (session_start may still be emitted before setSession)
+    expect(testEventItems(transport)).toHaveLength(0);
   });
 
-  it('should pass through items when no isSampled attribute exists', () => {
+  it('should pass through items when no isSampled attribute exists', async () => {
     transport = new MockTransport();
 
-    const faro = initializeFaro(
+    const faro = await initializeFaro(
       mockConfig({
         url: 'http://localhost:12345/collect',
         transports: [transport],
@@ -94,15 +99,16 @@ describe('SessionInstrumentation beforeSend hook', () => {
     faro.api.pushEvent('test_event', { data: 'test' });
 
     // Should send the item unchanged
-    expect(transport.items).toHaveLength(1);
-    expect(transport.items[0].meta.session?.id).toBe('test-session-id');
-    expect(transport.items[0].meta.session?.attributes?.['customAttr']).toBe('value');
+    const testEvents = testEventItems(transport);
+    expect(testEvents).toHaveLength(1);
+    expect(testEvents[0].meta.session?.id).toBe('test-session-id');
+    expect(testEvents[0].meta.session?.attributes?.['customAttr']).toBe('value');
   });
 
-  it('should pass through items when no session exists', () => {
+  it('should pass through items when no session exists', async () => {
     transport = new MockTransport();
 
-    const faro = initializeFaro(
+    const faro = await initializeFaro(
       mockConfig({
         url: 'http://localhost:12345/collect',
         transports: [transport],
@@ -117,7 +123,7 @@ describe('SessionInstrumentation beforeSend hook', () => {
     // Push an event without setting any session
     faro.api.pushEvent('test_event', { data: 'test' });
 
-    // Should send the item
-    expect(transport.items).toHaveLength(1);
+    // Should send the test event (session is set at init)
+    expect(testEventItems(transport)).toHaveLength(1);
   });
 });

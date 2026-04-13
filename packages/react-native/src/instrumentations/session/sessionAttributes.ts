@@ -128,6 +128,29 @@ async function getDeviceOsDetail(): Promise<string> {
 }
 
 /**
+ * Static session device attributes when async collection or DeviceInfo is unavailable.
+ * No synchronous DeviceInfo reads — use {@link getSessionAttributes} or the package async `initializeFaro`.
+ */
+export function minimalSessionDeviceAttributes(): SessionAttributes {
+  return {
+    faro_sdk_version: VERSION,
+    react_native_version: getReactNativeVersion(),
+    device_os: Platform.OS === 'ios' ? 'iOS' : 'Android',
+    device_os_version: 'unknown',
+    device_os_detail: 'unknown',
+    device_manufacturer: 'unknown',
+    device_model: 'unknown',
+    device_model_name: 'unknown',
+    device_brand: 'unknown',
+    device_is_physical: 'true',
+    device_id: 'unknown',
+    device_type: 'mobile',
+    device_memory_total: '0',
+    device_memory_used: '0',
+  };
+}
+
+/**
  * Get all session attributes
  * These attributes are automatically included with every telemetry event
  *
@@ -229,22 +252,18 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
 
     return attributes;
   } catch (_error) {
-    // If anything fails, return minimal attributes
-    return {
-      faro_sdk_version: VERSION,
-      react_native_version: getReactNativeVersion(),
-      device_os: Platform.OS === 'ios' ? 'iOS' : 'Android',
-      device_os_version: 'unknown',
-      device_os_detail: 'unknown',
-      device_manufacturer: 'unknown',
-      device_model: 'unknown',
-      device_model_name: 'unknown',
-      device_brand: 'unknown',
-      device_is_physical: 'true',
-      device_id: 'unknown',
-      device_type: 'mobile',
-      device_memory_total: '0',
-      device_memory_used: '0',
-    };
+    return minimalSessionDeviceAttributes();
+  }
+}
+
+/**
+ * Await full async session device attributes (battery, carrier, etc.), then fall back to
+ * {@link minimalSessionDeviceAttributes} if anything throws. Used by async `initializeFaro`.
+ */
+export async function loadSessionDeviceAttributesForInit(): Promise<SessionAttributes> {
+  try {
+    return await getSessionAttributes();
+  } catch {
+    return minimalSessionDeviceAttributes();
   }
 }

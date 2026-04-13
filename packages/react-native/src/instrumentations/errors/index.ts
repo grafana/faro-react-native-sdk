@@ -60,10 +60,9 @@ interface ErrorFingerprint {
  *
  * @example
  * ```tsx
- * import { initializeFaro } from '@grafana/faro-react-native';
- * import { ErrorsInstrumentation } from '@grafana/faro-react-native';
+ * import { ErrorsInstrumentation, initializeFaro } from '@grafana/faro-react-native';
  *
- * initializeFaro({
+ * await initializeFaro({
  *   // ...config
  *   instrumentations: [
  *     new ErrorsInstrumentation({

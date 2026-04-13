@@ -2,6 +2,7 @@ import { defaultGlobalObjectKey, defaultUnpatchedConsole } from '@grafana/faro-c
 import type { Config } from '@grafana/faro-core';
 
 import { getStackFramesFromError } from '../instrumentations/errors/stackTraceParser';
+import type { SessionAttributes } from '../instrumentations/session/sessionAttributes';
 import { defaultSessionTrackingConfig } from '../instrumentations/session/sessionManager/sessionConstants';
 import { InternalLoggerLevel, LogLevel } from '../internalLogger';
 import { getPageMeta } from '../metas/page';
@@ -73,8 +74,10 @@ const parseStacktrace: Config['parseStacktrace'] = (err) => ({
  *
  * Based on flags, builds instrumentations and transports automatically.
  * Client just enables what they need; makeRNConfig does the rest.
+ *
+ * @param preloadedSessionDeviceAttributes Device/session fields for session meta (passed from async `initializeFaro`).
  */
-export function makeRNConfig(config: ReactNativeConfig): Config {
+export function makeRNConfig(config: ReactNativeConfig, preloadedSessionDeviceAttributes?: SessionAttributes): Config {
   const defaultMetas = [getSdkMeta(), getPageMeta(), getScreenMeta()];
   const customMetas = config.metas ?? [];
   const transports = buildTransports(config);
@@ -82,6 +85,9 @@ export function makeRNConfig(config: ReactNativeConfig): Config {
 
   return {
     app: config.app,
+    ...(preloadedSessionDeviceAttributes != null && {
+      preloadedSessionDeviceAttributes,
+    }),
     dedupe: config.dedupe ?? true,
     globalObjectKey: config.globalObjectKey ?? defaultGlobalObjectKey,
     internalLoggerLevel: config.internalLoggerLevel ?? InternalLoggerLevel.ERROR,
@@ -108,5 +114,5 @@ export function makeRNConfig(config: ReactNativeConfig): Config {
     preserveOriginalError: config.preserveOriginalError,
     userActionsInstrumentation: config.userActionsOptions,
     consoleInstrumentation: config.consoleCaptureOptions,
-  };
+  } as Config;
 }

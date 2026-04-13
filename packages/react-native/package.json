@@ -62,13 +62,17 @@
     "@grafana/faro-react-native-tracing": ">=1.0.0",
     "@react-navigation/native": ">=6.0.0",
     "react": ">=18.0.0",
-    "react-native": ">=0.70.0"
+    "react-native": ">=0.70.0",
+    "react-native-mmkv": ">=2.0.0"
   },
   "peerDependenciesMeta": {
     "@grafana/faro-react-native-tracing": {
       "optional": true
     },
     "@react-navigation/native": {
+      "optional": true
+    },
+    "react-native-mmkv": {
       "optional": true
     }
   },
