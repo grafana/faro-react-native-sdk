@@ -302,23 +302,13 @@ describe('sessionAttributes', () => {
 
         const attributes = await getSessionAttributes();
 
-        // Should return minimal attributes with fallbacks
+        // Device info is omitted when collection fails so nothing partial is sent to Faro
         expect(attributes).toEqual({
           faro_sdk_version: VERSION,
           react_native_version: expect.any(String),
-          device_os: expect.stringMatching(/iOS|Android/),
-          device_os_version: 'unknown',
-          device_os_detail: 'unknown',
-          device_manufacturer: 'unknown',
-          device_model: 'unknown',
-          device_model_name: 'unknown',
-          device_brand: 'unknown',
-          device_is_physical: 'true',
-          device_id: 'unknown',
-          device_type: 'mobile',
-          device_memory_total: '0',
-          device_memory_used: '0',
         });
+        expect(attributes.device_id).toBeUndefined();
+        expect(attributes.device_os).toBeUndefined();
       });
 
       it('should handle partial DeviceInfo failures', async () => {
@@ -337,12 +327,14 @@ describe('sessionAttributes', () => {
 
         const attributes = await getSessionAttributes();
 
-        // Due to the catch-all error handling, when any method throws,
-        // the entire function returns fallback values
-        expect(attributes.device_id).toBe('unknown');
-        expect(attributes.device_os).toMatch(/iOS|Android/);
-        expect(attributes.device_model).toBe('unknown');
-        expect(attributes.device_manufacturer).toBe('unknown');
+        // Any synchronous DeviceInfo failure skips all device fields (minimal payload only)
+        expect(attributes).toEqual({
+          faro_sdk_version: VERSION,
+          react_native_version: expect.any(String),
+        });
+        expect(attributes.device_id).toBeUndefined();
+        expect(attributes.device_manufacturer).toBeUndefined();
+        expect(attributes.device_model).toBeUndefined();
       });
     });
 

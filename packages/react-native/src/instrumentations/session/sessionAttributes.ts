@@ -18,40 +18,40 @@ export interface SessionAttributes {
   react_native_version: string;
 
   /** Operating system ("iOS" or "Android") */
-  device_os: string;
+  device_os?: string;
 
   /** OS version (e.g., "17.0" for iOS, "15" for Android) */
-  device_os_version: string;
+  device_os_version?: string;
 
   /** Detailed OS info (e.g., "iOS 17.0" or "Android 15 (SDK 35)") */
-  device_os_detail: string;
+  device_os_detail?: string;
 
   /** Device manufacturer (e.g., "apple", "samsung") */
-  device_manufacturer: string;
+  device_manufacturer?: string;
 
   /** Raw model identifier (e.g., "iPhone16,1", "SM-A155F") */
-  device_model: string;
+  device_model?: string;
 
   /** Human-readable model name (e.g., "iPhone 15 Pro") */
-  device_model_name: string;
+  device_model_name?: string;
 
   /** Device brand (e.g., "iPhone", "samsung") */
-  device_brand: string;
+  device_brand?: string;
 
   /** Whether device is physical or emulator ("true" or "false") */
-  device_is_physical: string;
+  device_is_physical?: string;
 
   /** Unique device ID (UUID) */
-  device_id: string;
+  device_id?: string;
 
   /** Device type ("mobile" or "tablet") */
-  device_type: string;
+  device_type?: string;
 
   /** Total device memory in bytes */
-  device_memory_total: string;
+  device_memory_total?: string;
 
   /** Currently used memory in bytes */
-  device_memory_used: string;
+  device_memory_used?: string;
 
   /** Battery level percentage (e.g., "85") - empty if unavailable */
   device_battery_level?: string;
@@ -128,25 +128,13 @@ async function getDeviceOsDetail(): Promise<string> {
 }
 
 /**
- * Static session device attributes when async collection or DeviceInfo is unavailable.
+ * Session attributes without device props when async collection or DeviceInfo is unavailable.
  * No synchronous DeviceInfo reads — use {@link getSessionAttributes} or the package async `initializeFaro`.
  */
 export function minimalSessionDeviceAttributes(): SessionAttributes {
   return {
     faro_sdk_version: VERSION,
     react_native_version: getReactNativeVersion(),
-    device_os: Platform.OS === 'ios' ? 'iOS' : 'Android',
-    device_os_version: 'unknown',
-    device_os_detail: 'unknown',
-    device_manufacturer: 'unknown',
-    device_model: 'unknown',
-    device_model_name: 'unknown',
-    device_brand: 'unknown',
-    device_is_physical: 'true',
-    device_id: 'unknown',
-    device_type: 'mobile',
-    device_memory_total: '0',
-    device_memory_used: '0',
   };
 }
 
