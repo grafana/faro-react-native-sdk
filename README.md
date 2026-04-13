@@ -51,7 +51,7 @@ npm install @grafana/faro-react-native-tracing
 ### Basic Usage
 
 ```typescript
-import { initializeFaro } from '@grafana/faro-react-native';
+import { initializeFaro, LogLevel } from '@grafana/faro-react-native';
 
 // Initialize Faro
 const faro = initializeFaro({
@@ -62,8 +62,9 @@ const faro = initializeFaro({
   },
 });
 
-// Use it
-faro.api.pushLog(['Application started']);
+// Send logs with different severity levels
+faro.api.pushLog(['Application started']); // defaults to LogLevel.LOG
+faro.api.pushLog(['User signed in'], { level: LogLevel.INFO });
 ```
 
 For detailed usage instructions, see the [core package README](./packages/react-native/README.md).
