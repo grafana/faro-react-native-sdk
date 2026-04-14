@@ -19,6 +19,12 @@ export { ErrorMechanism, ErrorsInstrumentation } from './instrumentations/errors
 export type { ErrorMechanismType, ErrorsInstrumentationOptions } from './instrumentations/errors';
 export { ConsoleInstrumentation } from './instrumentations/console';
 export { SessionInstrumentation } from './instrumentations/session';
+export {
+  getSessionAttributes,
+  loadSessionDeviceAttributesForInit,
+  minimalSessionDeviceAttributes,
+} from './instrumentations/session/sessionAttributes';
+export type { SessionAttributes } from './instrumentations/session/sessionAttributes';
 export { ViewInstrumentation } from './instrumentations/view';
 export { AppStateInstrumentation } from './instrumentations/appState';
 export { UserActionInstrumentation } from './instrumentations/userActions';

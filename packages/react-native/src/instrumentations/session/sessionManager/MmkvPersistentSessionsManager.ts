@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, type AppStateStatus } from 'react-native';
+import type { MMKV } from 'react-native-mmkv';
 
 import { faro, stringifyExternalJson } from '@grafana/faro-core';
 
@@ -9,50 +9,74 @@ import { STORAGE_KEY, STORAGE_UPDATE_DELAY } from './sessionConstants';
 import { getSessionMetaUpdateHandler, getUserSessionUpdater } from './sessionManagerUtils';
 import type { FaroUserSession } from './types';
 
-export class PersistentSessionsManager {
+function createMmkvInstance(): MMKV {
+  try {
+    const { MMKV } = require('react-native-mmkv');
+    return new MMKV({ id: 'grafana-faro-react-native-session' });
+  } catch {
+    throw new Error(
+      'sessionTracking.persistent is true but react-native-mmkv could not be loaded. Install it: yarn add react-native-mmkv, then rebuild native projects.'
+    );
+  }
+}
+
+let mmkvSingleton: MMKV | undefined;
+
+function getMmkv(): MMKV {
+  if (mmkvSingleton == null) {
+    mmkvSingleton = createMmkvInstance();
+  }
+  return mmkvSingleton;
+}
+
+/** @internal */
+export function resetMmkvSingletonForTests(): void {
+  mmkvSingleton = undefined;
+}
+
+/**
+ * Persistent session storage backed by MMKV (synchronous reads/writes).
+ * Used when `sessionTracking.persistent` is true.
+ */
+export class MmkvPersistentSessionsManager {
   private updateUserSession: ReturnType<typeof getUserSessionUpdater>;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
   private metaUnsubscribe: (() => void) | null = null;
 
   constructor() {
     this.updateUserSession = getUserSessionUpdater({
-      fetchUserSession: PersistentSessionsManager.fetchUserSession,
-      storeUserSession: PersistentSessionsManager.storeUserSession,
+      fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
+      storeUserSession: MmkvPersistentSessionsManager.storeUserSession,
     });
 
     this.init();
   }
 
-  static async removeUserSession(): Promise<void> {
+  static removeUserSession(): void {
     try {
-      await AsyncStorage.removeItem(STORAGE_KEY);
+      getMmkv().remove(STORAGE_KEY);
     } catch (error) {
-      // Silently fail - AsyncStorage errors shouldn't break the app
-      faro.unpatchedConsole?.warn?.('Failed to remove session from AsyncStorage:', error);
+      faro.unpatchedConsole?.warn?.('Failed to remove session from MMKV:', error);
     }
   }
 
-  static async storeUserSession(session: FaroUserSession): Promise<void> {
+  static storeUserSession(session: FaroUserSession): void {
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, stringifyExternalJson(session));
+      getMmkv().set(STORAGE_KEY, stringifyExternalJson(session));
     } catch (error) {
-      // Silently fail - AsyncStorage errors shouldn't break the app
-      faro.unpatchedConsole?.warn?.('Failed to store session in AsyncStorage:', error);
+      faro.unpatchedConsole?.warn?.('Failed to store session in MMKV:', error);
     }
   }
 
-  static async fetchUserSession(): Promise<FaroUserSession | null> {
+  static fetchUserSession(): FaroUserSession | null {
     try {
-      const storedSession = await AsyncStorage.getItem(STORAGE_KEY);
-
+      const storedSession = getMmkv().getString(STORAGE_KEY);
       if (storedSession) {
         return JSON.parse(storedSession) as FaroUserSession;
       }
-
       return null;
     } catch (error) {
-      // Silently fail - AsyncStorage errors shouldn't break the app
-      faro.unpatchedConsole?.warn?.('Failed to fetch session from AsyncStorage:', error);
+      faro.unpatchedConsole?.warn?.('Failed to fetch session from MMKV:', error);
       return null;
     }
   }
@@ -66,22 +90,17 @@ export class PersistentSessionsManager {
   };
 
   private init(): void {
-    // Listen to app state changes (equivalent to visibilitychange in web)
     this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
 
-    // Users can call the setSession() method, so we need to sync this with AsyncStorage
     const unsubscribe = faro.metas.addListener(
       getSessionMetaUpdateHandler({
-        fetchUserSession: PersistentSessionsManager.fetchUserSession,
-        storeUserSession: PersistentSessionsManager.storeUserSession,
+        fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
+        storeUserSession: MmkvPersistentSessionsManager.storeUserSession,
       })
     );
     this.metaUnsubscribe = typeof unsubscribe === 'function' ? unsubscribe : null;
   }
 
-  /**
-   * Clean up listeners when the instrumentation is unpatched
-   */
   unpatch(): void {
     if (this.appStateSubscription) {
       this.appStateSubscription.remove();

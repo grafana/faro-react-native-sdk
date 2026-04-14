@@ -1,5 +1,6 @@
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 
+import { minimalSessionDeviceAttributes } from '../instrumentations/session/sessionAttributes';
 import { defaultSessionTrackingConfig } from '../instrumentations/session/sessionManager/sessionConstants';
 import { ConsoleTransport } from '../transports/console';
 import { FetchTransport } from '../transports/fetch';
@@ -113,5 +114,17 @@ describe('makeRNConfig', () => {
 
     expect(minimal.instrumentations?.length).toBe(direct.length);
     expect(minimal.instrumentations?.map((i) => i.name)).toEqual(direct.map((i) => i.name));
+  });
+
+  it('passes preloaded session device attributes to core config when provided as second argument', () => {
+    const preloaded = minimalSessionDeviceAttributes();
+    preloaded.device_id = 'test-preloaded-id';
+    const cfg = makeRNConfig({ ...base }, preloaded);
+    expect(
+      (cfg as { preloadedSessionDeviceAttributes?: { device_id: string } }).preloadedSessionDeviceAttributes
+    ).toBeDefined();
+    expect(
+      (cfg as { preloadedSessionDeviceAttributes?: { device_id: string } }).preloadedSessionDeviceAttributes?.device_id
+    ).toBe('test-preloaded-id');
   });
 });

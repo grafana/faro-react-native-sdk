@@ -1,5 +1,5 @@
 export { getSessionManagerByConfig } from './getSessionManagerByConfig';
-export { PersistentSessionsManager } from './PersistentSessionsManager';
+export { MmkvPersistentSessionsManager } from './MmkvPersistentSessionsManager';
 export { isSampled } from './sampling';
 export * from './sessionConstants';
 export * from './sessionManagerUtils';

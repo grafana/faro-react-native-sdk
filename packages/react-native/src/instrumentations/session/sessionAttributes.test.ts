@@ -1,8 +1,6 @@
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
-import { VERSION } from '@grafana/faro-core';
-
 import { getSessionAttributes } from './sessionAttributes';
 
 // Mock react-native-device-info
@@ -66,7 +64,6 @@ describe('sessionAttributes', () => {
         const attributes = await getSessionAttributes();
 
         expect(attributes).toEqual({
-          faro_sdk_version: VERSION,
           react_native_version: '0.75.1',
           device_os: 'iOS',
           device_os_version: '17.0',
@@ -163,7 +160,6 @@ describe('sessionAttributes', () => {
         const attributes = await getSessionAttributes();
 
         expect(attributes).toEqual({
-          faro_sdk_version: VERSION,
           react_native_version: '0.75.1',
           device_os: 'Android',
           device_os_version: '15',
@@ -302,23 +298,12 @@ describe('sessionAttributes', () => {
 
         const attributes = await getSessionAttributes();
 
-        // Should return minimal attributes with fallbacks
+        // Device info is omitted when collection fails so nothing partial is sent to Faro
         expect(attributes).toEqual({
-          faro_sdk_version: VERSION,
           react_native_version: expect.any(String),
-          device_os: expect.stringMatching(/iOS|Android/),
-          device_os_version: 'unknown',
-          device_os_detail: 'unknown',
-          device_manufacturer: 'unknown',
-          device_model: 'unknown',
-          device_model_name: 'unknown',
-          device_brand: 'unknown',
-          device_is_physical: 'true',
-          device_id: 'unknown',
-          device_type: 'mobile',
-          device_memory_total: '0',
-          device_memory_used: '0',
         });
+        expect(attributes.device_id).toBeUndefined();
+        expect(attributes.device_os).toBeUndefined();
       });
 
       it('should handle partial DeviceInfo failures', async () => {
@@ -337,12 +322,13 @@ describe('sessionAttributes', () => {
 
         const attributes = await getSessionAttributes();
 
-        // Due to the catch-all error handling, when any method throws,
-        // the entire function returns fallback values
-        expect(attributes.device_id).toBe('unknown');
-        expect(attributes.device_os).toMatch(/iOS|Android/);
-        expect(attributes.device_model).toBe('unknown');
-        expect(attributes.device_manufacturer).toBe('unknown');
+        // Any synchronous DeviceInfo failure skips all device fields (minimal payload only)
+        expect(attributes).toEqual({
+          react_native_version: expect.any(String),
+        });
+        expect(attributes.device_id).toBeUndefined();
+        expect(attributes.device_manufacturer).toBeUndefined();
+        expect(attributes.device_model).toBeUndefined();
       });
     });
 
@@ -383,24 +369,6 @@ describe('sessionAttributes', () => {
         const attributes = await getSessionAttributes();
 
         expect(attributes.device_manufacturer).toBe('oneplus');
-      });
-    });
-
-    describe('SDK version', () => {
-      it('should always include SDK version from @grafana/faro-core', async () => {
-        (DeviceInfo.getUniqueId as jest.Mock).mockResolvedValue('uuid');
-        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
-        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('17.0');
-        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone16,1');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('iPhone 15 Pro');
-        (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
-
-        const attributes = await getSessionAttributes();
-
-        expect(attributes.faro_sdk_version).toBe(VERSION);
-        expect(attributes.faro_sdk_version).toMatch(/^\d+\.\d+\.\d+/);
       });
     });
   });

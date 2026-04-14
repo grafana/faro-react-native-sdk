@@ -1,6 +1,6 @@
 import type { MetaSession } from '@grafana/faro-core';
 
-import type { PersistentSessionsManager } from './PersistentSessionsManager';
+import type { MmkvPersistentSessionsManager } from './MmkvPersistentSessionsManager';
 import type { VolatileSessionsManager } from './VolatileSessionManager';
 
 export interface FaroUserSession {
@@ -11,4 +11,4 @@ export interface FaroUserSession {
   sessionMeta?: MetaSession;
 }
 
-export type SessionManager = typeof VolatileSessionsManager | typeof PersistentSessionsManager;
+export type SessionManager = typeof VolatileSessionsManager | typeof MmkvPersistentSessionsManager;

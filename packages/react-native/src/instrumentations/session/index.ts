@@ -1,11 +1,10 @@
 import { BaseInstrumentation, dateNow, EVENT_SESSION_START, genShortID, VERSION } from '@grafana/faro-core';
 import type { Config, Meta, MetaSession, TransportItem } from '@grafana/faro-core';
 
-import type { ReactNativeSessionTrackingConfig } from '../../config/types';
+import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
 
-import { getSessionAttributes } from './sessionAttributes';
+import { minimalSessionDeviceAttributes, type SessionAttributes } from './sessionAttributes';
 import { type FaroUserSession, getSessionManagerByConfig, isSampled } from './sessionManager';
-import { PersistentSessionsManager } from './sessionManager/PersistentSessionsManager';
 import { MAX_SESSION_PERSISTENCE_TIME } from './sessionManager/sessionConstants';
 import { createUserSessionObject, isUserSessionValid } from './sessionManager/sessionManagerUtils';
 import type { SessionManager } from './sessionManager/types';
@@ -23,6 +22,14 @@ export class SessionInstrumentation extends BaseInstrumentation {
   private notifiedSession: MetaSession | undefined;
   private sessionManagerInstance: InstanceType<SessionManager> | undefined;
 
+  private getDefaultSessionDeviceAttributes(): SessionAttributes {
+    const cfg = this.config as ReactNativeFullConfig;
+    if (cfg.preloadedSessionDeviceAttributes != null) {
+      return cfg.preloadedSessionDeviceAttributes;
+    }
+    return minimalSessionDeviceAttributes();
+  }
+
   private sendSessionStartEvent(meta: Meta): void {
     const session = meta.session;
 
@@ -34,14 +41,14 @@ export class SessionInstrumentation extends BaseInstrumentation {
     }
   }
 
-  private async createInitialSession(
-    SessionManager: SessionManager,
+  private createInitialSession(
+    SessionManagerClass: SessionManager,
     sessionsConfig: Required<Config>['sessionTracking']
-  ): Promise<{
+  ): {
     initialSession: FaroUserSession;
     emitSessionStartOnInit: boolean;
-  }> {
-    let storedUserSession: FaroUserSession | null = await SessionManager.fetchUserSession();
+  } {
+    let storedUserSession = SessionManagerClass.fetchUserSession();
 
     const sessionsConfigTyped = sessionsConfig as ReactNativeSessionTrackingConfig;
     const maxPersistenceMs = sessionsConfigTyped.maxSessionPersistenceTime ?? MAX_SESSION_PERSISTENCE_TIME;
@@ -51,14 +58,12 @@ export class SessionInstrumentation extends BaseInstrumentation {
       const shouldClearPersistentSession = storedUserSession.lastActivity < now - maxPersistenceMs;
 
       if (shouldClearPersistentSession) {
-        await PersistentSessionsManager.removeUserSession();
+        SessionManagerClass.removeUserSession();
         storedUserSession = null;
       }
     }
 
-    // Get default session attributes (device info, SDK version, etc.)
-    // These match the Flutter SDK's default session attributes
-    const defaultAttributes = await getSessionAttributes();
+    const defaultAttributes = this.getDefaultSessionDeviceAttributes();
 
     let emitSessionStartOnInit: boolean;
     let initialSession: FaroUserSession;
@@ -68,7 +73,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
       initialSession = createUserSessionObject({
         sessionId,
-        isSampled: storedUserSession!.isSampled || false,
+        isSampled: storedUserSession?.isSampled || false,
         started: storedUserSession?.started,
       });
 
@@ -124,15 +129,24 @@ export class SessionInstrumentation extends BaseInstrumentation {
     return { initialSession, emitSessionStartOnInit };
   }
 
-  private registerBeforeSendHook(SessionManager: SessionManager) {
-    const { updateSession } = new SessionManager();
+  private registerBeforeSendHook(SessionManagerClass: SessionManager) {
+    const { updateSession } = new SessionManagerClass();
 
     this.transports?.addBeforeSendHooks((item: TransportItem) => {
       updateSession();
 
       const attributes = item.meta.session?.attributes;
 
-      if (attributes && attributes?.['isSampled'] === 'true') {
+      // Only filter out items when session is explicitly NOT sampled (isSampled='false')
+      // If isSampled='true', remove the attribute before sending (it's internal)
+      // If no isSampled attribute, pass through the item unchanged
+      if (attributes?.['isSampled'] === 'false') {
+        // Session is not sampled - drop this item
+        return null;
+      }
+
+      if (attributes?.['isSampled'] === 'true') {
+        // Session is sampled - remove internal isSampled attribute before sending
         let newItem: TransportItem = JSON.parse(JSON.stringify(item));
 
         const newAttributes = newItem.meta.session?.attributes;
@@ -145,38 +159,37 @@ export class SessionInstrumentation extends BaseInstrumentation {
         return newItem;
       }
 
-      return null;
+      // No isSampled attribute or other value - pass through unchanged
+      return item;
     });
   }
 
-  async initialize(): Promise<void> {
-    this.logDebug('init session instrumentation');
-
+  initialize(): void {
     const sessionTrackingConfig = this.config.sessionTracking;
 
-    if (sessionTrackingConfig?.enabled) {
-      const SessionManager = getSessionManagerByConfig(sessionTrackingConfig);
+    if (!sessionTrackingConfig?.enabled) {
+      this.metas.addListener(this.sendSessionStartEvent.bind(this));
+      return;
+    }
 
-      this.registerBeforeSendHook(SessionManager);
+    const SessionManagerClass = getSessionManagerByConfig(sessionTrackingConfig);
 
-      const { initialSession, emitSessionStartOnInit } = await this.createInitialSession(
-        SessionManager,
-        sessionTrackingConfig
-      );
+    this.registerBeforeSendHook(SessionManagerClass);
 
-      await SessionManager.storeUserSession(initialSession);
+    const { initialSession, emitSessionStartOnInit } = this.createInitialSession(
+      SessionManagerClass,
+      sessionTrackingConfig
+    );
+    SessionManagerClass.storeUserSession(initialSession);
 
-      const initialSessionMeta = initialSession.sessionMeta;
+    const initialSessionMeta = initialSession.sessionMeta;
+    this.notifiedSession = initialSessionMeta;
+    this.api.setSession(initialSessionMeta);
 
-      this.notifiedSession = initialSessionMeta;
-      this.api.setSession(initialSessionMeta);
+    this.sessionManagerInstance = new SessionManagerClass();
 
-      // Store the session manager instance for cleanup
-      this.sessionManagerInstance = new SessionManager();
-
-      if (emitSessionStartOnInit) {
-        this.api.pushEvent(EVENT_SESSION_START, {}, undefined, { skipDedupe: true });
-      }
+    if (emitSessionStartOnInit) {
+      this.api.pushEvent(EVENT_SESSION_START, {}, undefined, { skipDedupe: true });
     }
 
     this.metas.addListener(this.sendSessionStartEvent.bind(this));

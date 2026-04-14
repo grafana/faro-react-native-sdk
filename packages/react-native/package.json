@@ -31,13 +31,14 @@
     "ios",
     "android",
     "FaroReactNative.podspec",
+    "react-native.config.js",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "start": "yarn watch",
     "build": "run-s 'build:*'",
-    "build:compile": "run-p 'build:compile:*'",
+    "build:compile": "node ./scripts/sync-faro-rn-package-meta.mjs && run-p 'build:compile:*'",
     "build:compile:cjs": "tsc --build tsconfig.cjs.json",
     "build:compile:esm": "tsc --build tsconfig.esm.json",
     "watch": "run-p 'watch:compile:*'",
@@ -61,7 +62,8 @@
     "@grafana/faro-react-native-tracing": ">=1.0.0",
     "@react-navigation/native": ">=6.0.0",
     "react": ">=18.0.0",
-    "react-native": ">=0.70.0"
+    "react-native": ">=0.70.0",
+    "react-native-mmkv": ">=2.0.0"
   },
   "peerDependenciesMeta": {
     "@grafana/faro-react-native-tracing": {
@@ -69,12 +71,16 @@
     },
     "@react-navigation/native": {
       "optional": true
+    },
+    "react-native-mmkv": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@types/node": "24.10.1",
     "@types/react": "^19.1.1",
-    "@types/react-native": "^0.73.0"
+    "@types/react-native": "^0.73.0",
+    "react-native-mmkv": "^4.3.1"
   },
   "publishConfig": {
     "access": "public"

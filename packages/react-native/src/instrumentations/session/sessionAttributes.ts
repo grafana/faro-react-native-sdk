@@ -1,57 +1,56 @@
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
-import { VERSION } from '@grafana/faro-core';
-
 /**
  * Session attributes for React Native
  * These attributes are automatically included with every telemetry event
  *
  * Core attributes match Flutter SDK format, with additional mobile-specific
  * monitoring fields (memory, device type, battery, etc.)
+ *
+ * SDK name, core version, and npm adapter are on Faro meta `sdk` (`getSdkMeta` in `metas/sdk.ts`).
+ *
+ * `react_native_version` is the host app's React Native **framework** version from `Platform`, not the Faro package.
  */
 export interface SessionAttributes {
-  /** SDK version (e.g., "2.0.2") */
-  faro_sdk_version: string;
-
-  /** React Native version (e.g., "0.75.1") */
+  /** Host app's React Native framework version (e.g. "0.75.1") from `Platform.constants`. */
   react_native_version: string;
 
   /** Operating system ("iOS" or "Android") */
-  device_os: string;
+  device_os?: string;
 
   /** OS version (e.g., "17.0" for iOS, "15" for Android) */
-  device_os_version: string;
+  device_os_version?: string;
 
   /** Detailed OS info (e.g., "iOS 17.0" or "Android 15 (SDK 35)") */
-  device_os_detail: string;
+  device_os_detail?: string;
 
   /** Device manufacturer (e.g., "apple", "samsung") */
-  device_manufacturer: string;
+  device_manufacturer?: string;
 
   /** Raw model identifier (e.g., "iPhone16,1", "SM-A155F") */
-  device_model: string;
+  device_model?: string;
 
   /** Human-readable model name (e.g., "iPhone 15 Pro") */
-  device_model_name: string;
+  device_model_name?: string;
 
   /** Device brand (e.g., "iPhone", "samsung") */
-  device_brand: string;
+  device_brand?: string;
 
   /** Whether device is physical or emulator ("true" or "false") */
-  device_is_physical: string;
+  device_is_physical?: string;
 
   /** Unique device ID (UUID) */
-  device_id: string;
+  device_id?: string;
 
   /** Device type ("mobile" or "tablet") */
-  device_type: string;
+  device_type?: string;
 
   /** Total device memory in bytes */
-  device_memory_total: string;
+  device_memory_total?: string;
 
   /** Currently used memory in bytes */
-  device_memory_used: string;
+  device_memory_used?: string;
 
   /** Battery level percentage (e.g., "85") - empty if unavailable */
   device_battery_level?: string;
@@ -67,12 +66,10 @@ export interface SessionAttributes {
 }
 
 /**
- * Get React Native version from Platform
- * Returns "unknown" if not available
+ * React Native framework version from `Platform.constants` (host app runtime), not `@grafana/faro-react-native` semver.
  */
 function getReactNativeVersion(): string {
   try {
-    // Platform.constants.reactNativeVersion is an object like { major: 0, minor: 75, patch: 1 }
     const version = Platform.constants.reactNativeVersion;
     if (version && typeof version === 'object') {
       const { major, minor, patch, prerelease } = version as {
@@ -128,11 +125,21 @@ async function getDeviceOsDetail(): Promise<string> {
 }
 
 /**
+ * Session attributes without device props when async collection or DeviceInfo is unavailable.
+ * No synchronous DeviceInfo reads — use {@link getSessionAttributes} or the package async `initializeFaro`.
+ */
+export function minimalSessionDeviceAttributes(): SessionAttributes {
+  return {
+    react_native_version: getReactNativeVersion(),
+  };
+}
+
+/**
  * Get all session attributes
  * These attributes are automatically included with every telemetry event
  *
  * Core attributes matching Flutter SDK:
- * - faro_sdk_version, react_native_version
+ * - react_native_version (RN framework in the host app)
  * - device_os, device_os_version, device_os_detail
  * - device_manufacturer, device_model, device_model_name
  * - device_brand, device_is_physical, device_id
@@ -162,8 +169,6 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
     // Memory info
     const totalMemory = DeviceInfo.getTotalMemorySync();
     const usedMemory = DeviceInfo.getUsedMemorySync();
-
-    // React Native version (equivalent to dart_version in Flutter)
     const reactNativeVersion = getReactNativeVersion();
 
     // Try to get async device info (battery, carrier)
@@ -207,7 +212,6 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
     }
 
     const attributes: SessionAttributes = {
-      faro_sdk_version: VERSION,
       react_native_version: reactNativeVersion,
       device_os: systemName,
       device_os_version: systemVersion,
@@ -229,22 +233,18 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
 
     return attributes;
   } catch (_error) {
-    // If anything fails, return minimal attributes
-    return {
-      faro_sdk_version: VERSION,
-      react_native_version: getReactNativeVersion(),
-      device_os: Platform.OS === 'ios' ? 'iOS' : 'Android',
-      device_os_version: 'unknown',
-      device_os_detail: 'unknown',
-      device_manufacturer: 'unknown',
-      device_model: 'unknown',
-      device_model_name: 'unknown',
-      device_brand: 'unknown',
-      device_is_physical: 'true',
-      device_id: 'unknown',
-      device_type: 'mobile',
-      device_memory_total: '0',
-      device_memory_used: '0',
-    };
+    return minimalSessionDeviceAttributes();
+  }
+}
+
+/**
+ * Await full async session device attributes (battery, carrier, etc.), then fall back to
+ * {@link minimalSessionDeviceAttributes} if anything throws. Used by async `initializeFaro`.
+ */
+export async function loadSessionDeviceAttributesForInit(): Promise<SessionAttributes> {
+  try {
+    return await getSessionAttributes();
+  } catch {
+    return minimalSessionDeviceAttributes();
   }
 }
