@@ -25,7 +25,7 @@
     "ios": "cd demo && yarn ios",
     "watch": "lerna run --parallel watch",
     "bootstrap": "lerna bootstrap",
-    "build": "lerna run build --stream --verbose",
+    "build": "lerna run build",
     "prepublishOnly": "yarn build",
     "clean": "run-s 'clean:*'",
     "clean:packages": "lerna run --parallel clean",

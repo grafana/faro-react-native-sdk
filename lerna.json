@@ -2,6 +2,5 @@
   "packages": ["packages/*", "demo"],
   "version": "1.0.0-alpha.1",
   "npmClient": "yarn",
-  "useNx": false,
   "$schema": "node_modules/lerna/schemas/lerna-schema.json"
 }
