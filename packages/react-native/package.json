@@ -79,7 +79,8 @@
   "devDependencies": {
     "@types/node": "24.10.1",
     "@types/react": "^19.1.1",
-    "@types/react-native": "^0.73.0"
+    "@types/react-native": "^0.73.0",
+    "react-native-mmkv": "^2.12.2"
   },
   "publishConfig": {
     "access": "public"
