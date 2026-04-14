@@ -54,7 +54,7 @@ export class MmkvPersistentSessionsManager {
 
   static removeUserSession(): void {
     try {
-      getMmkv().delete(STORAGE_KEY);
+      getMmkv().remove(STORAGE_KEY);
     } catch (error) {
       faro.unpatchedConsole?.warn?.('Failed to remove session from MMKV:', error);
     }
