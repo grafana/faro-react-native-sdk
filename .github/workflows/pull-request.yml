@@ -30,6 +30,8 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Build
+        env:
+          NX_VERBOSE_LOGGING: true
         run: yarn build
 
       - name: Lint
