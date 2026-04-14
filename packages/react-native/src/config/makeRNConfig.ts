@@ -13,7 +13,7 @@ import { FetchTransport } from '../transports/fetch';
 import { OfflineTransport } from '../transports/offline';
 
 import { getRNInstrumentations } from './getRNInstrumentations';
-import type { ReactNativeConfig, ReactNativeSessionTrackingConfig } from './types';
+import type { ReactNativeConfig, ReactNativeFullConfig } from './types';
 
 const DEFAULT_OFFLINE_CACHE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
@@ -77,7 +77,10 @@ const parseStacktrace: Config['parseStacktrace'] = (err) => ({
  *
  * @param preloadedSessionDeviceAttributes Device/session fields for session meta (passed from async `initializeFaro`).
  */
-export function makeRNConfig(config: ReactNativeConfig, preloadedSessionDeviceAttributes?: SessionAttributes): Config {
+export function makeRNConfig(
+  config: ReactNativeConfig,
+  preloadedSessionDeviceAttributes?: SessionAttributes
+): ReactNativeFullConfig {
   const defaultMetas = [getSdkMeta(), getPageMeta(), getScreenMeta()];
   const customMetas = config.metas ?? [];
   const transports = buildTransports(config);
@@ -104,7 +107,7 @@ export function makeRNConfig(config: ReactNativeConfig, preloadedSessionDeviceAt
     sessionTracking: {
       ...defaultSessionTrackingConfig,
       ...config.sessionTracking,
-    } as ReactNativeSessionTrackingConfig,
+    },
     metas: [...defaultMetas, ...customMetas],
     instrumentations,
     transports,
@@ -114,5 +117,5 @@ export function makeRNConfig(config: ReactNativeConfig, preloadedSessionDeviceAt
     preserveOriginalError: config.preserveOriginalError,
     userActionsInstrumentation: config.userActionsOptions,
     consoleInstrumentation: config.consoleCaptureOptions,
-  } as Config;
+  };
 }
