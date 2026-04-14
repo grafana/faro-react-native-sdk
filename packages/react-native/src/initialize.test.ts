@@ -1,4 +1,7 @@
+import { VERSION } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
+
+import packageJson from '../package.json';
 
 import { initializeFaro } from './initialize';
 import { SessionInstrumentation } from './instrumentations/session';
@@ -84,7 +87,6 @@ describe('initializeFaro', () => {
 
   it('should await device attributes then merge preloaded session attributes', async () => {
     const spy = jest.spyOn(sessionAttributes, 'loadSessionDeviceAttributesForInit').mockResolvedValue({
-      faro_sdk_version: '9.9.9',
       react_native_version: '0.0.1',
       device_os: 'iOS',
       device_os_version: '17.0',
@@ -113,7 +115,10 @@ describe('initializeFaro', () => {
     );
 
     expect(spy).toHaveBeenCalled();
-    expect(faro.metas.value.session?.attributes?.['faro_sdk_version']).toBe('9.9.9');
+    expect(faro.metas.value.sdk?.name).toBe('faro-react-native');
+    expect(faro.metas.value.sdk?.version).toBe(VERSION);
+    expect(faro.metas.value.sdk?.integrations).toEqual([{ name: packageJson.name, version: packageJson.version }]);
+    expect(faro.metas.value.session?.attributes?.['react_native_version']).toBe('0.0.1');
     expect(faro.metas.value.session?.attributes?.['device_id']).toBe('preloaded-device-id');
 
     spy.mockRestore();

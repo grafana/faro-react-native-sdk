@@ -1,20 +1,19 @@
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
-import { VERSION } from '@grafana/faro-core';
-
 /**
  * Session attributes for React Native
  * These attributes are automatically included with every telemetry event
  *
  * Core attributes match Flutter SDK format, with additional mobile-specific
  * monitoring fields (memory, device type, battery, etc.)
+ *
+ * SDK name, core version, and npm adapter are on Faro meta `sdk` (`getSdkMeta` in `metas/sdk.ts`).
+ *
+ * `react_native_version` is the host app's React Native **framework** version from `Platform`, not the Faro package.
  */
 export interface SessionAttributes {
-  /** SDK version (e.g., "2.0.2") */
-  faro_sdk_version: string;
-
-  /** React Native version (e.g., "0.75.1") */
+  /** Host app's React Native framework version (e.g. "0.75.1") from `Platform.constants`. */
   react_native_version: string;
 
   /** Operating system ("iOS" or "Android") */
@@ -67,12 +66,10 @@ export interface SessionAttributes {
 }
 
 /**
- * Get React Native version from Platform
- * Returns "unknown" if not available
+ * React Native framework version from `Platform.constants` (host app runtime), not `@grafana/faro-react-native` semver.
  */
 function getReactNativeVersion(): string {
   try {
-    // Platform.constants.reactNativeVersion is an object like { major: 0, minor: 75, patch: 1 }
     const version = Platform.constants.reactNativeVersion;
     if (version && typeof version === 'object') {
       const { major, minor, patch, prerelease } = version as {
@@ -133,7 +130,6 @@ async function getDeviceOsDetail(): Promise<string> {
  */
 export function minimalSessionDeviceAttributes(): SessionAttributes {
   return {
-    faro_sdk_version: VERSION,
     react_native_version: getReactNativeVersion(),
   };
 }
@@ -143,7 +139,7 @@ export function minimalSessionDeviceAttributes(): SessionAttributes {
  * These attributes are automatically included with every telemetry event
  *
  * Core attributes matching Flutter SDK:
- * - faro_sdk_version, react_native_version
+ * - react_native_version (RN framework in the host app)
  * - device_os, device_os_version, device_os_detail
  * - device_manufacturer, device_model, device_model_name
  * - device_brand, device_is_physical, device_id
@@ -173,8 +169,6 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
     // Memory info
     const totalMemory = DeviceInfo.getTotalMemorySync();
     const usedMemory = DeviceInfo.getUsedMemorySync();
-
-    // React Native version (equivalent to dart_version in Flutter)
     const reactNativeVersion = getReactNativeVersion();
 
     // Try to get async device info (battery, carrier)
@@ -218,7 +212,6 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
     }
 
     const attributes: SessionAttributes = {
-      faro_sdk_version: VERSION,
       react_native_version: reactNativeVersion,
       device_os: systemName,
       device_os_version: systemVersion,
