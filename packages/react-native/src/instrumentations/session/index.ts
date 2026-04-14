@@ -1,7 +1,7 @@
 import { BaseInstrumentation, dateNow, EVENT_SESSION_START, genShortID, VERSION } from '@grafana/faro-core';
 import type { Config, Meta, MetaSession, TransportItem } from '@grafana/faro-core';
 
-import type { ReactNativeSessionTrackingConfig } from '../../config/types';
+import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
 
 import { minimalSessionDeviceAttributes, type SessionAttributes } from './sessionAttributes';
 import { type FaroUserSession, getSessionManagerByConfig, isSampled } from './sessionManager';
@@ -23,7 +23,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
   private sessionManagerInstance: InstanceType<SessionManager> | undefined;
 
   private getDefaultSessionDeviceAttributes(): SessionAttributes {
-    const cfg = this.config as Config & { preloadedSessionDeviceAttributes?: SessionAttributes };
+    const cfg = this.config as ReactNativeFullConfig;
     if (cfg.preloadedSessionDeviceAttributes != null) {
       return cfg.preloadedSessionDeviceAttributes;
     }
@@ -48,7 +48,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     initialSession: FaroUserSession;
     emitSessionStartOnInit: boolean;
   } {
-    let storedUserSession: FaroUserSession | null = SessionManagerClass.fetchUserSession() as FaroUserSession | null;
+    let storedUserSession = SessionManagerClass.fetchUserSession();
 
     const sessionsConfigTyped = sessionsConfig as ReactNativeSessionTrackingConfig;
     const maxPersistenceMs = sessionsConfigTyped.maxSessionPersistenceTime ?? MAX_SESSION_PERSISTENCE_TIME;
@@ -73,7 +73,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
       initialSession = createUserSessionObject({
         sessionId,
-        isSampled: storedUserSession!.isSampled || false,
+        isSampled: storedUserSession?.isSampled || false,
         started: storedUserSession?.started,
       });
 

@@ -1,4 +1,5 @@
 import { AppState, type AppStateStatus } from 'react-native';
+import type { MMKV } from 'react-native-mmkv';
 
 import { faro, stringifyExternalJson } from '@grafana/faro-core';
 
@@ -8,9 +9,9 @@ import { STORAGE_KEY, STORAGE_UPDATE_DELAY } from './sessionConstants';
 import { getSessionMetaUpdateHandler, getUserSessionUpdater } from './sessionManagerUtils';
 import type { FaroUserSession } from './types';
 
-function createMmkvInstance(): import('react-native-mmkv').MMKV {
+function createMmkvInstance(): MMKV {
   try {
-    const { MMKV } = require('react-native-mmkv') as typeof import('react-native-mmkv');
+    const { MMKV } = require('react-native-mmkv');
     return new MMKV({ id: 'grafana-faro-react-native-session' });
   } catch {
     throw new Error(
@@ -19,9 +20,9 @@ function createMmkvInstance(): import('react-native-mmkv').MMKV {
   }
 }
 
-let mmkvSingleton: import('react-native-mmkv').MMKV | undefined;
+let mmkvSingleton: MMKV | undefined;
 
-function getMmkv(): import('react-native-mmkv').MMKV {
+function getMmkv(): MMKV {
   if (mmkvSingleton == null) {
     mmkvSingleton = createMmkvInstance();
   }
@@ -53,7 +54,7 @@ export class MmkvPersistentSessionsManager {
 
   static removeUserSession(): void {
     try {
-      getMmkv().delete(STORAGE_KEY);
+      getMmkv().remove(STORAGE_KEY);
     } catch (error) {
       faro.unpatchedConsole?.warn?.('Failed to remove session from MMKV:', error);
     }
