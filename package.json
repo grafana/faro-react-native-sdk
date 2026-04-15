@@ -1,6 +1,6 @@
 {
   "name": "faro-react-native-sdk",
-  "version": "0.0.0",
+  "version": "1.0.0-alpha.1",
   "description": "Monorepo for Grafana Faro React Native SDK",
   "license": "Apache-2.0",
   "author": "Grafana Labs",
