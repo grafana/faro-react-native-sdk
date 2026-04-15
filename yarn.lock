@@ -1775,7 +1775,7 @@ __metadata:
   resolution: "@grafana/faro-react-native-tracing@workspace:packages/react-native-tracing"
   dependencies:
     "@grafana/faro-core": "npm:^2.2.3"
-    "@grafana/faro-react-native": "npm:^1.0.0-alpha.1"
+    "@grafana/faro-react-native": "npm:^1.0.0"
     "@opentelemetry/api": "npm:^1.9.0"
     "@opentelemetry/core": "npm:^2.0.0"
     "@opentelemetry/instrumentation": "npm:^0.208.0"
@@ -1798,7 +1798,7 @@ __metadata:
   languageName: node
   linkType: soft
 
-"@grafana/faro-react-native@npm:^1.0.0-alpha.1, @grafana/faro-react-native@workspace:packages/react-native":
+"@grafana/faro-react-native@npm:^1.0.0, @grafana/faro-react-native@workspace:packages/react-native":
   version: 0.0.0-use.local
   resolution: "@grafana/faro-react-native@workspace:packages/react-native"
   dependencies:
