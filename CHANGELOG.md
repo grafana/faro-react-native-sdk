@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-04-15
+
+- Wait until session device attributes are initialized before initializing Faro
+  to avoid lost data during initialization
+
 ## [1.0.0-alpha.1] - 2026-03-27
 
 First release on npm. This is a **pre-release** (alpha); APIs and behavior
