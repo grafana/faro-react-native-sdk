@@ -1,6 +1,6 @@
 {
   "name": "@grafana/faro-react-native",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha.1",
   "description": "Faro instrumentations, metas, transports for React Native.",
   "keywords": [
     "observability",
@@ -37,8 +37,9 @@
   ],
   "scripts": {
     "start": "yarn watch",
+    "sync:package-meta": "node ./scripts/sync-faro-rn-package-meta.mjs",
     "build": "run-s 'build:*'",
-    "build:compile": "node ./scripts/sync-faro-rn-package-meta.mjs && run-p 'build:compile:*'",
+    "build:compile": "run-p 'build:compile:*'",
     "build:compile:cjs": "tsc --build tsconfig.cjs.json",
     "build:compile:esm": "tsc --build tsconfig.esm.json",
     "watch": "run-p 'watch:compile:*'",
@@ -51,7 +52,8 @@
     "quality:lint": "run-p 'quality:lint:eslint' 'quality:lint:prettier'",
     "quality:lint:eslint": "eslint --cache --cache-location ../../.cache/eslint/reactNative \"./**/*.{js,jsx,ts,tsx}\"",
     "quality:lint:prettier": "prettier --cache --cache-location=../../.cache/prettier/reactNative --ignore-path ../../.prettierignore -c \"./**/*.{js,jsx,ts,tsx,css,scss,md,yaml,yml,json}\"",
-    "quality:circular-deps": "madge --circular ."
+    "quality:circular-deps": "madge --circular .",
+    "version": "node ./scripts/sync-faro-rn-package-meta.mjs && git add src/generated/faroRNPackageMeta.ts"
   },
   "dependencies": {
     "@grafana/faro-core": "^2.2.3",

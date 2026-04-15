@@ -1,7 +1,7 @@
 PODS:
   - boost (1.84.0)
   - DoubleConversion (1.1.6)
-  - FaroReactNative (1.0.0):
+  - FaroReactNative (1.0.0-alpha.1):
     - PLCrashReporter (~> 1.11)
     - React-Core
   - fast_float (8.0.0)
