@@ -1,10 +1,6 @@
 import { context, propagation, trace } from '@opentelemetry/api';
 import type { Attributes } from '@opentelemetry/api';
-import {
-  CompositePropagator,
-  W3CBaggagePropagator,
-  W3CTraceContextPropagator,
-} from '@opentelemetry/core';
+import { CompositePropagator, W3CBaggagePropagator, W3CTraceContextPropagator } from '@opentelemetry/core';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
 import { BatchSpanProcessor, BasicTracerProvider as ReactNativeTracerProvider } from '@opentelemetry/sdk-trace-base';
