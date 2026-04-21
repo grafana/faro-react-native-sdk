@@ -1,9 +1,11 @@
-import { context, trace } from '@opentelemetry/api';
+import { context, propagation, trace } from '@opentelemetry/api';
 import type { Attributes } from '@opentelemetry/api';
+import { CompositePropagator, W3CBaggagePropagator, W3CTraceContextPropagator } from '@opentelemetry/core';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
 import { BatchSpanProcessor, BasicTracerProvider as ReactNativeTracerProvider } from '@opentelemetry/sdk-trace-base';
 import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base';
+import { StackContextManager } from '@opentelemetry/sdk-trace-web';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -174,6 +176,24 @@ export class TracingInstrumentation extends BaseInstrumentation {
     // Register the provider as the global tracer provider
     // This is CRITICAL for the tracer to generate real trace IDs instead of all zeros
     trace.setGlobalTracerProvider(this.provider);
+
+    // Register a global ContextManager. Without one, OTel falls back to the NoopContextManager,
+    // which always returns ROOT_CONTEXT — so when `@opentelemetry/instrumentation-fetch` does
+    // `context.with(setSpan(active(), createdSpan), () => _addHeaders(...))` the span set on the
+    // wrapped context is invisible inside `_addHeaders` and `propagation.inject` writes nothing.
+    // `StackContextManager` is pure JS (no DOM/Zone deps) and works in React Native.
+    context.setGlobalContextManager(options.contextManager ?? new StackContextManager().enable());
+
+    // Register the global text-map propagator. Without this, OTel falls back to a
+    // NoopTextMapPropagator and `propagation.inject(...)` becomes a no-op, meaning
+    // `traceparent` / `tracestate` (and `baggage`) headers are never written on the
+    // outbound fetch/XHR — so the backend receives no context and starts a new trace.
+    propagation.setGlobalPropagator(
+      options.propagator ??
+        new CompositePropagator({
+          propagators: [new W3CTraceContextPropagator(), new W3CBaggagePropagator()],
+        })
+    );
 
     const { propagateTraceHeaderCorsUrls, fetchInstrumentationOptions, xhrInstrumentationOptions } =
       this.options.instrumentationOptions ?? {};

@@ -61,6 +61,7 @@
     "@opentelemetry/otlp-transformer": "^0.208.0",
     "@opentelemetry/resources": "^2.0.0",
     "@opentelemetry/sdk-trace-base": "^2.0.0",
+    "@opentelemetry/sdk-trace-web": "^2.0.0",
     "@opentelemetry/semantic-conventions": "^1.32.0"
   },
   "peerDependencies": {
