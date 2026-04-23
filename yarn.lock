@@ -1741,7 +1741,7 @@ __metadata:
     "@react-native/babel-preset": "npm:0.82.1"
     "@react-native/codegen": "npm:^0.82.1"
     "@react-native/eslint-config": "npm:0.82.1"
-    "@react-native/gradle-plugin": "npm:0.82.1"
+    "@react-native/gradle-plugin": "npm:0.85.2"
     "@react-native/metro-config": "npm:0.82.1"
     "@react-native/new-app-screen": "npm:0.82.1"
     "@react-native/typescript-config": "npm:0.82.1"
@@ -3538,18 +3538,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opentelemetry/core@npm:2.6.1, @opentelemetry/core@npm:^2.0.0":
-  version: 2.6.1
-  resolution: "@opentelemetry/core@npm:2.6.1"
-  dependencies:
-    "@opentelemetry/semantic-conventions": "npm:^1.29.0"
-  peerDependencies:
-    "@opentelemetry/api": ">=1.0.0 <1.10.0"
-  checksum: 10c0/a144749e4fc4b8aa56a67310136ae37ba446cdd84a5286d76b441206e80362d5059e496b11373909d5ada8be32cfb00fcebc5a90401b29a08a3ce34c9caacbdd
-  languageName: node
-  linkType: hard
-
-"@opentelemetry/core@npm:2.7.0":
+"@opentelemetry/core@npm:2.7.0, @opentelemetry/core@npm:^2.0.0":
   version: 2.7.0
   resolution: "@opentelemetry/core@npm:2.7.0"
   dependencies:
@@ -3659,19 +3648,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opentelemetry/resources@npm:2.6.1, @opentelemetry/resources@npm:^2.0.0":
-  version: 2.6.1
-  resolution: "@opentelemetry/resources@npm:2.6.1"
-  dependencies:
-    "@opentelemetry/core": "npm:2.6.1"
-    "@opentelemetry/semantic-conventions": "npm:^1.29.0"
-  peerDependencies:
-    "@opentelemetry/api": ">=1.3.0 <1.10.0"
-  checksum: 10c0/d9376881bb9dad39ed08ede591bbdbe02b79eb5ac6608b7245ebee3ec03043d33ee29bad649db4dafc61a442bbf5ad9e73cd03cbc7645ea016999b7b13aab052
-  languageName: node
-  linkType: hard
-
-"@opentelemetry/resources@npm:2.7.0":
+"@opentelemetry/resources@npm:2.7.0, @opentelemetry/resources@npm:^2.0.0":
   version: 2.7.0
   resolution: "@opentelemetry/resources@npm:2.7.0"
   dependencies:
@@ -3760,7 +3737,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opentelemetry/sdk-trace-base@npm:2.7.0":
+"@opentelemetry/sdk-trace-base@npm:2.7.0, @opentelemetry/sdk-trace-base@npm:^2.0.0":
   version: 2.7.0
   resolution: "@opentelemetry/sdk-trace-base@npm:2.7.0"
   dependencies:
@@ -3770,19 +3747,6 @@ __metadata:
   peerDependencies:
     "@opentelemetry/api": ">=1.3.0 <1.10.0"
   checksum: 10c0/4f743f6cf51343ec5382d30ddbc4f9c9bb24a04212ca7749b42b6702114eb036960805c3f9284e40d3ce069d9674d06ea662907ff5ef0beb47e41a5654194993
-  languageName: node
-  linkType: hard
-
-"@opentelemetry/sdk-trace-base@npm:^2.0.0":
-  version: 2.6.1
-  resolution: "@opentelemetry/sdk-trace-base@npm:2.6.1"
-  dependencies:
-    "@opentelemetry/core": "npm:2.6.1"
-    "@opentelemetry/resources": "npm:2.6.1"
-    "@opentelemetry/semantic-conventions": "npm:^1.29.0"
-  peerDependencies:
-    "@opentelemetry/api": ">=1.3.0 <1.10.0"
-  checksum: 10c0/4fd723d0b77cb182d8dbbaea0d7f7276756a9c6b3a1fc919417e5cb3732cc77e55703b0231d8445e7370dbf3e66006abacba93e1e79bfac0fcb987ca0cc9fc65
   languageName: node
   linkType: hard
 
@@ -4456,6 +4420,13 @@ __metadata:
   version: 0.85.1
   resolution: "@react-native/gradle-plugin@npm:0.85.1"
   checksum: 10c0/ee88fce51e3091ea4374e43067896db37781897f8dfffe543b051bd0c328accf75e1154de1b2c9f8682ab601fa3ae16330d5199f85054eebabc93373d4d43b0a
+  languageName: node
+  linkType: hard
+
+"@react-native/gradle-plugin@npm:0.85.2":
+  version: 0.85.2
+  resolution: "@react-native/gradle-plugin@npm:0.85.2"
+  checksum: 10c0/a0635e36fc4ae6faa19374633a35265c7207601d77bf9a2ad404c093632553b56b4bdc4d80019c35fc0a988a9a581529e518bb1d0f8f8eb03d81edf1027f8e22
   languageName: node
   linkType: hard
 
