@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Register React Native tracing defaults that avoid duplicate fetch/XHR spans,
+  filter Metro symbolication requests, and suppress unsupported resource timing
+  warnings.
+
 ## [1.0.0] - 2026-04-15
 
 - Wait until session device attributes are initialized before initializing Faro
