@@ -74,16 +74,20 @@ class NoopPerformanceObserver {
 }
 
 /**
- * Apply polyfill on React Native iOS to prevent bad_variant_access crash.
- * Must run before any code that might use PerformanceObserver.
+ * Apply React Native performance API compatibility patches.
+ *
+ * Resource Timing lookup is patched on all platforms because OTel web
+ * instrumentation can probe it. The PerformanceObserver replacement is
+ * iOS-only to avoid the native bad_variant_access crash.
  */
 export function applyPerformanceObserverPolyfill(): void {
+  const record = globalObj as Record<string, unknown>;
+  patchUnsupportedResourceTimingLookup(record);
+
   if (Platform.OS !== 'ios') {
     return;
   }
 
-  const record = globalObj as Record<string, unknown>;
-  patchUnsupportedResourceTimingLookup(record);
   const existing = record['PerformanceObserver'];
   if (existing && (existing as unknown as { name?: string }).name === 'NoopPerformanceObserver') {
     return; // Already applied
