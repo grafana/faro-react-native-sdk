@@ -410,7 +410,7 @@ This SDK aims for feature parity with:
 
 When implementing new features, check:
 
-- `packages/react-native/FEATURE_PARITY.md` - Detailed comparison with Web SDK
+- `docs/mobile-rum/feature-parity-matrix.md` - Detailed feature comparison between React Native and Flutter SDKs
 - Faro Flutter SDK: If `faro-flutter-sdk` is in the workspace, go to `faro-flutter-sdk/lib/` and inspect for implementation details and patterns. Only search the web if the repo is not in the workspace.
 
 ## Performance Monitoring
