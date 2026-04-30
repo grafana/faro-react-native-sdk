@@ -78,12 +78,12 @@ class NoopPerformanceObserver {
  * Must run before any code that might use PerformanceObserver.
  */
 export function applyPerformanceObserverPolyfill(): void {
+  const record = globalObj as Record<string, unknown>;
+  patchUnsupportedResourceTimingLookup(record);
+
   if (Platform.OS !== 'ios') {
     return;
   }
-
-  const record = globalObj as Record<string, unknown>;
-  patchUnsupportedResourceTimingLookup(record);
   const existing = record['PerformanceObserver'];
   if (existing && (existing as unknown as { name?: string }).name === 'NoopPerformanceObserver') {
     return; // Already applied
