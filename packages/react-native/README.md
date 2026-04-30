@@ -47,7 +47,12 @@ initializeFaro({
   fetchVitalsInterval: 30000, // optional, ms
   frameMonitoringOptions: {}, // optional, when refreshRateVitals true
   enableTracing: false, // optional, requires @grafana/faro-react-native-tracing
-  tracingOptions: {}, // optional
+  tracingOptions: {
+    instrumentationOptions: {
+      // Traces fetch() by default. Enable this for axios/direct XHR apps.
+      enableXhrInstrumentation: false,
+    },
+  }, // optional
 
   // Instrumentation options - optional
   consoleCaptureOptions: {},
@@ -85,8 +90,8 @@ initializeFaro({
 - **App State Instrumentation** - Tracks when app goes to background/foreground
 - **Performance Instrumentation** - Monitors CPU usage, memory usage, and app startup time using native OS APIs
 - **Startup Instrumentation** - Automatically tracks app startup duration from process start
-- **HTTP Instrumentation** - Tracks HTTP requests (fetch) and correlates them with user actions
-- **XHR Instrumentation** - Tracks XMLHttpRequest calls (replaced by TracingInstrumentation when `enableTracing` is true)
+- **HTTP Instrumentation** - Tracks `fetch()` requests and correlates them with user actions
+- **XHR Instrumentation** - Tracks `XMLHttpRequest` calls when tracing is disabled; with `enableTracing: true`, enable XHR tracing via `tracingOptions.instrumentationOptions.enableXhrInstrumentation`
 
 **Enabled by default** (opt-out via config):
 

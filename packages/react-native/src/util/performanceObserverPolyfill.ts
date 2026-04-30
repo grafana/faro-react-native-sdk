@@ -21,6 +21,9 @@ const globalObj =
   (typeof window !== 'undefined' && window) ||
   {};
 
+const RESOURCE_ENTRY_TYPE = 'resource';
+const FARO_RESOURCE_TIMING_PATCH = '__faroResourceTimingPatch';
+
 interface PerformanceEntry {
   readonly duration: number;
   readonly entryType: string;
@@ -80,6 +83,7 @@ export function applyPerformanceObserverPolyfill(): void {
   }
 
   const record = globalObj as Record<string, unknown>;
+  patchUnsupportedResourceTimingLookup(record);
   const existing = record['PerformanceObserver'];
   if (existing && (existing as unknown as { name?: string }).name === 'NoopPerformanceObserver') {
     return; // Already applied
@@ -89,5 +93,37 @@ export function applyPerformanceObserverPolyfill(): void {
     record['PerformanceObserver'] = NoopPerformanceObserver;
   } catch {
     // Ignore if global is frozen (e.g. in some test environments)
+  }
+}
+
+function patchUnsupportedResourceTimingLookup(record: Record<string, unknown>): void {
+  const performance = record['performance'] as
+    | {
+        getEntriesByType?: ((entryType: string) => PerformanceEntry[]) & Record<string, boolean>;
+      }
+    | undefined;
+
+  if (!performance?.getEntriesByType || performance.getEntriesByType[FARO_RESOURCE_TIMING_PATCH]) {
+    return;
+  }
+
+  const originalGetEntriesByType = performance.getEntriesByType.bind(performance);
+  const patchedGetEntriesByType = ((entryType: string): PerformanceEntry[] => {
+    if (entryType === RESOURCE_ENTRY_TYPE) {
+      // OTel web fetch instrumentation probes browser Resource Timing APIs.
+      // React Native does not expose resource entries, and calling through emits
+      // "Deprecated API for given entry type." warnings in development.
+      return [];
+    }
+
+    return originalGetEntriesByType(entryType);
+  }) as typeof performance.getEntriesByType;
+
+  patchedGetEntriesByType[FARO_RESOURCE_TIMING_PATCH] = true;
+
+  try {
+    performance.getEntriesByType = patchedGetEntriesByType;
+  } catch {
+    // Ignore if performance is read-only in a test or host environment.
   }
 }

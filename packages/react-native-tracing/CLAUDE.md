@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Key Features:**
 
 - Automatic HTTP request tracing via `fetch()` instrumentation
+- Optional XHR tracing for axios or direct `XMLHttpRequest` apps
 - Manual span creation using OpenTelemetry API
 - W3C Trace Context propagation for distributed tracing
 - Correlation with Faro sessions, users, and device metadata
@@ -60,7 +61,7 @@ faro.api.pushTraces() - Sends to Faro collector
 
 - Main instrumentation class
 - Registers OpenTelemetry provider
-- Sets up fetch instrumentation
+- Sets up fetch instrumentation by default and optional XHR instrumentation
 - Configures span processors and exporters
 - Exposes OTEL APIs via `faro.otel`
 
@@ -137,7 +138,7 @@ parentSpan.end();
 - `traceparent`: Contains trace ID, span ID, flags
 - `tracestate`: Vendor-specific data
 
-Headers are added to fetch requests if URL matches `propagateTraceHeaderCorsUrls` patterns.
+Headers are added to enabled fetch/XHR requests if URL matches `propagateTraceHeaderCorsUrls` patterns.
 
 **Configuration:**
 
@@ -378,12 +379,11 @@ Edit `getDefaultOTELInstrumentations()`:
 
 ```typescript
 export function getDefaultOTELInstrumentations(options) {
-  return [
-    new FetchInstrumentation(options),
-    new XMLHttpRequestInstrumentation(), // New
-  ];
+  return [new FetchInstrumentation(options)];
 }
 ```
+
+Do not enable fetch and XHR for the same React Native URL patterns without filtering one side. React Native implements `fetch()` on top of XHR, so both instrumentations can report the same logical request twice.
 
 ### Updating OpenTelemetry Dependencies
 

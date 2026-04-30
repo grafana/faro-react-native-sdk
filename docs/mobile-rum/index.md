@@ -597,7 +597,7 @@ Faro.initialize(
 
 ##### **React Native SDK**
 
-The SDK automatically tracks HTTP requests made with both **fetch** and **XMLHttpRequest** (including libraries that use XHR, such as axios). No code changes are required—network calls are intercepted and reported.
+By default, the SDK automatically tracks HTTP requests made with **fetch**. Apps that use **XMLHttpRequest** directly, or libraries that use XHR such as axios, should enable XHR tracing explicitly. React Native implements `fetch` on top of XHR, so enabling both for the same URL can report the same logical request twice.
 
 **What is captured:**
 
@@ -693,14 +693,14 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
 
 #### Key Differences
 
-| Aspect                    | React Native                             | Flutter                                    |
-| ------------------------- | ---------------------------------------- | ------------------------------------------ |
-| **Event name**            | `faro.tracing.fetch` (Web SDK format)    | `http_request`                             |
-| **Success + failure**     | ✅ Both emit event                       | Success only; failures omit `http_request` |
-| **What is tracked**       | fetch + XMLHttpRequest (including axios) | `http` package + dio                       |
-| **Scope**                 | All JS network calls using fetch or XHR  | All code using `http` or `dio`             |
-| **Distributed tracing**   | Optional (`enableTracing`)               | Always on                                  |
-| **Grafana HTTP insights** | ✅ Compatible                            | Via span-to-event mapping                  |
+| Aspect                    | React Native                          | Flutter                                    |
+| ------------------------- | ------------------------------------- | ------------------------------------------ |
+| **Event name**            | `faro.tracing.fetch` (Web SDK format) | `http_request`                             |
+| **Success + failure**     | ✅ Both emit event                    | Success only; failures omit `http_request` |
+| **What is tracked**       | fetch by default; XHR/axios opt-in    | `http` package + dio                       |
+| **Scope**                 | JS network calls using enabled APIs   | All code using `http` or `dio`             |
+| **Distributed tracing**   | Optional (`enableTracing`)            | Always on                                  |
+| **Grafana HTTP insights** | ✅ Compatible                         | Via span-to-event mapping                  |
 
 ---
 
@@ -1557,7 +1557,7 @@ The React Native SDK correlates both **HTTP errors** and **JavaScript errors** w
 - HTTP requests are tracked as `faro.tracing.fetch` events with `http.status_code` (400–599 or 0 for network errors)
 - When a request occurs during an active user action (Started or Halted), the event includes `action.name` and `action.parentId`
 - Grafana FEO links these events to the parent user action via `action_parent_id`, so the HTTP Errors column shows the count per action
-- **When tracing is enabled** (`enableTracing: true`): The OTEL FetchInstrumentation and XMLHttpRequestInstrumentation create spans. A request hook adds `faro.action.user.name` and `faro.action.user.parentId` to each span when an active user action exists. The FaroTraceExporter converts these spans to `faro.tracing.fetch` / `faro.tracing.xml-http-request` events and injects `payload.action` from the span attributes. The span, trace, and event are all correlated to the same user action. The trace remains available for distributed tracing, and the event feeds the HTTP Errors column in the user action table.
+- **When tracing is enabled** (`enableTracing: true`): The OTEL FetchInstrumentation creates spans for `fetch` by default. XMLHttpRequestInstrumentation can be enabled for XHR/axios apps. A request hook adds `faro.action.user.name` and `faro.action.user.parentId` to each span when an active user action exists. The FaroTraceExporter converts these spans to HTTP events and injects `payload.action` from the span attributes. The span, trace, and event are all correlated to the same user action. The trace remains available for distributed tracing, and the event feeds the HTTP Errors column in the user action table.
 
 **JavaScript errors:**
 
