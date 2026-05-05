@@ -41,11 +41,63 @@ const faro = initializeFaro({
 
 That's it! HTTP requests via `fetch()` are now automatically traced (and correlated with user actions when user action tracking is enabled) and sent to your Faro collector.
 
+## Fetch vs XHR in React Native
+
+By default, this package traces `fetch()` requests only.
+
+React Native implements `fetch()` on top of `XMLHttpRequest`. If both fetch and XHR instrumentation are enabled for the same URL, one logical `fetch()` request can produce two spans: one from `FetchInstrumentation` and one from the underlying XHR layer. To avoid duplicate HTTP telemetry, XHR tracing is disabled by default.
+
+If your app uses axios or direct `XMLHttpRequest` calls instead of `fetch()`, enable XHR tracing explicitly:
+
+```typescript
+initializeFaro({
+  enableTracing: true,
+  tracingOptions: {
+    instrumentationOptions: {
+      enableXhrInstrumentation: true,
+    },
+  },
+});
+```
+
+If your app uses both `fetch()` and axios/XHR, avoid tracing the same request twice. Either trace one API surface only:
+
+```typescript
+initializeFaro({
+  enableTracing: true,
+  tracingOptions: {
+    instrumentationOptions: {
+      // Useful for axios/direct XHR apps.
+      enableFetchInstrumentation: false,
+      enableXhrInstrumentation: true,
+    },
+  },
+});
+```
+
+Or enable both and use `ignoreUrls` on one instrumentation so URL patterns do not overlap:
+
+```typescript
+initializeFaro({
+  enableTracing: true,
+  tracingOptions: {
+    instrumentationOptions: {
+      enableXhrInstrumentation: true,
+      xhrInstrumentationOptions: {
+        // Example: fetch() handles your API calls, so ignore those URLs in XHR.
+        ignoreUrls: [/\/api\//],
+      },
+    },
+  },
+});
+```
+
 ## Features
 
 ### 🚀 **Automatic Tracing**
 
-- **Fetch Instrumentation**: HTTP requests are automatically traced with no code changes
+- **Fetch Instrumentation**: `fetch()` requests are automatically traced with no code changes
+- **Optional XHR Instrumentation**: Enable for axios or direct `XMLHttpRequest` calls
 - **Session Correlation**: Traces are correlated with Faro sessions for complete user journey tracking
 - **User Action Correlation**: Traces are correlated with Faro user actions (when user action tracking is enabled)
 - **User Context**: User information is automatically added to span attributes
@@ -114,6 +166,10 @@ new TracingInstrumentation({
     // URLs that should receive trace context headers
     propagateTraceHeaderCorsUrls: [/https:\/\/api\.example\.com/, 'https://other-api.com'],
 
+    // Optional: enable XHR tracing for apps that use axios or XHR directly.
+    // Disabled by default because React Native's current fetch implementation is backed by XHR.
+    enableXhrInstrumentation: false,
+
     // Optional: Customize fetch instrumentation
     fetchInstrumentationOptions: {
       // Ignore network performance events (default: true)
@@ -157,10 +213,10 @@ new TracingInstrumentation({
 
 ### Automatic HTTP Tracing
 
-HTTP requests are automatically traced with no code changes:
+`fetch()` requests are automatically traced with no code changes:
 
 ```typescript
-// This fetch call is automatically traced
+// This fetch call is automatically traced by default.
 const response = await fetch('https://api.example.com/users');
 const data = await response.json();
 
@@ -171,6 +227,23 @@ const data = await response.json();
 // - Session ID, user info
 // - Device metadata
 ```
+
+### Axios and Direct XHR Tracing
+
+Axios and direct `XMLHttpRequest` calls require XHR instrumentation:
+
+```typescript
+initializeFaro({
+  enableTracing: true,
+  tracingOptions: {
+    instrumentationOptions: {
+      enableXhrInstrumentation: true,
+    },
+  },
+});
+```
+
+If the same app also uses `fetch()` for the same backend URLs, add `ignoreUrls` to either fetch or XHR instrumentation to avoid duplicate spans.
 
 **Trace includes:**
 
@@ -359,8 +432,8 @@ function performOperation() {
                        │ fetch() / XHR calls
                        ↓
 ┌─────────────────────────────────────────────────────────────┐
-│       FetchInstrumentation + XMLHttpRequestInstrumentation  │
-│  • Intercepts fetch() and XMLHttpRequest calls              │
+│       FetchInstrumentation, optionally XMLHttpRequest        │
+│  • Intercepts fetch() by default                            │
 │  • Creates spans automatically                               │
 │  • Propagates W3C Trace Context headers                      │
 └──────────────────────┬──────────────────────────────────────┘
@@ -408,7 +481,7 @@ function performOperation() {
 
 ### Span Lifecycle
 
-1. **Span Creation**: FetchInstrumentation or XMLHttpRequestInstrumentation creates a span when fetch()/XHR is called; W3C Trace Context headers added to the request (if URL matches `propagateTraceHeaderCorsUrls`)
+1. **Span Creation**: FetchInstrumentation creates a span when fetch() is called; XMLHttpRequestInstrumentation can be enabled for XHR/axios apps. W3C Trace Context headers are added to the request if the URL matches `propagateTraceHeaderCorsUrls`.
 2. **Enrichment**: HttpRequestMonitorSpanProcessor notifies for user action correlation; FaroMetaAttributesSpanProcessor adds session and user to spans (device/service come from resource)
 3. **Batching**: BatchSpanProcessor collects spans (max 30 spans or 1000ms delay)
 4. **Export**: FaroTraceExporter converts spans to OTLP format; also sends Faro events (e.g. `faro.tracing.fetch`) for CLIENT spans
@@ -667,10 +740,10 @@ interface TracingInstrumentationOptions {
   // Custom OTEL propagator (default: W3CTraceContextPropagator)
   propagator?: TextMapPropagator;
 
-  // Custom OTEL context manager (default: ZoneContextManager)
+  // Custom OTEL context manager (default: StackContextManager)
   contextManager?: ContextManager;
 
-  // Custom OTEL instrumentations (replaces default FetchInstrumentation)
+  // Custom OTEL instrumentations (replaces default fetch/XHR instrumentations)
   instrumentations?: Instrumentation[];
 
   // Custom span processor (replaces default BatchSpanProcessor)
@@ -680,6 +753,12 @@ interface TracingInstrumentationOptions {
   instrumentationOptions?: {
     // URLs to propagate trace headers to
     propagateTraceHeaderCorsUrls?: Array<string | RegExp>;
+
+    // Enable fetch instrumentation (default: true)
+    enableFetchInstrumentation?: boolean;
+
+    // Enable XHR instrumentation (default: false)
+    enableXhrInstrumentation?: boolean;
 
     // Fetch instrumentation options
     fetchInstrumentationOptions?: {
@@ -716,6 +795,7 @@ function getDefaultOTELInstrumentations(options?: DefaultInstrumentationsOptions
 Currently returns:
 
 - `FetchInstrumentation` - Automatic HTTP tracing
+- `XMLHttpRequestInstrumentation` - Optional; enabled with `enableXhrInstrumentation: true`
 
 ### faro.otel
 

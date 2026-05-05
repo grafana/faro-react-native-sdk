@@ -16,7 +16,7 @@ import {
  *
  * This function creates the default OpenTelemetry instrumentations for React Native:
  * - FetchInstrumentation: Traces fetch() API calls
- * - XMLHttpRequestInstrumentation: Traces XMLHttpRequest and axios (which uses XHR)
+ * - XMLHttpRequestInstrumentation: Optional for apps that use XHR/axios directly
  *
  * IMPORTANT: Infinite loop prevention
  * - ignoreUrls is used to exclude Faro collector URLs
@@ -27,12 +27,29 @@ import {
  * @returns Array of OTEL instrumentations
  */
 export function getDefaultOTELInstrumentations(options: DefaultInstrumentationsOptions = {}): InstrumentationOption[] {
-  const { fetchInstrumentationOptions, xhrInstrumentationOptions, ...sharedOptions } = options;
+  const {
+    enableFetchInstrumentation = true,
+    enableXhrInstrumentation = false,
+    fetchInstrumentationOptions,
+    xhrInstrumentationOptions,
+    ...sharedOptions
+  } = options;
 
-  const fetchOpts = createFetchInstrumentationOptions(fetchInstrumentationOptions, sharedOptions);
-  const xhrOpts = createXhrInstrumentationOptions(xhrInstrumentationOptions, sharedOptions);
+  const instrumentations: InstrumentationOption[] = [];
 
-  return [new FetchInstrumentation(fetchOpts), new XMLHttpRequestInstrumentation(xhrOpts)];
+  if (enableFetchInstrumentation) {
+    instrumentations.push(
+      new FetchInstrumentation(createFetchInstrumentationOptions(fetchInstrumentationOptions, sharedOptions))
+    );
+  }
+
+  if (enableXhrInstrumentation) {
+    instrumentations.push(
+      new XMLHttpRequestInstrumentation(createXhrInstrumentationOptions(xhrInstrumentationOptions, sharedOptions))
+    );
+  }
+
+  return instrumentations;
 }
 
 function createFetchInstrumentationOptions(

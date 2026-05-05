@@ -16,6 +16,7 @@ import { BaseInstrumentation, getInternalFaroFromGlobalObject, VERSION } from '@
 import type { Transport } from '@grafana/faro-core';
 
 import { FaroTraceExporter } from './exporters/faroTraceExporter';
+import { getReactNativeDevServerIgnoreUrls } from './instrumentations/devServerIgnoreUrls';
 import { getDefaultOTELInstrumentations } from './instrumentations/getDefaultOTELInstrumentations';
 import { FaroMetaAttributesSpanProcessor } from './processors/faroMetaAttributesSpanProcessor';
 import { HttpRequestMonitorSpanProcessor } from './processors/httpRequestMonitorSpanProcessor';
@@ -195,8 +196,13 @@ export class TracingInstrumentation extends BaseInstrumentation {
         })
     );
 
-    const { propagateTraceHeaderCorsUrls, fetchInstrumentationOptions, xhrInstrumentationOptions } =
-      this.options.instrumentationOptions ?? {};
+    const {
+      enableFetchInstrumentation,
+      enableXhrInstrumentation,
+      propagateTraceHeaderCorsUrls,
+      fetchInstrumentationOptions,
+      xhrInstrumentationOptions,
+    } = this.options.instrumentationOptions ?? {};
 
     // Get ignore URLs from transports to prevent infinite loops
     const ignoreUrls = this.getIgnoreUrls();
@@ -207,6 +213,8 @@ export class TracingInstrumentation extends BaseInstrumentation {
         options.instrumentations ??
         getDefaultOTELInstrumentations({
           ignoreUrls,
+          enableFetchInstrumentation,
+          enableXhrInstrumentation,
           propagateTraceHeaderCorsUrls,
           fetchInstrumentationOptions,
           xhrInstrumentationOptions,
@@ -246,8 +254,8 @@ export class TracingInstrumentation extends BaseInstrumentation {
       return url;
     });
 
-    // Return both original URLs and regex patterns for maximum coverage
-    return [...transportUrls, ...regexPatterns];
+    // Return dev-server, original transport URLs, and regex patterns for maximum coverage.
+    return [...getReactNativeDevServerIgnoreUrls(), ...transportUrls, ...regexPatterns];
   }
 
   /**

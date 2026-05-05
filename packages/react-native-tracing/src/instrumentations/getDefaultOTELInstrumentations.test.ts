@@ -4,22 +4,48 @@ import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xm
 import { getDefaultOTELInstrumentations } from './getDefaultOTELInstrumentations';
 
 describe('getDefaultOTELInstrumentations', () => {
-  it('should return an array with FetchInstrumentation and XMLHttpRequestInstrumentation', () => {
+  it('should return FetchInstrumentation by default', () => {
     const instrumentations = getDefaultOTELInstrumentations();
+
+    expect(instrumentations).toHaveLength(1);
+    expect(instrumentations[0]).toBeInstanceOf(FetchInstrumentation);
+  });
+
+  it('should allow enabling XMLHttpRequestInstrumentation', () => {
+    const instrumentations = getDefaultOTELInstrumentations({
+      enableXhrInstrumentation: true,
+    });
 
     expect(instrumentations).toHaveLength(2);
     expect(instrumentations[0]).toBeInstanceOf(FetchInstrumentation);
     expect(instrumentations[1]).toBeInstanceOf(XMLHttpRequestInstrumentation);
   });
 
+  it('should allow using only XMLHttpRequestInstrumentation', () => {
+    const instrumentations = getDefaultOTELInstrumentations({
+      enableFetchInstrumentation: false,
+      enableXhrInstrumentation: true,
+    });
+
+    expect(instrumentations).toHaveLength(1);
+    expect(instrumentations[0]).toBeInstanceOf(XMLHttpRequestInstrumentation);
+  });
+
   it('should configure ignoreUrls', () => {
     const ignoreUrls = [/test-url/];
     const instrumentations = getDefaultOTELInstrumentations({ ignoreUrls });
 
-    expect(instrumentations).toHaveLength(2);
-    // FetchInstrumentation should have ignoreUrls configured
+    expect(instrumentations).toHaveLength(1);
     expect((instrumentations[0] as any)._config.ignoreUrls).toEqual(ignoreUrls);
-    // XMLHttpRequestInstrumentation should have ignoreUrls configured
+  });
+
+  it('should configure ignoreUrls for XMLHttpRequestInstrumentation', () => {
+    const ignoreUrls = [/test-url/];
+    const instrumentations = getDefaultOTELInstrumentations({
+      enableXhrInstrumentation: true,
+      ignoreUrls,
+    });
+
     expect((instrumentations[1] as any)._config.ignoreUrls).toEqual(ignoreUrls);
   });
 
@@ -56,7 +82,7 @@ describe('getDefaultOTELInstrumentations', () => {
       },
     });
 
-    expect(instrumentations).toHaveLength(2);
+    expect(instrumentations).toHaveLength(1);
     // Custom function should be wrapped by our defaults
     expect((instrumentations[0] as any)._config.applyCustomAttributesOnSpan).toBeDefined();
   });

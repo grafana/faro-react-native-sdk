@@ -26,6 +26,8 @@ export type MatchUrlDefinitions = Patterns;
 export type DefaultInstrumentationsOptions = {
   ignoreUrls?: MatchUrlDefinitions;
   propagateTraceHeaderCorsUrls?: MatchUrlDefinitions;
+  enableFetchInstrumentation?: boolean;
+  enableXhrInstrumentation?: boolean;
 
   fetchInstrumentationOptions?: {
     applyCustomAttributesOnSpan?: FetchCustomAttributeFunction;
