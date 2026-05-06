@@ -7,11 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-05-06
+
+### Added
+
+- `instrumentationOptions.enableFetchInstrumentation` and
+  `instrumentationOptions.enableXhrInstrumentation` options on
+  `TracingInstrumentation` to control which OpenTelemetry HTTP
+  instrumentation is registered.
+
+### Changed
+
+- XHR tracing is now opt-in (`enableXhrInstrumentation` defaults to `false`).
+  React Native implements `fetch` on top of XHR, so registering both
+  instrumentations produced duplicate spans for the same request. Apps that
+  instrument XHR directly (for example some axios setups) should set
+  `enableXhrInstrumentation: true`.
+
 ### Fixed
 
-- Register React Native tracing defaults that avoid duplicate fetch/XHR spans,
-  filter Metro symbolication requests, and suppress unsupported resource timing
-  warnings.
+- Outbound `fetch`/XHR requests now carry W3C `traceparent` (and
+  `tracestate`/`baggage`) headers so client and backend spans join in the
+  same trace. `TracingInstrumentation` now registers a global
+  `ContextManager` and `TextMapPropagator` instead of relying on the OTel
+  noop defaults, which previously prevented header injection.
+- Metro dev-server `/symbolicate` requests are no longer traced. Real
+  backend `/symbolicate` endpoints are unaffected.
+- Suppressed `Deprecated API for given entry type.` warnings by polyfilling
+  `performance.getEntriesByType('resource')` to return `[]`. React Native
+  does not implement Resource Timing.
 
 ## [1.0.0] - 2026-04-15
 
@@ -62,5 +86,7 @@ may still change before `1.0.0` stable.
 - Set published package versions to `1.0.0-alpha.1` for the first npm pre-release
 - Updated @grafana/faro-core dependency to use published npm package (^2.2.3)
 
-[unreleased]: https://github.com/grafana/faro-react-native-sdk/compare/v1.0.0-alpha.1...HEAD
+[unreleased]: https://github.com/grafana/faro-react-native-sdk/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/grafana/faro-react-native-sdk/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/grafana/faro-react-native-sdk/compare/v1.0.0-alpha.1...v1.0.0
 [1.0.0-alpha.1]: https://github.com/grafana/faro-react-native-sdk/releases/tag/v1.0.0-alpha.1
