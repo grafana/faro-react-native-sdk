@@ -19,14 +19,26 @@ import type { RootStackParamList } from '../navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'UserActionsDemo'>;
 
-const SimpleTapButton = withFaroUserAction(TouchableOpacity, 'simple_tap_no_http');
-const FetchButton = withFaroUserAction(TouchableOpacity, 'tap_with_http_request');
-const JsErrorButton = withFaroUserAction(TouchableOpacity, 'user_action_with_js_error');
-const HttpErrorButton = withFaroUserAction(TouchableOpacity, 'user_action_with_http_error');
+const SimpleTapButton = withFaroUserAction(
+  TouchableOpacity,
+  'simple_tap_no_http',
+);
+const FetchButton = withFaroUserAction(
+  TouchableOpacity,
+  'tap_with_http_request',
+);
+const JsErrorButton = withFaroUserAction(
+  TouchableOpacity,
+  'user_action_with_js_error',
+);
+const HttpErrorButton = withFaroUserAction(
+  TouchableOpacity,
+  'user_action_with_http_error',
+);
 
 function ThrowingComponent(): never {
   throw new Error(
-    'Intentional JS error for User Actions Demo - check error correlation in Grafana'
+    'Intentional JS error for User Actions Demo - check error correlation in Grafana',
   );
 }
 
@@ -41,7 +53,7 @@ export function UserActionsDemoScreen(_props: Props) {
     Alert.alert(
       'User Action Tracked',
       'This tap was tracked as faro.user.action. Check Grafana Frontend Observability → Actions.',
-      [{ text: 'OK' }]
+      [{ text: 'OK' }],
     );
   };
 
@@ -55,7 +67,9 @@ export function UserActionsDemoScreen(_props: Props) {
         throw new Error(`HTTP ${response.status}`);
       }
     } catch (error) {
-      setFetchStatus(`Error: ${error instanceof Error ? error.message : 'Unknown'}`);
+      setFetchStatus(
+        `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      );
     } finally {
       setTimeout(() => setFetchStatus(null), 3000);
     }
@@ -68,7 +82,7 @@ export function UserActionsDemoScreen(_props: Props) {
 
   const handleResetJsError = () => {
     setShouldThrowJsError(false);
-    setJsErrorKey((k) => k + 1);
+    setJsErrorKey(k => k + 1);
   };
 
   const handleHttpError = async () => {
@@ -77,7 +91,9 @@ export function UserActionsDemoScreen(_props: Props) {
     try {
       const response = await fetch(url);
       if (!response.ok) {
-        setHttpErrorStatus(`HTTP Error: ${response.status}: ${response.statusText}`);
+        setHttpErrorStatus(
+          `HTTP Error: ${response.status}: ${response.statusText}`,
+        );
         // SDK sends faro.tracing.fetch event with status and action context → HTTP Errors column
       }
     } catch (error) {
@@ -94,7 +110,7 @@ export function UserActionsDemoScreen(_props: Props) {
       source: 'user_actions_demo_screen',
       count: String(manualActionCount + 1),
     });
-    setManualActionCount((c) => c + 1);
+    setManualActionCount(c => c + 1);
     // Controller auto-ends after ~100ms
   };
 
@@ -176,9 +192,9 @@ export function UserActionsDemoScreen(_props: Props) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>4. User action + HTTP error</Text>
         <Text style={styles.sectionDescription}>
-          Fetches httpstat.us/500 (returns HTTP 500). SDK sends faro.tracing.fetch
-          event with status and action context so it appears in HTTP Errors
-          column. Correlates with the user action.
+          Fetches httpstat.us/500 (returns HTTP 500). SDK sends
+          faro.tracing.fetch event with status and action context so it appears
+          in HTTP Errors column. Correlates with the user action.
         </Text>
         <HttpErrorButton
           style={[styles.button, styles.httpErrorButton]}
@@ -210,14 +226,12 @@ export function UserActionsDemoScreen(_props: Props) {
       <View style={styles.instructionsBox}>
         <Text style={styles.instructionsTitle}>How to verify in Grafana</Text>
         <Text style={styles.instructionsText}>
-          • Open Grafana Cloud → Frontend Observability{'\n'}
-          • Go to the Actions tab{'\n'}
-          • Filter by app or session{'\n'}
-          • Look for: simple_tap_no_http, tap_with_http_request,
-          user_action_with_js_error, user_action_with_http_error,
-          manual_user_action_demo{'\n'}
-          • HTTP Errors column: from faro.tracing.fetch events (4xx/5xx/0) with
-          action context
+          • Open Grafana Cloud → Frontend Observability{'\n'}• Go to the Actions
+          tab{'\n'}• Filter by app or session{'\n'}• Look for:
+          simple_tap_no_http, tap_with_http_request, user_action_with_js_error,
+          user_action_with_http_error, manual_user_action_demo{'\n'}• HTTP
+          Errors column: from faro.tracing.fetch events (4xx/5xx/0) with action
+          context
         </Text>
       </View>
     </ScrollView>

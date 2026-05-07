@@ -85,7 +85,8 @@ export function CrashDemoScreen() {
         : 'The system will detect the unresponsive app and force-kill it. This records as REASON_ANR in ApplicationExitInfo.\n\n' +
           'On next app launch, ANRInstrumentation will send the ANR report to Faro.';
 
-    const buttonLabel = Platform.OS === 'ios' ? 'Trigger Freeze' : 'Trigger ANR';
+    const buttonLabel =
+      Platform.OS === 'ios' ? 'Trigger Freeze' : 'Trigger ANR';
 
     Alert.alert(
       '⚠️ Warning',
@@ -193,13 +194,13 @@ export function CrashDemoScreen() {
       <View style={styles.infoBox}>
         <Text style={styles.infoTitle}>📖 How It Works</Text>
         <Text style={styles.infoText}>
-          <Text style={{fontWeight: '600'}}>Crashes:{'\n'}</Text>
+          <Text style={{ fontWeight: '600' }}>Crashes:{'\n'}</Text>
           1. Trigger a crash using the buttons below{'\n'}
           2. The app will terminate immediately{'\n'}
           3. Restart the app{'\n'}
           4. Faro automatically retrieves and sends the crash report{'\n'}
           5. Check Grafana for type="crash"{'\n\n'}
-          <Text style={{fontWeight: '600'}}>Performance:{'\n'}</Text>
+          <Text style={{ fontWeight: '600' }}>Performance:{'\n'}</Text>
           1. Trigger freezes or slow frames{'\n'}
           2. Faro detects and logs in real-time{'\n'}
           3. Check Grafana for type="app_frozen_frame" or "app_frames_rate"
@@ -328,12 +329,14 @@ export function CrashDemoScreen() {
       <View style={styles.noteBox}>
         <Text style={styles.noteTitle}>📱 Requirements</Text>
         <Text style={styles.noteText}>
-          <Text style={{fontWeight: '600'}}>Crash Detection:{'\n'}</Text>
+          <Text style={{ fontWeight: '600' }}>Crash Detection:{'\n'}</Text>
           {Platform.OS === 'ios'
             ? '• PLCrashReporter dependency (included via Podspec)\n'
             : '• Android 11+ (API 30+) for ApplicationExitInfo\n'}
           • enableCrashReporting: true in Faro config{'\n\n'}
-          <Text style={{fontWeight: '600'}}>Performance Monitoring:{'\n'}</Text>
+          <Text style={{ fontWeight: '600' }}>
+            Performance Monitoring:{'\n'}
+          </Text>
           {Platform.OS === 'ios'
             ? '• refreshRateVitals: true for frame detection\n'
             : '• anrTracking: true for ANR detection\n'}

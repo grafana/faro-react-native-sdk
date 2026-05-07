@@ -46,7 +46,9 @@ export function initFaro() {
   console.log('[FARO DEBUG] FARO_COLLECTOR_URL:', FARO_COLLECTOR_URL);
 
   if (!FARO_COLLECTOR_URL) {
-    console.warn('FARO_COLLECTOR_URL not configured. Faro will not be initialized.');
+    console.warn(
+      'FARO_COLLECTOR_URL not configured. Faro will not be initialized.',
+    );
     return undefined;
   }
 
@@ -66,8 +68,8 @@ export function initFaro() {
     // Session sampling: 10% in production, 100% in staging/development
     // Uses SamplingFunction (Flutter-style) - same as faro-flutter-sdk sampling.dart
     sessionTracking: {
-      sampling: new SamplingFunction((context) =>
-        context.meta.app?.environment === 'production' ? 0.1 : 1
+      sampling: new SamplingFunction(context =>
+        context.meta.app?.environment === 'production' ? 0.1 : 1,
       ),
     },
 
@@ -86,7 +88,9 @@ export function initFaro() {
     enableConsoleCapture: true,
 
     // Internal logger
-    internalLoggerLevel: FARO_DEBUG ? InternalLoggerLevel.VERBOSE : InternalLoggerLevel.ERROR,
+    internalLoggerLevel: FARO_DEBUG
+      ? InternalLoggerLevel.VERBOSE
+      : InternalLoggerLevel.ERROR,
 
     // Transports: enable what to use (FetchTransport always added when url is set)
     enableTransports: {

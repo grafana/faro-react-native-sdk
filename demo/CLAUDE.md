@@ -278,12 +278,13 @@ Navigate to Tempo in Grafana Cloud:
 
 If telemetry is not appearing in Grafana:
 
-1. **Check `.env` URL format** – Must start with `https://`.
-2. **Metro console** – In dev, `internalLoggerLevel` is VERBOSE; check for Faro logs.
-3. **ConsoleTransport** – Logs telemetry to Metro; if you see `[Faro]` lines, data is being captured.
-4. **Network inspector** – Use React Native Debugger or Flipper to inspect network requests to the collector URL.
-5. **Circuit breaker** – After 3 consecutive failures, FetchTransport backs off for 30 seconds; no logs during backoff.
-6. **Grafana query** – Use `{app_id="<ID_FRONTEND_O11Y>"}` in Explore (Loki).
+1. **Check shell `process.env` precedence** – `react-native-dotenv` honors `process.env.FARO_COLLECTOR_URL` over the `.env` file. Run `env | grep FARO_COLLECTOR_URL`; if it prints a value (often left over from `~/.zshrc`), `unset` it (or remove the export) and restart Metro with `--reset-cache`. Verify what Metro bundled with: `curl -s 'http://localhost:8081/index.bundle?platform=android&dev=true&minify=false' | grep -oE 'faro-collector-[^"'"'"']*' | sort -u`.
+2. **Check `.env` URL format** – Must start with `https://`.
+3. **Metro console** – In dev, `internalLoggerLevel` is VERBOSE; check for Faro logs.
+4. **ConsoleTransport** – Logs telemetry to Metro; if you see `[Faro]` lines, data is being captured.
+5. **Network inspector** – Use React Native Debugger or Flipper to inspect network requests to the collector URL.
+6. **Circuit breaker** – After 3 consecutive failures, FetchTransport backs off for 30 seconds; no logs during backoff.
+7. **Grafana query** – Use `{app_id="<ID_FRONTEND_O11Y>"}` in Explore (Loki).
 
 ## Common Issues
 

@@ -27,8 +27,12 @@ export function PerformanceMetricsCard({
   updateInterval,
 }: PerformanceMetricsCardProps) {
   const config = faro?.config as ReactNativeConfig | undefined;
-  const intervalMs = updateInterval ?? config?.fetchVitalsInterval ?? DEFAULT_FETCH_VITALS_INTERVAL_MS;
-  const displaySubtitle = subtitle ?? `Updates every ${intervalMs / 1000} seconds`;
+  const intervalMs =
+    updateInterval ??
+    config?.fetchVitalsInterval ??
+    DEFAULT_FETCH_VITALS_INTERVAL_MS;
+  const displaySubtitle =
+    subtitle ?? `Updates every ${intervalMs / 1000} seconds`;
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
   const [memoryUsage, setMemoryUsage] = useState<number | null>(null);
 
@@ -75,7 +79,9 @@ export function PerformanceMetricsCard({
           </Text>
         </View>
       </View>
-      {displaySubtitle && <Text style={styles.subtitle}>{displaySubtitle}</Text>}
+      {displaySubtitle && (
+        <Text style={styles.subtitle}>{displaySubtitle}</Text>
+      )}
     </View>
   );
 }

@@ -13,14 +13,38 @@ import { withFaroUserAction } from '@grafana/faro-react-native';
 import { useFaroUser } from '../hooks/useFaroUser';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
-const ShowcaseButton = withFaroUserAction(TouchableOpacity, 'navigate_showcase');
-const UserActionsButton = withFaroUserAction(TouchableOpacity, 'navigate_user_actions_demo');
-const ErrorDemoButton = withFaroUserAction(TouchableOpacity, 'navigate_error_demo');
-const CrashDemoButton = withFaroUserAction(TouchableOpacity, 'navigate_crash_demo');
-const PerformanceDemoButton = withFaroUserAction(TouchableOpacity, 'navigate_performance_demo');
-const ConsoleTestButton = withFaroUserAction(TouchableOpacity, 'navigate_console_test');
-const DeviceInfoButton = withFaroUserAction(TouchableOpacity, 'navigate_device_info');
-const TracingDemoButton = withFaroUserAction(TouchableOpacity, 'navigate_tracing_demo');
+const ShowcaseButton = withFaroUserAction(
+  TouchableOpacity,
+  'navigate_showcase',
+);
+const UserActionsButton = withFaroUserAction(
+  TouchableOpacity,
+  'navigate_user_actions_demo',
+);
+const ErrorDemoButton = withFaroUserAction(
+  TouchableOpacity,
+  'navigate_error_demo',
+);
+const CrashDemoButton = withFaroUserAction(
+  TouchableOpacity,
+  'navigate_crash_demo',
+);
+const PerformanceDemoButton = withFaroUserAction(
+  TouchableOpacity,
+  'navigate_performance_demo',
+);
+const ConsoleTestButton = withFaroUserAction(
+  TouchableOpacity,
+  'navigate_console_test',
+);
+const DeviceInfoButton = withFaroUserAction(
+  TouchableOpacity,
+  'navigate_device_info',
+);
+const TracingDemoButton = withFaroUserAction(
+  TouchableOpacity,
+  'navigate_tracing_demo',
+);
 const AboutButton = withFaroUserAction(TouchableOpacity, 'navigate_about');
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;

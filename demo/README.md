@@ -29,6 +29,18 @@ Edit `.env` and replace with your actual Faro collector URL from Grafana Cloud:
 FARO_COLLECTOR_URL=https://faro-collector-prod-YOUR-REGION.grafana.net/collect/YOUR_TOKEN_HERE
 ```
 
+> [!IMPORTANT]
+> `react-native-dotenv` reads from `process.env` first and only falls back to `.env`. If `FARO_COLLECTOR_URL` is already exported in your shell (e.g. from `~/.zshrc`, `~/.bashrc`, or a `direnv` setup), that value will silently override `.env` at bundle time, and editing `.env` will have **no effect**.
+>
+> Verify which value Metro actually bundled:
+>
+> ```bash
+> curl -s "http://localhost:8081/index.bundle?platform=android&dev=true&minify=false" \
+>   | grep -oE 'faro-collector-[^"'"'"']*' | sort -u
+> ```
+>
+> If this doesn't match your `.env`, `unset FARO_COLLECTOR_URL` (or remove the export from your shell rc), then restart Metro with `--reset-cache`.
+
 ## Features
 
 This demo app demonstrates:
