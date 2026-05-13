@@ -1739,7 +1739,7 @@ __metadata:
     "@react-native-community/cli-platform-ios": "npm:20.0.0"
     "@react-native-community/netinfo": "npm:^11.4.1"
     "@react-native/babel-preset": "npm:0.82.1"
-    "@react-native/codegen": "npm:^0.85.0"
+    "@react-native/codegen": "npm:0.82.1"
     "@react-native/eslint-config": "npm:0.82.1"
     "@react-native/gradle-plugin": "npm:0.82.1"
     "@react-native/metro-config": "npm:0.82.1"
@@ -4221,7 +4221,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@react-native/codegen@npm:0.85.1, @react-native/codegen@npm:^0.85.0":
+"@react-native/codegen@npm:0.85.1":
   version: 0.85.1
   resolution: "@react-native/codegen@npm:0.85.1"
   dependencies:
