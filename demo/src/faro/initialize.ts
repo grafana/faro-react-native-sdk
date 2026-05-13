@@ -44,6 +44,9 @@ function extractTokenFromCollectorUrl(collectorUrl: string): string | undefined 
     const { pathname } = url as unknown as { pathname: string };
     const segments = pathname.split('/').filter(Boolean);
     const collectIndex = segments.indexOf('collect');
+    if (collectIndex === -1) {
+      return undefined;
+    }
     return segments[collectIndex + 1];
   } catch {
     return undefined;
