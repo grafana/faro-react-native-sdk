@@ -40,7 +40,7 @@
     "@react-native/codegen": "^0.82.1",
     "@react-native/eslint-config": "0.82.1",
     "@react-native/gradle-plugin": "0.82.1",
-    "@react-native/metro-config": "0.85.3",
+    "@react-native/metro-config": "0.82.1",
     "@react-native/typescript-config": "0.82.1",
     "@types/jest": "^29.5.13",
     "@types/react": "^19.1.1",
