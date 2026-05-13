@@ -1,5 +1,5 @@
-import type { ContextAPI, TraceAPI } from '@opentelemetry/api';
 import { SpanStatusCode } from '@opentelemetry/api';
+import type { ContextAPI, TraceAPI } from '@opentelemetry/api';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 
 import { UserActionImportance } from '@grafana/faro-core';
-import type { Faro } from '@grafana/faro-react-native';
 import { faro } from '@grafana/faro-react-native';
+import type { Faro } from '@grafana/faro-react-native';
 
 /**
  * Extended Faro type with OpenTelemetry APIs
