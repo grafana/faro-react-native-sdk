@@ -86,9 +86,7 @@ export interface StackFrameParseOptions {
 /**
  * Parse a single stack trace line into a structured frame and record how it was parsed.
  */
-function parseStackTraceLineDetailed(
-  line: string
-): { frame: ParsedStackFrame | null; kind: ParsedStackLineKind } {
+function parseStackTraceLineDetailed(line: string): { frame: ParsedStackFrame | null; kind: ParsedStackLineKind } {
   if (!line || typeof line !== 'string') {
     return { frame: null, kind: 'unparsed' };
   }
@@ -202,14 +200,10 @@ export function parseStackTrace(stackTrace: string): ParsedStackFrame[] {
 /**
  * Convert parsed stack frames to Faro's StackFrame format
  */
-export function toFaroStackFrames(
-  parsedFrames: ParsedStackFrame[],
-  options?: StackFrameParseOptions
-): StackFrame[] {
+export function toFaroStackFrames(parsedFrames: ParsedStackFrame[], options?: StackFrameParseOptions): StackFrame[] {
   const releaseName = options?.releaseBundleFilename ?? 'bundle.js';
   const keyedBasename =
-    typeof options?.releaseBundleFilename === 'string' &&
-    options.releaseBundleFilename.trim() !== ''
+    typeof options?.releaseBundleFilename === 'string' && options.releaseBundleFilename.trim() !== ''
       ? options.releaseBundleFilename.trim()
       : null;
 

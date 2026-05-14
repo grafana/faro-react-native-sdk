@@ -144,6 +144,7 @@ This package’s **`android/build.gradle`** registers **`faroUploadComposedSourc
    ```
 
    **`DERIVED_FILE_DIR`** is set by Xcode for the bundle phase. Alternatively, set the same value as a **User-Defined** build setting on the app target (`SOURCEMAP_FILE = $(DERIVED_FILE_DIR)/main.jsbundle.map`). Exporting **`SOURCEMAP_FILE`** only in an outer shell before `yarn ios` is unreliable because **`${DERIVED_FILE_DIR}`** is not your shell’s variable.
+
 3. Export the same **`FARO_*`** variables for the Release build environment.
 
 **Debug** skips upload. **`FARO_SKIP_SOURCEMAP_UPLOAD=1`** skips on Release when needed.
