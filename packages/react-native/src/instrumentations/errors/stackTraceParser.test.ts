@@ -202,6 +202,25 @@ describe('Stack Trace Parser', () => {
       const faroFrames = toFaroStackFrames([parsed!], { releaseBundleFilename: 'index.android.bundle' });
       expect(faroFrames[0]?.filename).toBe('index.android.bundle');
     });
+
+    it('collapses Hermes absolute .app bundle path to basename so uploads match ingest keys', () => {
+      const iosPath =
+        '/Users/ci/Library/Developer/CoreSimulator/Devices/ABC/Data/Containers/Bundle/Application/62A2/QuickPizza.app/main.jsbundle';
+      const parsed = parseStackTraceLine(`  at reportHandledException (${iosPath}:1:1249030)`);
+      expect(parsed).not.toBeNull();
+      const faroFrames = toFaroStackFrames([parsed!], { releaseBundleFilename: 'main.jsbundle' });
+      expect(faroFrames[0]?.filename).toBe('main.jsbundle');
+      expect(faroFrames[0]?.lineno).toBe(1);
+      expect(faroFrames[0]?.colno).toBe(1249030);
+    });
+
+    it('collapses absolute Android artifact path ending in index.android.bundle', () => {
+      const apkPath = '/data/app/org.example.cp/base.apk/assets/index.android.bundle';
+      const parsed = parseStackTraceLine(`  at reportError (${apkPath}:1:849989)`);
+      expect(parsed).not.toBeNull();
+      const faroFrames = toFaroStackFrames([parsed!], { releaseBundleFilename: 'index.android.bundle' });
+      expect(faroFrames[0]?.filename).toBe('index.android.bundle');
+    });
   });
 
   describe('getStackFramesFromError', () => {

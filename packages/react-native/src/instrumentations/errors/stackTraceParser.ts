@@ -39,6 +39,20 @@ export function normalizeHermesStackFilename(filename: string): string {
   return m?.[1]?.trim() ?? filename;
 }
 
+/**
+ * iOS Simulator (and Android) stacks often carry full filesystem paths such as
+ * `…/Foo.app/main.jsbundle` while uploaded maps are keyed by the bundle basename (`main.jsbundle`)
+ * that matches Metro’s source map `file` field — same as ingest’s bundle lookup hashes.
+ */
+function collapseBundledArtifactPath(filename: string, releaseBasename: string): string {
+  const key = releaseBasename.trim();
+  if (!key || filename === key) {
+    return filename;
+  }
+  const suffix = `/${key}`;
+  return filename.endsWith(suffix) ? key : filename;
+}
+
 export interface ParsedStackFrame {
   function?: string;
   filename?: string;
@@ -193,10 +207,18 @@ export function toFaroStackFrames(
   options?: StackFrameParseOptions
 ): StackFrame[] {
   const releaseName = options?.releaseBundleFilename ?? 'bundle.js';
+  const keyedBasename =
+    typeof options?.releaseBundleFilename === 'string' &&
+    options.releaseBundleFilename.trim() !== ''
+      ? options.releaseBundleFilename.trim()
+      : null;
+
   return parsedFrames.map((frame, _index) => {
     let filename = normalizeHermesStackFilename(frame.filename || '<unknown>');
     if (frame.releaseLine) {
       filename = releaseName;
+    } else if (keyedBasename) {
+      filename = collapseBundledArtifactPath(filename, keyedBasename);
     }
     return {
       filename,

@@ -23,6 +23,17 @@ case "${FARO_SKIP_SOURCEMAP_UPLOAD:-}" in
     ;;
 esac
 
+# Source before FARO_* checks so credentials can live in .xcode.env / .xcode.env.local
+# (matches react-native-xcode.sh / with-environment.sh order).
+ENV_FILE="${SRCROOT}/.xcode.env.local"
+[ -f "$ENV_FILE" ] || ENV_FILE="${SRCROOT}/.xcode.env"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
 # Application JS root (parent of ios/)
 JS_ROOT="${SRCROOT}/.."
 CLI_PATH="$JS_ROOT/node_modules/@grafana/faro-metro-plugin/bin/faro-upload-source-map.js"
@@ -54,18 +65,8 @@ MISSING=""
 
 if [ -n "$MISSING" ]; then
   echo "warning: [Faro] Skipping composed source map upload — missing env: ${MISSING}"
-  echo "warning: [Faro] Export FARO_BUNDLE_ID and FARO_SOURCEMAP_* before Release builds so the upload can run."
+  echo "warning: [Faro] Export FARO_BUNDLE_ID and FARO_SOURCEMAP_* in the shell running xcodebuild, or add them to ios/.xcode.env.local."
   exit 0
-fi
-
-# Align with local RN / Xcode: use .xcode.env NODE_BINARY when present
-ENV_FILE="${SRCROOT}/.xcode.env.local"
-[ -f "$ENV_FILE" ] || ENV_FILE="${SRCROOT}/.xcode.env"
-if [ -f "$ENV_FILE" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
 fi
 
 NODE_BIN="${NODE_BINARY:-node}"
