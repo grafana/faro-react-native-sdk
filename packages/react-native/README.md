@@ -74,13 +74,76 @@ initializeFaro({
 });
 ```
 
-## Release source maps and `meta.app.bundleId` (Metro + Hermes)
+## Error symbolication
 
-Use [`@grafana/faro-metro-plugin`](https://www.npmjs.com/package/@grafana/faro-metro-plugin) so release bundles prepend a small IIFE that assigns `globalThis['__faroBundleId_<appName>']` to your release id (typically `FARO_BUNDLE_ID` at bundle time). That id must match the segment in `POST …/app/{appId}/sourcemaps/{bundleId}` when maps are uploaded.
+This section ties together **SDK configuration**, **release builds**, **uploaded source maps**, and **errors/crashes** so stacks from Hermes release binaries show up as your real source files in Grafana.
 
-You do **not** need `app.bundleId` in `initializeFaro`. `@grafana/faro-core` resolves `getBundleId(app.name)` during `registerInitialMetas` and merges **`meta.app.bundleId`** the same way as the Web SDK, as long as **`app.name` matches** the Metro plugin **`appName`**.
+### What you configure in the app
 
-For symbolicated Hermes stacks, set **`releaseBundleFilename`** in config to the bundle file basename used in the source map top-level `file` field (and the Metro plugin `sourceMapFile` if you override it), e.g. `index.android.bundle` vs `main.jsbundle`.
+1. **`initializeFaro({ app: { name: '…' }, … })`** — `app.name` must match **`appName`** in [@grafana/faro-metro-plugin](https://www.npmjs.com/package/@grafana/faro-metro-plugin) (`metro.config.js`).
+2. **`releaseBundleFilename`** (e.g. `index.android.bundle` or `main.jsbundle`) — must match the **bundle basename** your composed source map uses in its top-level **`file`** field (same as Metro’s `sourceMapFile` when you override it). This keeps stack **filenames** aligned with the map the backend will look up.
+3. **Metro** — wrap config with **`withFaroConfig`** so the release bundle gets the Faro preamble and the right map shape for Hermes.
+
+See [Android release upload](#error-symbolication-android-release-upload) and [iOS release upload](#error-symbolication-ios-release-upload) below.
+
+You do **not** set `app.bundleId` in `initializeFaro` for this flow.
+
+### What happens when you ship a new release
+
+For **Android** and **iOS** release builds, the native pipeline (Metro → Hermes → **`compose-source-maps.js`**) produces a single **composed** `.map` file for that binary. **`@grafana/faro-react-native`** autolinking runs **`faro-upload-source-map`** (→ **`faro-cli metro upload`**) after that file exists, as long as you provide **`FARO_BUNDLE_ID`** and the **`FARO_SOURCEMAP_*`** variables (see [Android](#error-symbolication-android-release-upload) / [iOS](#error-symbolication-ios-release-upload) below). The map is stored in Grafana’s source map API **keyed by that bundle id**.
+
+The Metro preamble, baked in at bundle time, sets a global like **`globalThis['__faroBundleId_<appName>']`** to the same **`FARO_BUNDLE_ID`** value so runtime telemetry can reference the correct map record.
+
+### What happens at runtime (errors and crashes)
+
+When the app starts, **`@grafana/faro-core`** runs **`getBundleId(app.name)`** during meta registration. That helper reads the preamble global above (see [getBundleId](https://github.com/grafana/faro-web-sdk/blob/main/packages/core/src/utils/sourceMaps.ts) in **`@grafana/faro-core`**) and sets **`meta.app.bundleId`** on outgoing Faro payloads. You get a stable link between “`this app binary`” and “`this uploaded map`” without hard-coding the id in JS.
+
+When the SDK reports an error or crash, it parses the stack into **structured frames** (`filename`, `lineno`, `colno`, …). Those values describe positions **in the shipped JS bundle / Hermes stack space** (and filenames normalized to match the map, e.g. stripping `address at …` prefixes so **`frame.filename`** matches the map’s **`file`** field). The SDK **does not** load the `.map` on the device and **does not** rewrite frames to `src/**/*.tsx` paths inside the payload sent to the collector.
+
+### How those frames connect to your real source files
+
+**In Grafana (Frontend Observability)**, the ingest stack resolves frames using the **composed** source map whose **`bundleId`** matches **`meta.app.bundleId`**. That step turns bundle-relative **line/column** (and the bundle **`file`** name) into human-readable paths such as **`src/...tsx`** in the UI. If **`meta.app.bundleId`** is missing or wrong, or the wrong map was uploaded, symbolication will not line up with this build.
+
+So end-to-end: **same bundle id** in the binary preamble, in **`meta.app.bundleId`**, and in the source map upload → **correct map lookup** → **readable stacks**.
+
+---
+
+### Error symbolication: Android release upload
+
+Hermes release builds produce the composed map at:
+
+`app/build/generated/sourcemaps/react/release/index.android.bundle.map`
+
+This package’s **`android/build.gradle`** registers **`faroUploadComposedSourceMapAndroidRelease`** on your **`:app`** project and finalizes **`bundleReleaseJsAndAssets`** / **`createBundleReleaseJsAndAssets`**.
+
+**Setup:**
+
+1. `npm install @grafana/faro-react-native @grafana/faro-metro-plugin`
+2. Wrap **`metro.config.js`** with `withFaroConfig({...}, faroOpts)` (see the metro plugin README).
+3. Export **`FARO_BUNDLE_ID`** and **`FARO_SOURCEMAP_*`** (`FARO_SOURCEMAP_ENDPOINT`, `FARO_SOURCEMAP_APP_ID`, `FARO_SOURCEMAP_STACK_ID`, `FARO_SOURCEMAP_API_KEY`) before release builds.
+4. `yarn android --mode=release` (or `installRelease` / `assembleRelease` / `bundleRelease`).
+
+**No `android/app/build.gradle` edits** are required. The task runs **`node_modules/@grafana/faro-metro-plugin/bin/faro-upload-source-map.js`**. Use **`FARO_SKIP_SOURCEMAP_UPLOAD=1`** to skip upload when iterating offline.
+
+### Error symbolication: iOS release upload
+
+**`pod install`** adds **`[Faro] Upload composed source map (Release)`** (from **`react-native.config.js`**). On **Release**, it runs **`ios/faro-upload-composed-source-map.sh`**, which invokes the same shim after the composed **`main.jsbundle.map`** exists.
+
+**Setup:**
+
+1. Same installs and **`metro.config.js`** as Android.
+2. Ensure **`SOURCEMAP_FILE`** is set when **`react-native-xcode.sh`** runs (Release). React Native has **no default**; without it, **`main.jsbundle.map`** is not written. Prefer **`ios/.xcode.env`** or **`ios/.xcode.env.local`** (sourced before bundling):
+
+   ```sh
+   export SOURCEMAP_FILE="${DERIVED_FILE_DIR}/main.jsbundle.map"
+   ```
+
+   **`DERIVED_FILE_DIR`** is set by Xcode for the bundle phase. Alternatively, set the same value as a **User-Defined** build setting on the app target (`SOURCEMAP_FILE = $(DERIVED_FILE_DIR)/main.jsbundle.map`). Exporting **`SOURCEMAP_FILE`** only in an outer shell before `yarn ios` is unreliable because **`${DERIVED_FILE_DIR}`** is not your shell’s variable.
+3. Export the same **`FARO_*`** variables for the Release build environment.
+
+**Debug** skips upload. **`FARO_SKIP_SOURCEMAP_UPLOAD=1`** skips on Release when needed.
+
+**Manual / CI:** run **`faro-cli metro upload`** with **`--map`** pointing at the **composed** map and the same flags.
 
 ## Features
 
