@@ -127,4 +127,15 @@ describe('makeRNConfig', () => {
       (cfg as { preloadedSessionDeviceAttributes?: { device_id: string } }).preloadedSessionDeviceAttributes?.device_id
     ).toBe('test-preloaded-id');
   });
+
+  it('uses releaseBundleFilename in default parseStacktrace when set', () => {
+    const cfg = makeRNConfig({
+      ...base,
+      releaseBundleFilename: 'main.jsbundle',
+    });
+    const err = new Error('x');
+    err.stack = 'g@1:2';
+    const parsed = cfg.parseStacktrace?.(err);
+    expect(parsed?.frames?.[0]?.filename).toBe('main.jsbundle');
+  });
 });

@@ -79,7 +79,11 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
 
   // Error reporting (Flutter: enableFlutterErrorReporting)
   if (enableErrorReporting) {
-    instrumentations.push(new ErrorsInstrumentation());
+    instrumentations.push(
+      new ErrorsInstrumentation({
+        releaseBundleFilename: config.releaseBundleFilename,
+      })
+    );
   }
 
   // Console capture - not in Flutter SDK, RN-specific

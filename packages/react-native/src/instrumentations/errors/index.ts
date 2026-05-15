@@ -40,6 +40,12 @@ export interface ErrorsInstrumentationOptions {
    * Older errors are removed when this limit is reached
    */
   maxDeduplicationEntries?: number;
+
+  /**
+   * Bundle filename for Hermes/minified release lines (`func@line:col`).
+   * Must match the Metro plugin source map `file` field (default `bundle.js`).
+   */
+  releaseBundleFilename?: string;
 }
 
 interface ErrorFingerprint {
@@ -80,7 +86,9 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
 
   private originalErrorHandler?: ErrorHandlerCallback;
   private unhandledRejectionListener?: (event: PromiseRejectionEvent) => void;
-  private options: Required<ErrorsInstrumentationOptions>;
+  private options: Required<Omit<ErrorsInstrumentationOptions, 'releaseBundleFilename'>> & {
+    releaseBundleFilename?: string;
+  };
   private errorFingerprints: ErrorFingerprint[] = [];
 
   constructor(options: ErrorsInstrumentationOptions = {}) {
@@ -90,6 +98,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
       enableDeduplication: options.enableDeduplication ?? true,
       deduplicationWindow: options.deduplicationWindow ?? 5000,
       maxDeduplicationEntries: options.maxDeduplicationEntries ?? 50,
+      releaseBundleFilename: options.releaseBundleFilename,
     };
   }
 
@@ -123,10 +132,14 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
           error: enhancedError,
           stackFrames,
           context,
-        } = enhanceErrorWithContext(error, {
-          mechanism: ErrorMechanism.UNCAUGHT,
-          isFatal: String(isFatal ?? false),
-        });
+        } = enhanceErrorWithContext(
+          error,
+          {
+            mechanism: ErrorMechanism.UNCAUGHT,
+            isFatal: String(isFatal ?? false),
+          },
+          { releaseBundleFilename: this.options.releaseBundleFilename }
+        );
 
         // Push error to Faro with enhanced data (type from error.name, matches Web SDK)
         this.api.pushError(enhancedError, {
@@ -182,9 +195,13 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
           error: enhancedError,
           stackFrames,
           context,
-        } = enhanceErrorWithContext(error, {
-          mechanism: ErrorMechanism.UNHANDLED_REJECTION,
-        });
+        } = enhanceErrorWithContext(
+          error,
+          {
+            mechanism: ErrorMechanism.UNHANDLED_REJECTION,
+          },
+          { releaseBundleFilename: this.options.releaseBundleFilename }
+        );
 
         // Type: use actual error type for Error objects; 'UnhandledRejection' for primitives (Web SDK)
         const errorType = isPrimitiveRejection ? primitiveUnhandledType : enhancedError.name || 'Error';
