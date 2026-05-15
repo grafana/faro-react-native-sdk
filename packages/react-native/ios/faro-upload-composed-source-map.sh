@@ -7,6 +7,23 @@
 
 set -e
 
+# Source ios/.xcode.env then ios/.xcode.env.local before any FARO_* decisions so
+# skips and credentials can live there (local overrides base; matches RN with-environment.sh).
+if [ -n "${SRCROOT:-}" ]; then
+  if [ -f "$SRCROOT/.xcode.env" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$SRCROOT/.xcode.env"
+    set +a
+  fi
+  if [ -f "$SRCROOT/.xcode.env.local" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$SRCROOT/.xcode.env.local"
+    set +a
+  fi
+fi
+
 # Xcode CONFIGURATION is typically "Debug" or "Release"
 case "$(printf '%s' "${CONFIGURATION:-}" | tr '[:upper:]' '[:lower:]')" in
   release) ;;
@@ -22,17 +39,6 @@ case "${FARO_SKIP_SOURCEMAP_UPLOAD:-}" in
     exit 0
     ;;
 esac
-
-# Source before FARO_* checks so credentials can live in .xcode.env / .xcode.env.local
-# (matches react-native-xcode.sh / with-environment.sh order).
-ENV_FILE="${SRCROOT}/.xcode.env.local"
-[ -f "$ENV_FILE" ] || ENV_FILE="${SRCROOT}/.xcode.env"
-if [ -f "$ENV_FILE" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
-fi
 
 # Application JS root (parent of ios/)
 JS_ROOT="${SRCROOT}/.."

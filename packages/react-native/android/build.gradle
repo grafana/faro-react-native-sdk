@@ -57,10 +57,13 @@ dependencies {
  *      `yarn android --mode=release`.
  *
  * On any release-style command (assembleRelease, bundleRelease, installRelease,
- * `yarn android --mode=release`), this hook finalises the
- * `:app:bundleReleaseJsAndAssets` task with a node invocation of
- * `faro-cli metro upload`. Gradle reads every required setting from env vars
- * and passes them as **explicit CLI arguments** so the CLI never has to fall
+ * `yarn android --mode=release`), release entry tasks depend on
+ * `:app:faroUploadComposedSourceMapAndroidRelease`, which in turn depends on
+ * the JS bundle task (`bundleReleaseJsAndAssets` or `createBundleReleaseJsAndAssets`)
+ * so upload runs only after a successful bundle — never via a finalizer (which
+ * can run even when bundling fails and could upload a stale map). The upload
+ * task runs `faro-cli metro upload` via a small Node shim. Gradle reads every
+ * required setting from env vars and passes them as **explicit CLI arguments** so the CLI never has to fall
  * back to its own env-var resolution from this entry point — making the
  * contract between Gradle and the CLI fully visible in the command line that
  * you'll see in `--info` build output.
@@ -83,7 +86,7 @@ dependencies {
  *     this library project), because `:app` is the one that runs
  *     `bundleReleaseJsAndAssets`.
  *   - We do all of that inside `gradle.projectsEvaluated` so all subprojects
- *     and their tasks are visible by the time we wire `finalizedBy`.
+ *     and their tasks are visible by the time we wire `dependsOn`.
  *   - All preconditions (shim present, composed map present, every required
  *     env var set) are checked in `onlyIf` so the build never hard-fails on a
  *     missing source-map upload — it just logs a warning and moves on.
@@ -168,10 +171,20 @@ gradle.projectsEvaluated {
         )
     }
 
-    ["bundleReleaseJsAndAssets", "createBundleReleaseJsAndAssets"].each { name ->
-        def bundleTask = appProject.tasks.findByName(name)
-        if (bundleTask != null) {
-            bundleTask.finalizedBy(uploadTask)
+    def bundleTaskNames = ["bundleReleaseJsAndAssets", "createBundleReleaseJsAndAssets"]
+    uploadTask.configure { task ->
+        bundleTaskNames.each { name ->
+            def bundleTask = appProject.tasks.findByName(name)
+            if (bundleTask != null) {
+                task.dependsOn(bundleTask)
+            }
+        }
+    }
+
+    ["assembleRelease", "bundleRelease", "installRelease"].each { name ->
+        def releaseTask = appProject.tasks.findByName(name)
+        if (releaseTask != null) {
+            releaseTask.dependsOn(uploadTask)
         }
     }
 }
