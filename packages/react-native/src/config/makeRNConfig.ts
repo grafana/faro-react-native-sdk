@@ -65,9 +65,11 @@ function buildInstrumentations(config: ReactNativeConfig): Config['instrumentati
 /**
  * React Native stacktrace parser. Uses getStackFramesFromError for RN-specific formats.
  */
-const parseStacktrace: Config['parseStacktrace'] = (err) => ({
-  frames: getStackFramesFromError(err),
-});
+function createParseStacktrace(releaseBundleFilename: string | undefined): Config['parseStacktrace'] {
+  return (err) => ({
+    frames: getStackFramesFromError(err, { releaseBundleFilename }),
+  });
+}
 
 /**
  * Creates a full Faro config from React Native flag-based config.
@@ -86,6 +88,7 @@ export function makeRNConfig(
   const transports = buildTransports(config);
   const instrumentations = buildInstrumentations(config);
 
+  const releaseBundleFilename = config.releaseBundleFilename;
   return {
     app: config.app,
     ...(preloadedSessionDeviceAttributes != null && {
@@ -95,7 +98,7 @@ export function makeRNConfig(
     globalObjectKey: config.globalObjectKey ?? defaultGlobalObjectKey,
     internalLoggerLevel: config.internalLoggerLevel ?? InternalLoggerLevel.ERROR,
     isolate: config.isolate ?? false,
-    parseStacktrace: config.parseStacktrace ?? parseStacktrace,
+    parseStacktrace: config.parseStacktrace ?? createParseStacktrace(releaseBundleFilename),
     paused: config.paused ?? false,
     preventGlobalExposure: config.preventGlobalExposure ?? false,
     unpatchedConsole: config.unpatchedConsole ?? defaultUnpatchedConsole,

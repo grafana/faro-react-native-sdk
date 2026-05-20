@@ -8,10 +8,17 @@ import { SessionInstrumentation } from './instrumentations/session';
 import * as sessionAttributes from './instrumentations/session/sessionAttributes';
 
 describe('initializeFaro', () => {
+  const preambleKey = '__faroBundleId_test';
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.clearAllTimers();
     delete (global as any).faro;
+    delete (globalThis as Record<string, unknown>)[preambleKey];
+  });
+
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>)[preambleKey];
   });
 
   it('should initialize Faro', async () => {
@@ -122,5 +129,23 @@ describe('initializeFaro', () => {
     expect(faro.metas.value.session?.attributes?.['device_id']).toBe('preloaded-device-id');
 
     spy.mockRestore();
+  });
+
+  it('should set meta.app.bundleId from Faro Metro preamble global (__faroBundleId_<app.name>)', async () => {
+    (globalThis as Record<string, unknown>)[preambleKey] = 'release-bundle-from-metro';
+
+    const faro = await initializeFaro(
+      mockConfig({
+        url: 'http://localhost:12345/collect',
+        transports: [new MockTransport()],
+        instrumentations: [new SessionInstrumentation()],
+        sessionTracking: {
+          enabled: true,
+          persistent: false,
+        },
+      })
+    );
+
+    expect(faro.metas.value.app?.bundleId).toBe('release-bundle-from-metro');
   });
 });

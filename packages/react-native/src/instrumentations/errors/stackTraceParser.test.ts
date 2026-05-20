@@ -65,6 +65,29 @@ describe('Stack Trace Parser', () => {
         filename: '<unknown>',
         lineno: 123,
         colno: 456,
+        releaseLine: true,
+      });
+    });
+
+    it('should normalize Hermes Android "address at index.android.bundle" file segment', () => {
+      const line = '  at someFunction (address at index.android.bundle:42:15)';
+      const frame = parseStackTraceLine(line);
+
+      expect(frame).toEqual({
+        function: 'someFunction',
+        filename: 'index.android.bundle',
+        lineno: 42,
+        colno: 15,
+      });
+    });
+
+    it('should parse Hermes-style parenthesis frame with bundle filename', () => {
+      const line = '  at reportError (index.android.bundle:1:849989)';
+      expect(parseStackTraceLine(line)).toEqual({
+        function: 'reportError',
+        filename: 'index.android.bundle',
+        lineno: 1,
+        colno: 849989,
       });
     });
 
@@ -165,6 +188,39 @@ describe('Stack Trace Parser', () => {
       const faroFrames = toFaroStackFrames([]);
       expect(faroFrames).toEqual([]);
     });
+
+    it('maps release placeholders to bundle.js in Faro frames', () => {
+      const parsed = parseStackTraceLine('a@123:456');
+      expect(parsed).not.toBeNull();
+      const faroFrames = toFaroStackFrames([parsed!]);
+      expect(faroFrames[0]?.filename).toBe('bundle.js');
+    });
+
+    it('maps release placeholders to a custom bundle filename', () => {
+      const parsed = parseStackTraceLine('a@123:456');
+      expect(parsed).not.toBeNull();
+      const faroFrames = toFaroStackFrames([parsed!], { releaseBundleFilename: 'index.android.bundle' });
+      expect(faroFrames[0]?.filename).toBe('index.android.bundle');
+    });
+
+    it('collapses Hermes absolute .app bundle path to basename so uploads match ingest keys', () => {
+      const iosPath =
+        '/Users/ci/Library/Developer/CoreSimulator/Devices/ABC/Data/Containers/Bundle/Application/62A2/QuickPizza.app/main.jsbundle';
+      const parsed = parseStackTraceLine(`  at reportHandledException (${iosPath}:1:1249030)`);
+      expect(parsed).not.toBeNull();
+      const faroFrames = toFaroStackFrames([parsed!], { releaseBundleFilename: 'main.jsbundle' });
+      expect(faroFrames[0]?.filename).toBe('main.jsbundle');
+      expect(faroFrames[0]?.lineno).toBe(1);
+      expect(faroFrames[0]?.colno).toBe(1249030);
+    });
+
+    it('collapses absolute Android artifact path ending in index.android.bundle', () => {
+      const apkPath = '/data/app/org.example.cp/base.apk/assets/index.android.bundle';
+      const parsed = parseStackTraceLine(`  at reportError (${apkPath}:1:849989)`);
+      expect(parsed).not.toBeNull();
+      const faroFrames = toFaroStackFrames([parsed!], { releaseBundleFilename: 'index.android.bundle' });
+      expect(faroFrames[0]?.filename).toBe('index.android.bundle');
+    });
   });
 
   describe('getStackFramesFromError', () => {
@@ -242,6 +298,15 @@ describe('Stack Trace Parser', () => {
       expect(result.context).toHaveProperty('isFatal', 'true');
       expect(result.context).toHaveProperty('customField', 'customValue');
       expect(result.context).toHaveProperty('platform');
+    });
+
+    it('applies stack parse options for release frames', () => {
+      const error = new Error('Test');
+      error.stack = 'global@10:20';
+
+      const result = enhanceErrorWithContext(error, undefined, { releaseBundleFilename: 'main.jsbundle' });
+
+      expect(result.stackFrames[0]?.filename).toBe('main.jsbundle');
     });
   });
 });

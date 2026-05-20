@@ -70,6 +70,11 @@ type ReactNativeConfigOverrides = {
   consoleCaptureOptions?: Config['consoleInstrumentation'];
   enableUserActions?: boolean;
   userActionsOptions?: Config['userActionsInstrumentation'];
+  /**
+   * Hermes / minified release stack lines omit a file path. This must match the Metro plugin
+   * source map top-level `file` (default `bundle.js`, or your `sourceMapFile` option there).
+   */
+  releaseBundleFilename?: string;
 };
 
 /**
