@@ -38,21 +38,6 @@ function getDemoEnvironment(): string {
   return DEMO_ENVIRONMENTS[randomIndex];
 }
 
-function extractTokenFromCollectorUrl(collectorUrl: string): string | undefined {
-  try {
-    const url = new URL(collectorUrl);
-    const { pathname } = url as unknown as { pathname: string };
-    const segments = pathname.split('/').filter(Boolean);
-    const collectIndex = segments.indexOf('collect');
-    if (collectIndex === -1) {
-      return undefined;
-    }
-    return segments[collectIndex + 1];
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Initialize Faro for React Native demo app with Grafana Cloud.
  * Flag-based config: enable what you need, makeRNConfig builds the rest.
@@ -72,7 +57,6 @@ export async function initFaro() {
   const appVersion = getDemoVersion();
   const appEnvironment = getDemoEnvironment();
   const fetchVitalsInterval = FARO_DEBUG ? 5000 : 30000;
-  const apiKey = extractTokenFromCollectorUrl(FARO_COLLECTOR_URL);
 
   const config: ReactNativeConfig = {
     app: {
@@ -82,7 +66,6 @@ export async function initFaro() {
     },
 
     url: FARO_COLLECTOR_URL,
-    apiKey,
 
     // Always sample demo sessions so telemetry is visible during local testing.
     sessionTracking: {
