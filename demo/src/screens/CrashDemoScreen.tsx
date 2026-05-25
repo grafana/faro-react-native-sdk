@@ -60,7 +60,9 @@ export function CrashDemoScreen() {
             } else {
               Alert.alert(
                 'Not Available',
-                `CrashTestModule is not available. Make sure you rebuilt the ${Platform.OS === 'ios' ? 'iOS' : 'Android'} app.`,
+                `CrashTestModule is not available. Make sure you rebuilt the ${
+                  Platform.OS === 'ios' ? 'iOS' : 'Android'
+                } app.`,
               );
             }
           },
@@ -143,7 +145,9 @@ export function CrashDemoScreen() {
             } else {
               Alert.alert(
                 'Not Available',
-                `CrashTestModule.triggerSlowFrames is not available. Make sure you rebuilt the ${Platform.OS === 'ios' ? 'iOS' : 'Android'} app.`,
+                `CrashTestModule.triggerSlowFrames is not available. Make sure you rebuilt the ${
+                  Platform.OS === 'ios' ? 'iOS' : 'Android'
+                } app.`,
               );
             }
           },
@@ -171,7 +175,9 @@ export function CrashDemoScreen() {
             } else {
               Alert.alert(
                 'Not Available',
-                `CrashTestModule.triggerHeavyLoad is not available. Make sure you rebuilt the ${Platform.OS === 'ios' ? 'iOS' : 'Android'} app.`,
+                `CrashTestModule.triggerHeavyLoad is not available. Make sure you rebuilt the ${
+                  Platform.OS === 'ios' ? 'iOS' : 'Android'
+                } app.`,
               );
             }
           },
