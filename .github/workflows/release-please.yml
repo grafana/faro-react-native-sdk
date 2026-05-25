@@ -1,0 +1,145 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+
+    steps:
+      - name: Mint GitHub App token
+        id: get-github-app-token
+        uses: grafana/shared-workflows/actions/create-github-app-token@259ba21cb3ff07724f331e26d926d655d24b317b # create-github-app-token/v0.2.3
+        with:
+          github_app: app-o11y-kwl-ci
+
+      - uses: googleapis/release-please-action@64d83e95d898ede84e4555719aba555c3244d469
+        id: release
+        with:
+          token: ${{ steps.get-github-app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: release-please-manifest.json
+
+      # release-please rewrites cross-package dep ranges in each package.json
+      # (e.g. `@grafana/faro-react-native` from `^1.1.0` to `^1.2.0`) but does
+      # not touch yarn.lock. The pull-request workflow runs
+      # `yarn install --frozen-lockfile`, which fails on the release PR because
+      # the resolution would change — additionally, Yarn berry auto-enables
+      # hardened mode on public PR workflows, which forbids any lockfile
+      # mutation. Refresh yarn.lock on the release branch so CI passes.
+      - name: Resolve release PR branch
+        id: release-branch
+        if: ${{ steps.release.outputs.prs_created == 'true' }}
+        env:
+          PR_JSON: ${{ steps.release.outputs.pr }}
+        run: |
+          BRANCH="$(echo "$PR_JSON" | jq -r '.headBranchName')"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release PR branch
+        if: ${{ steps.release.outputs.prs_created == 'true' && steps.release-branch.outputs.branch != '' && steps.release-branch.outputs.branch != 'null' }}
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          ref: ${{ steps.release-branch.outputs.branch }}
+          token: ${{ steps.get-github-app-token.outputs.token }}
+          persist-credentials: true
+
+      - name: Enable corepack
+        if: ${{ steps.release.outputs.prs_created == 'true' && steps.release-branch.outputs.branch != '' && steps.release-branch.outputs.branch != 'null' }}
+        run: corepack enable
+
+      - name: Setup Node.js
+        if: ${{ steps.release.outputs.prs_created == 'true' && steps.release-branch.outputs.branch != '' && steps.release-branch.outputs.branch != 'null' }}
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Refresh yarn.lock and generated package meta on release PR
+        if: ${{ steps.release.outputs.prs_created == 'true' && steps.release-branch.outputs.branch != '' && steps.release-branch.outputs.branch != 'null' }}
+        run: |
+          set -euo pipefail
+          # `--mode update-lockfile` writes the lockfile without installing
+          # node_modules and bypasses Yarn berry's hardened-mode lockfile
+          # mutation check, which is what we hit on the release PR.
+          yarn install --mode update-lockfile
+          node packages/react-native/scripts/sync-faro-rn-package-meta.mjs
+          if git diff --quiet -- yarn.lock packages/react-native/src/generated/faroRNPackageMeta.ts; then
+            echo "yarn.lock and package meta already in sync."
+            exit 0
+          fi
+          # Match the identity the release-please-action uses for its commits
+          # on the same branch, so this commit appears as the same bot.
+          git config user.name 'app-o11y-kwl-ci[bot]'
+          git config user.email 'app-o11y-kwl-ci[bot]@users.noreply.github.com'
+          git add yarn.lock packages/react-native/src/generated/faroRNPackageMeta.ts
+          git commit -m 'chore: refresh yarn.lock and package meta for release PR'
+          git push
+
+  publish:
+    name: Publish to NPM
+    runs-on: ubuntu-latest
+    # Trusted Publishing (OIDC): configure on npmjs.com for @grafana/faro-react-native
+    # and @grafana/faro-react-native-tracing, pointing at this repo, workflow file
+    # `.github/workflows/release-please.yml`, and this environment name.
+    environment: npm-trusted-publishing
+    needs: release-please
+    permissions:
+      contents: read
+      id-token: write
+    if: ${{ needs.release-please.outputs.releases_created }}
+    env:
+      NPM_CONFIG_ACCESS: public
+      NPM_CONFIG_PROVENANCE: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          persist-credentials: false
+          ref: main
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6
+        with:
+          node-version-file: .nvmrc
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Sync generated package meta
+        run: node packages/react-native/scripts/sync-faro-rn-package-meta.mjs
+
+      - name: Build production bundle
+        run: yarn build
+
+      - name: Run tests
+        run: |
+          yarn quality:lint
+          yarn quality:circular-deps
+          yarn quality:test || yarn quality:test || yarn quality:test
+
+      - name: Install npm latest version
+        run: npm install -g npm@latest
+
+      - name: Publish packages to NPM
+        run: npm run publish -- from-package --yes --no-private

@@ -1,11 +1,29 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+Release notes for published npm packages are maintained by release-please:
+
+- [`packages/react-native/CHANGELOG.md`](packages/react-native/CHANGELOG.md) — `@grafana/faro-react-native`
+- [`packages/react-native-tracing/CHANGELOG.md`](packages/react-native-tracing/CHANGELOG.md) — `@grafana/faro-react-native-tracing`
+
+The sections below are a historical overview of the monorepo. New releases are documented in the per-package changelogs above.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Hermes / minified JavaScript error symbolication in `@grafana/faro-react-native` ([#40](https://github.com/grafana/faro-react-native-sdk/pull/40)):
+  - `releaseBundleFilename` config so stack `frame.filename` values match the composed source map `file` field
+  - Hermes-oriented stack trace normalization in `stackTraceParser` (for example `address at …` prefixes and `func@line:col` placeholders)
+  - `meta.app.bundleId` populated from the Metro preamble via `@grafana/faro-core` `getBundleId`
+- Autolinked composed source map upload on Android and iOS Release builds (via `@grafana/faro-metro-plugin`); missing config or shim warns and skips without failing the build
+
+### Fixed
+
+- Normalize Hermes bundle paths and load Xcode env before composed map upload ([#40](https://github.com/grafana/faro-react-native-sdk/pull/40))
+- Gate Android upload on bundle success and load Xcode env before `FARO_*` checks ([#40](https://github.com/grafana/faro-react-native-sdk/pull/40))
 
 ## [1.1.0] - 2026-05-06
 

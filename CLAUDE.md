@@ -365,12 +365,13 @@ yarn build
 
 ## Package Publishing
 
-Managed via Lerna:
+Managed via [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`):
 
-```bash
-# Version packages (prompts for version bump, commit, tags). Push to GitHub to trigger the release workflow.
-yarn bump:version
-```
+1. Merge conventional commits to `main`.
+2. release-please opens a release PR with version bumps and changelogs.
+3. Merging the release PR tags the repo and publishes `@grafana/faro-react-native` and `@grafana/faro-react-native-tracing` to npm via Trusted Publishing.
+
+There is no supported manual release path in this repo. Version bumps, changelogs, tags, and npm publish are all handled by release-please after merge to `main`.
 
 **Pre-publish checklist:**
 
