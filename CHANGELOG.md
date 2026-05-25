@@ -14,16 +14,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Hermes / minified JavaScript error symbolication in `@grafana/faro-react-native` ([#40](https://github.com/grafana/faro-react-native-sdk/pull/40)):
-  - `releaseBundleFilename` config so stack `frame.filename` values match the composed source map `file` field
-  - Hermes-oriented stack trace normalization in `stackTraceParser` (for example `address at …` prefixes and `func@line:col` placeholders)
-  - `meta.app.bundleId` populated from the Metro preamble via `@grafana/faro-core` `getBundleId`
-- Autolinked composed source map upload on Android and iOS Release builds (via `@grafana/faro-metro-plugin`); missing config or shim warns and skips without failing the build
+- Hermes release error symbolication: new `releaseBundleFilename` config option
+  (must match the Metro plugin source map top-level `file`, e.g.
+  `index.android.bundle` or `main.jsbundle`) so error stack frames align with
+  uploaded composed maps in Grafana Frontend Observability.
+- `meta.app.bundleId` on outgoing payloads via `@grafana/faro-core`
+  `getBundleId()` and the Faro bundle id preamble injected at Metro bundle
+  time by `@grafana/faro-metro-plugin` (same id as `FARO_BUNDLE_ID` at upload).
+- Autolinked composed Hermes source map upload on Android release
+  (`faroUploadComposedSourceMapAndroidRelease`) and iOS Release (Xcode build
+  phase `[Faro] Upload composed source map (Release)`), invoking
+  `@grafana/faro-metro-plugin` when `FARO_BUNDLE_ID` and `FARO_SOURCEMAP_*`
+  env vars are set; use `FARO_SKIP_SOURCEMAP_UPLOAD=1` to skip.
+- README section documenting the end-to-end symbolication flow (Metro →
+  release upload → `meta.app.bundleId` → readable stacks in Grafana).
+
+### Changed
+
+- Error stack trace parsing now normalizes Hermes/minified release frame
+  `filename` values to the configured release bundle basename instead of
+  verbose Hermes labels, matching ingest source map lookup.
 
 ### Fixed
 
-- Normalize Hermes bundle paths and load Xcode env before composed map upload ([#40](https://github.com/grafana/faro-react-native-sdk/pull/40))
-- Gate Android upload on bundle success and load Xcode env before `FARO_*` checks ([#40](https://github.com/grafana/faro-react-native-sdk/pull/40))
+- Android composed source map upload runs only after the release bundle task
+  succeeds.
+- iOS upload script loads `ios/.xcode.env` / `.xcode.env.local` before
+  checking `FARO_*` env vars so Xcode-local configuration is picked up.
+
+### Security
+
+- Added root `.npmrc` and `.yarnrc` to disable package lifecycle scripts when
+  npm or Yarn Classic is used, complementing existing Yarn Berry
+  `enableScripts: false` configuration.
 
 ## [1.1.0] - 2026-05-06
 
