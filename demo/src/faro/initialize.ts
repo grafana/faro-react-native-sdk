@@ -1,10 +1,12 @@
-import { FARO_COLLECTOR_URL } from '@env';
-import { InternalLoggerLevel } from '@grafana/faro-core';
+/* global __DEV__ */
 
+import { FARO_COLLECTOR_URL } from '@env';
+
+import { InternalLoggerLevel } from '@grafana/faro-core';
 import {
   initializeFaro,
-  SamplingFunction,
   type ReactNativeConfig,
+  SamplingRate,
 } from '@grafana/faro-react-native';
 
 /** In dev, use VERBOSE internal logger to diagnose collector connectivity issues */
@@ -41,7 +43,7 @@ function getDemoEnvironment(): string {
  * Flag-based config: enable what you need, makeRNConfig builds the rest.
  * Aligned with mobile-o11y-demo (Flutter) and faro-flutter-sdk example.
  */
-export function initFaro() {
+export async function initFaro() {
   console.log('[FARO DEBUG] Starting Faro initialization');
   console.log('[FARO DEBUG] FARO_COLLECTOR_URL:', FARO_COLLECTOR_URL);
 
@@ -65,12 +67,9 @@ export function initFaro() {
 
     url: FARO_COLLECTOR_URL,
 
-    // Session sampling: 10% in production, 100% in staging/development
-    // Uses SamplingFunction (Flutter-style) - same as faro-flutter-sdk sampling.dart
+    // Always sample demo sessions so telemetry is visible during local testing.
     sessionTracking: {
-      sampling: new SamplingFunction(context =>
-        context.meta.app?.environment === 'production' ? 0.1 : 1,
-      ),
+      sampling: new SamplingRate(1),
     },
 
     // Performance vitals (aligned with Flutter SDK)
@@ -102,7 +101,7 @@ export function initFaro() {
     enableTracing: true,
   };
 
-  const faro = initializeFaro(config);
+  const faro = await initializeFaro(config);
 
   faro.api.pushEvent('faro_initialized', {
     timestamp: new Date().toISOString(),
