@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Hermes release error symbolication: new `releaseBundleFilename` config option
+  (must match the Metro plugin source map top-level `file`, e.g.
+  `index.android.bundle` or `main.jsbundle`) so error stack frames align with
+  uploaded composed maps in Grafana Frontend Observability.
+- `meta.app.bundleId` on outgoing payloads via `@grafana/faro-core`
+  `getBundleId()` and the Faro bundle id preamble injected at Metro bundle
+  time by `@grafana/faro-metro-plugin` (same id as `FARO_BUNDLE_ID` at upload).
+- Autolinked composed Hermes source map upload on Android release
+  (`faroUploadComposedSourceMapAndroidRelease`) and iOS Release (Xcode build
+  phase `[Faro] Upload composed source map (Release)`), invoking
+  `@grafana/faro-metro-plugin` when `FARO_BUNDLE_ID` and `FARO_SOURCEMAP_*`
+  env vars are set; use `FARO_SKIP_SOURCEMAP_UPLOAD=1` to skip.
+- README section documenting the end-to-end symbolication flow (Metro →
+  release upload → `meta.app.bundleId` → readable stacks in Grafana).
+
+### Changed
+
+- Error stack trace parsing now normalizes Hermes/minified release frame
+  `filename` values to the configured release bundle basename instead of
+  verbose Hermes labels, matching ingest source map lookup.
+
+### Fixed
+
+- Android composed source map upload runs only after the release bundle task
+  succeeds.
+- iOS upload script loads `ios/.xcode.env` / `.xcode.env.local` before
+  checking `FARO_*` env vars so Xcode-local configuration is picked up.
+
+### Security
+
+- Added root `.npmrc` and `.yarnrc` to disable package lifecycle scripts when
+  npm or Yarn Classic is used, complementing existing Yarn Berry
+  `enableScripts: false` configuration.
+
 ## [1.1.0] - 2026-05-06
 
 ### Added
