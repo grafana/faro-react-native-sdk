@@ -44,20 +44,20 @@ Released in sync with `@grafana/faro-react-native-tracing@1.1.0` (tracing fixes 
 
 ### Bug Fixes
 
-* apply Resource Timing polyfill on all platforms — polyfill `performance.getEntriesByType('resource')` to return `[]` and suppress `Deprecated API for given entry type` warnings on React Native ([#34](https://github.com/grafana/faro-react-native-sdk/pull/34))
+- apply Resource Timing polyfill on all platforms — polyfill `performance.getEntriesByType('resource')` to return `[]` and suppress `Deprecated API for given entry type` warnings on React Native ([#34](https://github.com/grafana/faro-react-native-sdk/pull/34))
 
 ### Documentation
 
-* document default `tracingOptions.instrumentationOptions.enableXhrInstrumentation: false` in the README initialization example ([#34](https://github.com/grafana/faro-react-native-sdk/pull/34))
+- document default `tracingOptions.instrumentationOptions.enableXhrInstrumentation: false` in the README initialization example ([#34](https://github.com/grafana/faro-react-native-sdk/pull/34))
 
 ## [1.0.0](https://github.com/grafana/faro-react-native-sdk/compare/react-native-v1.0.0-alpha.1...react-native-v1.0.0) (2026-04-15)
 
 ### Bug Fixes
 
-* wait until session device attributes are initialized before initializing Faro to avoid lost data during initialization
+- wait until session device attributes are initialized before initializing Faro to avoid lost data during initialization
 
 ## [1.0.0-alpha.1](https://github.com/grafana/faro-react-native-sdk/releases/tag/react-native-v1.0.0-alpha.1) (2026-03-27)
 
 ### Features
 
-* initial release of `@grafana/faro-react-native` with error tracking, performance monitoring, session management, navigation tracking, user actions, native iOS/Android modules, and transports
+- initial release of `@grafana/faro-react-native` with error tracking, performance monitoring, session management, navigation tracking, user actions, native iOS/Android modules, and transports

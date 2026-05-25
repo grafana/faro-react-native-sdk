@@ -2,10 +2,13 @@
 
 Release notes for published npm packages are maintained by release-please:
 
-- [`packages/react-native/CHANGELOG.md`](packages/react-native/CHANGELOG.md) — `@grafana/faro-react-native`
-- [`packages/react-native-tracing/CHANGELOG.md`](packages/react-native-tracing/CHANGELOG.md) — `@grafana/faro-react-native-tracing`
+- [`packages/react-native/CHANGELOG.md`](packages/react-native/CHANGELOG.md) —
+  `@grafana/faro-react-native`
+- [`packages/react-native-tracing/CHANGELOG.md`](packages/react-native-tracing/CHANGELOG.md)
+  — `@grafana/faro-react-native-tracing`
 
-The sections below are a historical overview of the monorepo. New releases are documented in the per-package changelogs above.
+The sections below are a historical overview of the monorepo. New releases are
+documented in the per-package changelogs above.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

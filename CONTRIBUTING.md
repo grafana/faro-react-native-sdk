@@ -248,13 +248,21 @@ yarn quality:lint:eslint --fix
 
 ## Release Process
 
-Releases are automated with [release-please](https://github.com/googleapis/release-please) via `.github/workflows/release-please.yml`:
+Releases are automated with
+[release-please](https://github.com/googleapis/release-please) via
+`.github/workflows/release-please.yml`:
 
-1. Merge [conventional commits](https://www.conventionalcommits.org/) to `main` (`feat:`, `fix:`, etc.).
-2. release-please opens a release PR with version bumps, per-package changelogs, and updated `release-please-manifest.json`.
-3. After the release PR merges, the workflow tags the repo and publishes `@grafana/faro-react-native` and `@grafana/faro-react-native-tracing` to npm (Trusted Publishing + provenance).
+1. Merge [conventional commits](https://www.conventionalcommits.org/) to `main`
+   (`feat:`, `fix:`, etc.).
+2. release-please opens a release PR with version bumps, per-package changelogs,
+   and updated `release-please-manifest.json`.
+3. After the release PR merges, the workflow tags the repo and publishes
+   `@grafana/faro-react-native` and `@grafana/faro-react-native-tracing` to npm
+   (Trusted Publishing + provenance).
 
-Maintainers do not run manual `lerna version` or tag pushes for releases. If release-please or CI is broken, fix the workflow rather than bypassing it with ad-hoc publishes.
+Maintainers do not run manual `lerna version` or tag pushes for releases. If
+release-please or CI is broken, fix the workflow rather than bypassing it with
+ad-hoc publishes.
 
 ### Version Strategy
 
