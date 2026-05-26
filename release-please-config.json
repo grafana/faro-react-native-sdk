@@ -1,0 +1,21 @@
+{
+  "bootstrap-sha": "8ca367978d53ef163886a2e99690c6f8a61416dc",
+  "plugins": [
+    {
+      "type": "node-workspace",
+      "updatePeerDependencies": true
+    }
+  ],
+  "packages": {
+    "packages/react-native": {
+      "changelog-path": "CHANGELOG.md",
+      "release-type": "node"
+    },
+    "packages/react-native-tracing": {
+      "changelog-path": "CHANGELOG.md",
+      "release-type": "node"
+    }
+  },
+  "include-v-in-tag": true,
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
+}

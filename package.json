@@ -26,6 +26,7 @@
     "watch": "lerna run --parallel watch",
     "bootstrap": "lerna bootstrap",
     "build": "lerna run build",
+    "publish": "lerna publish",
     "prepublishOnly": "yarn build",
     "clean": "run-s 'clean:*'",
     "clean:packages": "lerna run --parallel clean",
@@ -42,7 +43,6 @@
     "quality:lint:root:markdown": "markdownlint README.md CHANGELOG.md CONTRIBUTING.md",
     "quality:lint:root:prettier": "prettier --cache --cache-location=.cache/prettier/root -c \"./**/*.{js,jsx,ts,tsx,css,scss,md,yaml,yml,json}\" \"!./{demo,packages}/**\"",
     "quality:circular-deps": "lerna run --parallel quality:circular-deps",
-    "bump:version": "yarn exec lerna version",
     "git-hooks": "run-s git-hooks:*",
     "git-hooks:pre-commit": "lint-staged"
   },
