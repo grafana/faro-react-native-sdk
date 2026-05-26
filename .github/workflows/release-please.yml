@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  # Manual retry when a push to main does not enqueue this workflow (rare GitHub delivery miss).
+  workflow_dispatch:
 
 permissions:
   contents: read
