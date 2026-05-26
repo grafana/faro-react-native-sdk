@@ -59,7 +59,7 @@ jobs:
           fi
 
   # release-please rewrites cross-package dep ranges in each package.json but does
-  # not touch yarn.lock. The pull-request workflow runs `yarn install --frozen-lockfile`,
+  # not touch yarn.lock. The pull-request workflow runs `yarn install --immutable`,
   # which fails on the release PR when the resolution would change. Yarn berry also
   # auto-enables hardened mode on public PR workflows, forbidding lockfile mutation.
   # Refresh yarn.lock (and generated package meta) on the release branch so CI passes.
