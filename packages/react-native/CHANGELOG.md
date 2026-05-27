@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.2.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.1.0...faro-react-native-v1.2.0) (2026-05-26)
+
+### Features
+
+- add js hermes simbolification support for RN ([d6ded03](https://github.com/grafana/faro-react-native-sdk/commit/d6ded03e157b417669923ec59324c35c9ae0ff49))
+- configure release please to manage release of both packages ([6ccb29f](https://github.com/grafana/faro-react-native-sdk/commit/6ccb29ff5010887ec2516fd8f0e75a800b806b0d))
+- configure release please to manage release of both packages ([71d6ac1](https://github.com/grafana/faro-react-native-sdk/commit/71d6ac13813e5c6c34271aeb2fa468beedb6021d))
+- **react-native:** autolink Hermes composed source map upload on Android and iOS ([d74342b](https://github.com/grafana/faro-react-native-sdk/commit/d74342b2de863f8a0e5b3630aaf5b9740a1dbbf1))
+- **react-native:** Hermes JS symbolication and autolinked composed source map upload ([81582e1](https://github.com/grafana/faro-react-native-sdk/commit/81582e1c2c644cfaa6fca00d540f7126793ee216))
+
+### Bug Fixes
+
+- lint ([6ad07cc](https://github.com/grafana/faro-react-native-sdk/commit/6ad07ccb6e8feb9359aa2a3c06f6e3571c301fb9))
+- lint errors ([883cb12](https://github.com/grafana/faro-react-native-sdk/commit/883cb12822ea369b419222dd24dc25c817498dde))
+- **react-native:** gate Android upload on bundle success and load Xcode env before FARO\_\* checks ([252e7a5](https://github.com/grafana/faro-react-native-sdk/commit/252e7a5869fa5d34faa7bce968b6969b18f8a00d))
+- **react-native:** normalize Hermes bundle paths and load Xcode env before map upload ([cd60f41](https://github.com/grafana/faro-react-native-sdk/commit/cd60f41faa7648c6ddb726889fab07669bf59b89))
+- remove circular optional peer-dep on tracing ([2e779ae](https://github.com/grafana/faro-react-native-sdk/commit/2e779ae9ef1266c7a7e8b0d07d830ced0709c7dd))
+- unblock release-please by breaking workspace dep cycle ([7bf8106](https://github.com/grafana/faro-react-native-sdk/commit/7bf8106eb44b998b75217a8beb01b56d0a011b57))
+- update changelog description for each version already released with no data ([3a8d2aa](https://github.com/grafana/faro-react-native-sdk/commit/3a8d2aadb0d96b7a69a2f56aa42beb4eb7f27908))
+
 ## [Unreleased]
 
 ### Added
