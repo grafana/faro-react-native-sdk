@@ -180,7 +180,7 @@ jobs:
     # Trusted Publishing (OIDC): configure on npmjs.com for @grafana/faro-react-native
     # and @grafana/faro-react-native-tracing, pointing at this repo, workflow file
     # `.github/workflows/release-please.yml`, and this environment name.
-    environment: npm-trusted-publishing
+    environment: npm-publish
     needs: [release-please, verify]
     permissions:
       contents: read
