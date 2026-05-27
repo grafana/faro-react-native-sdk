@@ -1859,7 +1859,7 @@ __metadata:
     "@react-native-community/cli": "npm:20.1.3"
     "@react-native-community/cli-platform-android": "npm:20.1.3"
     "@react-native-community/cli-platform-ios": "npm:20.1.3"
-    "@react-native-community/netinfo": "npm:^11.4.1"
+    "@react-native-community/netinfo": "npm:^12.0.1"
     "@react-native/babel-preset": "npm:0.83.9"
     "@react-native/codegen": "npm:0.83.9"
     "@react-native/eslint-config": "npm:0.83.9"
@@ -4126,13 +4126,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@react-native-community/netinfo@npm:^11.4.1":
-  version: 11.5.2
-  resolution: "@react-native-community/netinfo@npm:11.5.2"
+"@react-native-community/netinfo@npm:^12.0.1":
+  version: 12.0.1
+  resolution: "@react-native-community/netinfo@npm:12.0.1"
   peerDependencies:
     react: "*"
     react-native: ">=0.59"
-  checksum: 10c0/d5301d7d8b363753b6980f5d17dc47ad4933fc46e4010aceb937c0f673b35a6648f259df930b2b48d99344a90ff7a187344486100c4874462d88545f1647bef5
+  checksum: 10c0/66c5fab04ef3ffe9b1f2e3578e7d3052a8c3ae327d94fa41f7d95ec4db3de4dd4017bf486013f031cb1aa12909002492474f259ea6212471f730cca39239dd35
   languageName: node
   linkType: hard
 
