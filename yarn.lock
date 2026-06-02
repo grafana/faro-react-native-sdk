@@ -1754,7 +1754,7 @@ __metadata:
     "@react-native/babel-preset": "npm:0.85.3"
     "@react-native/codegen": "npm:0.85.3"
     "@react-native/eslint-config": "npm:0.85.3"
-    "@react-native/gradle-plugin": "npm:0.83.9"
+    "@react-native/gradle-plugin": "npm:0.85.3"
     "@react-native/metro-config": "npm:0.85.3"
     "@react-native/new-app-screen": "npm:0.83.9"
     "@react-native/typescript-config": "npm:0.83.9"
@@ -4271,6 +4271,13 @@ __metadata:
   version: 0.85.1
   resolution: "@react-native/gradle-plugin@npm:0.85.1"
   checksum: 10c0/ee88fce51e3091ea4374e43067896db37781897f8dfffe543b051bd0c328accf75e1154de1b2c9f8682ab601fa3ae16330d5199f85054eebabc93373d4d43b0a
+  languageName: node
+  linkType: hard
+
+"@react-native/gradle-plugin@npm:0.85.3":
+  version: 0.85.3
+  resolution: "@react-native/gradle-plugin@npm:0.85.3"
+  checksum: 10c0/a5a57a0f0783cc31f3daec9e092c32774e72dbae334e9a3eaa86a4ff55f6563069003213d72efc2666e2381b73c653a2f8a4af42c8efd5a974eb848233984a2c
   languageName: node
   linkType: hard
 
