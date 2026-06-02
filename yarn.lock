@@ -1757,7 +1757,7 @@ __metadata:
     "@react-native/gradle-plugin": "npm:0.83.9"
     "@react-native/metro-config": "npm:0.85.3"
     "@react-native/new-app-screen": "npm:0.83.9"
-    "@react-native/typescript-config": "npm:0.83.9"
+    "@react-native/typescript-config": "npm:0.85.3"
     "@react-navigation/native": "npm:^6.1.18"
     "@react-navigation/native-stack": "npm:^6.11.0"
     "@types/jest": "npm:29.5.14"
@@ -4349,10 +4349,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@react-native/typescript-config@npm:0.83.9":
-  version: 0.83.9
-  resolution: "@react-native/typescript-config@npm:0.83.9"
-  checksum: 10c0/26d03bc49a4adff9c41acafc5706d3244dd4dbb54e9f90f4136916fdb7c4994445f3c48bb03cd6c468c4793e97e6de68cb2c308f7911ea0c920da2da1abc543d
+"@react-native/typescript-config@npm:0.85.3":
+  version: 0.85.3
+  resolution: "@react-native/typescript-config@npm:0.85.3"
+  checksum: 10c0/6adf0fd9ae9d93b57fde6490e8a1531abc1bd46ebfc278fbaf4afa485280a61780bbbd0f188754faab65f705f0c107bd772278955866b354c8116bc2aa16cce5
   languageName: node
   linkType: hard
 
