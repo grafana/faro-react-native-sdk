@@ -1739,7 +1739,7 @@ __metadata:
     "@react-native-community/cli-platform-ios": "npm:20.1.3"
     "@react-native-community/netinfo": "npm:^11.4.1"
     "@react-native/babel-preset": "npm:0.85.3"
-    "@react-native/codegen": "npm:0.83.9"
+    "@react-native/codegen": "npm:0.85.3"
     "@react-native/eslint-config": "npm:0.83.9"
     "@react-native/gradle-plugin": "npm:0.83.9"
     "@react-native/metro-config": "npm:0.83.9"
