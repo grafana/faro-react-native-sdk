@@ -77,14 +77,17 @@ fi
 
 NODE_BIN="${NODE_BINARY:-node}"
 
-if ! "$NODE_BIN" "$CLI_PATH" \
+upload_exit=0
+"$NODE_BIN" "$CLI_PATH" \
   --verbose \
   --map "$MAP" \
   --endpoint "$FARO_SOURCEMAP_ENDPOINT" \
   --app-id "$FARO_SOURCEMAP_APP_ID" \
   --stack-id "$FARO_SOURCEMAP_STACK_ID" \
   --api-key "$FARO_SOURCEMAP_API_KEY" \
-  --bundle-id "$FARO_BUNDLE_ID"; then
-  echo "warning: [Faro] Composed source map upload failed (exit $?)"
+  --bundle-id "$FARO_BUNDLE_ID" || upload_exit=$?
+
+if [ "$upload_exit" -ne 0 ]; then
+  echo "warning: [Faro] Composed source map upload failed (exit $upload_exit)"
 fi
 exit 0
