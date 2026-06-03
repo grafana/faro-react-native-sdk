@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.2.0...faro-react-native-v1.2.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* **react-native:** capture real exit code in iOS source map upload warning ([cd1e199](https://github.com/grafana/faro-react-native-sdk/commit/cd1e1999feaed171ad1ae6b783c7e21f810be979))
+* **react-native:** do not fail iOS Release build on source map upload errors ([6373026](https://github.com/grafana/faro-react-native-sdk/commit/637302606e8e113b7f6f68a06f1ae20b49731004))
+* **react-native:** do not fail iOS Release build on source map upload errors ([a8f2cdc](https://github.com/grafana/faro-react-native-sdk/commit/a8f2cdc638e5c38f7eff774e2e512b01ef07afa6))
+
 ## [1.2.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.1.0...faro-react-native-v1.2.0) (2026-05-26)
 
 ### Features
