@@ -80,6 +80,15 @@
   },
   "packageManager": "yarn@4.14.1",
   "resolutions": {
+    "@react-native/babel-preset": "0.85.3",
+    "@react-native/codegen": "0.85.3",
+    "@react-native/eslint-config": "0.85.3",
+    "@react-native/gradle-plugin": "0.85.3",
+    "@react-native/jest-preset": "0.85.3",
+    "@react-native/metro-config": "0.85.3",
+    "@react-native/typescript-config": "0.85.3",
+    "react": "19.2.3",
+    "react-test-renderer": "19.2.3",
     "axios": "1.16.1",
     "markdownlint-cli/minimatch": "10.2.5",
     "markdownlint-cli/smol-toml": "1.6.1"
