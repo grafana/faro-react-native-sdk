@@ -87,8 +87,8 @@
     "@react-native/jest-preset": "0.85.3",
     "@react-native/metro-config": "0.85.3",
     "@react-native/typescript-config": "0.85.3",
-    "react": "19.2.3",
-    "react-test-renderer": "19.2.3",
+    "react": "19.2.6",
+    "react-test-renderer": "19.2.6",
     "axios": "1.16.1",
     "markdownlint-cli/minimatch": "10.2.5",
     "markdownlint-cli/smol-toml": "1.6.1"
