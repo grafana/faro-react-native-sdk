@@ -53,10 +53,7 @@ export function normalizeCrashTraceExceptionMessage(rawMessage: string | undefin
   return (rnFatalMatch?.[1] ?? message).trim() || undefined;
 }
 
-function parseJsFrameLine(
-  line: string,
-  options?: ParseAndroidCrashTraceOptions
-): ExceptionStackFrame | null {
+function parseJsFrameLine(line: string, options?: ParseAndroidCrashTraceOptions): ExceptionStackFrame | null {
   const parsed = parseStackTraceLine(line);
   if (!parsed) {
     return null;

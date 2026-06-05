@@ -1,7 +1,4 @@
-import {
-  normalizeCrashTraceExceptionMessage,
-  parseAndroidCrashTrace,
-} from './parseAndroidCrashTrace';
+import { normalizeCrashTraceExceptionMessage, parseAndroidCrashTrace } from './parseAndroidCrashTrace';
 
 describe('parseAndroidCrashTrace', () => {
   it('parses QuickPizza-style ApplicationExitInfo traces', () => {
@@ -138,9 +135,9 @@ describe('parseAndroidCrashTrace', () => {
   });
 
   it('normalizes RN fatal JS error header shape without relying on exception type', () => {
-    expect(
-      normalizeCrashTraceExceptionMessage('Error: QuickPizza RN unhandled debug exception, stack:')
-    ).toBe('QuickPizza RN unhandled debug exception');
+    expect(normalizeCrashTraceExceptionMessage('Error: QuickPizza RN unhandled debug exception, stack:')).toBe(
+      'QuickPizza RN unhandled debug exception'
+    );
   });
 
   it('leaves native exception messages unchanged', () => {

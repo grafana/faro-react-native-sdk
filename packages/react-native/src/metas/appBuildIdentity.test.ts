@@ -4,9 +4,7 @@ import { formatSymbolsBundleId, loadAppSymbolsBundleIdForInit } from './appBuild
 
 describe('formatSymbolsBundleId', () => {
   it('joins applicationId, versionCode and versionName with @', () => {
-    expect(formatSymbolsBundleId('com.grafana.quickpizza', '42', '1.0.0')).toBe(
-      'com.grafana.quickpizza@42@1.0.0'
-    );
+    expect(formatSymbolsBundleId('com.grafana.quickpizza', '42', '1.0.0')).toBe('com.grafana.quickpizza@42@1.0.0');
   });
 });
 

@@ -1,5 +1,6 @@
-import { globalObject } from '@grafana/faro-core';
 import DeviceInfo from 'react-native-device-info';
+
+import { globalObject } from '@grafana/faro-core';
 
 const BUNDLE_ID_SEPARATOR = '@';
 
@@ -21,11 +22,7 @@ export function getMetroInjectedBundleId(appName: string | undefined): string | 
  * server-side symbol retrace. Must match the symbols upload bundle id
  * (`{applicationId}@{versionCode}@{versionName}`).
  */
-export function formatSymbolsBundleId(
-  applicationId: string,
-  versionCode: string,
-  versionName: string
-): string {
+export function formatSymbolsBundleId(applicationId: string, versionCode: string, versionName: string): string {
   return `${applicationId}${BUNDLE_ID_SEPARATOR}${versionCode}${BUNDLE_ID_SEPARATOR}${versionName}`;
 }
 
