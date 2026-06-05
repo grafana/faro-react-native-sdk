@@ -13,6 +13,12 @@ export interface CrashReportingOptions {
    * Default: true
    */
   enabled?: boolean;
+
+  /**
+   * Bundle filename for Hermes/minified JS lines embedded in Android crash traces
+   * (`anonymous@line:col`). Must match Metro source map `file` (e.g. `index.android.bundle`).
+   */
+  releaseBundleFilename?: string;
 }
 
 /**

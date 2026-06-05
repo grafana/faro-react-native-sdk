@@ -4,6 +4,7 @@ import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 
 import { ErrorMechanism } from '../errors/const';
 
+import { parseAndroidCrashTrace } from './parseAndroidCrashTrace';
 import type { CrashReport, CrashReportingOptions } from './types';
 
 /**
@@ -36,12 +37,13 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
   readonly name = '@grafana/faro-react-native:instrumentation-crash';
   readonly version = VERSION;
 
-  private readonly options: Required<CrashReportingOptions>;
+  private readonly options: { enabled: boolean; releaseBundleFilename?: string };
 
   constructor(options: CrashReportingOptions = {}) {
     super();
     this.options = {
       enabled: options.enabled ?? true,
+      releaseBundleFilename: options.releaseBundleFilename,
     };
   }
 
@@ -188,8 +190,18 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
   }
 
   private sendCrashReport(crash: CrashReport): void {
-    const errorMessage = this.getErrorMessage(crash);
+    const parsedTrace = crash.trace
+      ? parseAndroidCrashTrace(crash.trace, {
+          releaseBundleFilename: this.options.releaseBundleFilename,
+        })
+      : null;
+    const errorMessage =
+      parsedTrace?.exceptionMessage ?? crash.description ?? this.getErrorMessage(crash);
+
+    // Use a message-only Error so pushError does not capture the JS reporter stack
+    // (sendCrashReport / asyncGeneratorStep / node_modules) as the exception frames.
     const error = new Error(errorMessage);
+    error.stack = undefined;
 
     // Build context from crash data (matching Flutter pattern)
     const context: Record<string, string> = {
@@ -218,10 +230,28 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
       context['importance'] = String(crash.importance);
     }
 
-    // Push as error via Faro API (matching Flutter pattern)
+    const stackFrames = [...(parsedTrace?.jsFrames ?? []), ...(parsedTrace?.frames ?? [])];
+
+    // Plugin overview metrics key off exception_type = 'crash' (see app-o11y-kwl mobile
+    // queries). Keep type stable; store the native/Java class separately for drill-down.
+    if (parsedTrace?.exceptionType) {
+      context['nativeExceptionType'] = parsedTrace.exceptionType;
+    }
+
+    if (!stackFrames.length && crash.trace) {
+      this.logWarn(
+        'Native crash trace present but no frames parsed; check Android trace format or UncaughtExceptionHandler cache'
+      );
+    } else if (!crash.trace) {
+      this.logWarn(
+        'Native crash report has no trace (ApplicationExitInfo traceInputStream was null); install UncaughtExceptionHandler cache'
+      );
+    }
+
     this.api.pushError(error, {
       type: 'crash',
       context,
+      ...(stackFrames.length ? { stackFrames } : {}),
     });
 
     this.logDebug(`Reported crash: ${crash.reason} at ${crash.timestamp}`);

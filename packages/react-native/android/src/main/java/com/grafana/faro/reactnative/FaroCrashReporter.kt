@@ -48,6 +48,7 @@ object FaroCrashReporter {
      */
     @JvmStatic
     fun getCrashReports(context: Context): List<String>? {
+        FaroUncaughtExceptionHandler.install(context)
         // ApplicationExitInfo requires Android 11 (API 30)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return null
@@ -90,7 +91,7 @@ object FaroCrashReporter {
             }
 
             // Convert to JSON
-            val jsonString = exportExitInfoAsJSON(exitInfo)
+            val jsonString = exportExitInfoAsJSON(context, exitInfo)
             if (jsonString != null) {
                 crashReports.add(jsonString)
             }
@@ -127,7 +128,7 @@ object FaroCrashReporter {
     /**
      * Convert ApplicationExitInfo to JSON string matching iOS format.
      */
-    private fun exportExitInfoAsJSON(exitInfo: ApplicationExitInfo): String? {
+    private fun exportExitInfoAsJSON(context: Context, exitInfo: ApplicationExitInfo): String? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return null
         }
@@ -154,8 +155,12 @@ object FaroCrashReporter {
             // Importance (Android-specific)
             json.put("importance", exitInfo.importance)
 
-            // Stack trace (if available)
-            val trace = getTraceInfo(exitInfo)
+            // Stack trace from ApplicationExitInfo, or from UncaughtExceptionHandler cache
+            // when traceInputStream is null (common on emulators / Android 16+).
+            val exitTrace = getTraceInfo(exitInfo)
+            val trace = exitTrace.ifEmpty {
+                FaroCrashTraceCache.consumePendingCrashTrace(context, exitInfo.timestamp).orEmpty()
+            }
             if (trace.isNotEmpty()) {
                 json.put("trace", trace)
             }
