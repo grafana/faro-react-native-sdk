@@ -1,5 +1,7 @@
 import { defaultGlobalObjectKey, defaultUnpatchedConsole } from '@grafana/faro-core';
-import type { Config } from '@grafana/faro-core';
+import type { Config, MetaApp, MetaItem } from '@grafana/faro-core';
+
+import { getMetroInjectedBundleId } from '../metas/appBuildIdentity';
 
 import { getStackFramesFromError } from '../instrumentations/errors/stackTraceParser';
 import type { SessionAttributes } from '../instrumentations/session/sessionAttributes';
@@ -16,6 +18,28 @@ import { getRNInstrumentations } from './getRNInstrumentations';
 import type { ReactNativeConfig, ReactNativeFullConfig } from './types';
 
 const DEFAULT_OFFLINE_CACHE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+/**
+ * Encoded Android/iOS symbols bundle id (`applicationId@versionCode@versionName`) is
+ * only applied when no JS source-map bundle id is already in play. Metro / env /
+ * `config.app.bundleId` must keep working unchanged (see registerInitialMetas).
+ */
+function symbolsBundleIdMeta(
+  configApp: MetaApp | undefined,
+  appName: string | undefined,
+  appSymbolsBundleId?: string
+): MetaItem[] {
+  if (!appSymbolsBundleId) {
+    return [];
+  }
+  if (configApp?.bundleId) {
+    return [];
+  }
+  if (getMetroInjectedBundleId(appName)) {
+    return [];
+  }
+  return [{ app: { bundleId: appSymbolsBundleId } }];
+}
 
 /**
  * Builds transports. FetchTransport is always added when url is provided.
@@ -78,10 +102,12 @@ function createParseStacktrace(releaseBundleFilename: string | undefined): Confi
  * Client just enables what they need; makeRNConfig does the rest.
  *
  * @param preloadedSessionDeviceAttributes Device/session fields for session meta (passed from async `initializeFaro`).
+ * @param appSymbolsBundleId Encoded `meta.app.bundleId` for server-side symbol retrace.
  */
 export function makeRNConfig(
   config: ReactNativeConfig,
-  preloadedSessionDeviceAttributes?: SessionAttributes
+  preloadedSessionDeviceAttributes?: SessionAttributes,
+  appSymbolsBundleId?: string
 ): ReactNativeFullConfig {
   const defaultMetas = [getSdkMeta(), getPageMeta(), getScreenMeta()];
   const customMetas = config.metas ?? [];
@@ -111,7 +137,11 @@ export function makeRNConfig(
       ...defaultSessionTrackingConfig,
       ...config.sessionTracking,
     },
-    metas: [...defaultMetas, ...customMetas],
+    metas: [
+      ...defaultMetas,
+      ...customMetas,
+      ...symbolsBundleIdMeta(config.app, config.app?.name, appSymbolsBundleId),
+    ],
     instrumentations,
     transports,
     ignoreUrls: config.ignoreUrls ?? [],
