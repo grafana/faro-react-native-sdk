@@ -195,8 +195,7 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
           releaseBundleFilename: this.options.releaseBundleFilename,
         })
       : null;
-    const errorMessage =
-      parsedTrace?.exceptionMessage ?? crash.description ?? this.getErrorMessage(crash);
+    const errorMessage = parsedTrace?.exceptionMessage ?? crash.description ?? this.getErrorMessage(crash);
 
     // Use a message-only Error so pushError does not capture the JS reporter stack
     // (sendCrashReport / asyncGeneratorStep / node_modules) as the exception frames.

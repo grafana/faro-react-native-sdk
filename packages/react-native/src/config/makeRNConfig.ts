@@ -1,12 +1,11 @@
 import { defaultGlobalObjectKey, defaultUnpatchedConsole } from '@grafana/faro-core';
 import type { Config, MetaApp, MetaItem } from '@grafana/faro-core';
 
-import { getMetroInjectedBundleId } from '../metas/appBuildIdentity';
-
 import { getStackFramesFromError } from '../instrumentations/errors/stackTraceParser';
 import type { SessionAttributes } from '../instrumentations/session/sessionAttributes';
 import { defaultSessionTrackingConfig } from '../instrumentations/session/sessionManager/sessionConstants';
 import { InternalLoggerLevel, LogLevel } from '../internalLogger';
+import { getMetroInjectedBundleId } from '../metas/appBuildIdentity';
 import { getPageMeta } from '../metas/page';
 import { getScreenMeta } from '../metas/screen';
 import { getSdkMeta } from '../metas/sdk';
@@ -20,22 +19,24 @@ import type { ReactNativeConfig, ReactNativeFullConfig } from './types';
 const DEFAULT_OFFLINE_CACHE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 /**
- * Encoded Android/iOS symbols bundle id (`applicationId@versionCode@versionName`) is
- * only applied when no JS source-map bundle id is already in play. Metro / env /
- * `config.app.bundleId` must keep working unchanged (see registerInitialMetas).
+ * Resolves `meta.app.bundleId` when it is not already supplied by faro-core from
+ * the Metro preamble (`registerInitialMetas` / `__faroBundleId_<appName>`).
+ *
+ * Priority: explicit `config.app.bundleId` → Metro preamble (core) → DeviceInfo
+ * fallback (`applicationId@versionCode@versionName`, same shape Gradle/Metro use).
  */
 function symbolsBundleIdMeta(
   configApp: MetaApp | undefined,
   appName: string | undefined,
   appSymbolsBundleId?: string
 ): MetaItem[] {
-  if (!appSymbolsBundleId) {
-    return [];
-  }
   if (configApp?.bundleId) {
-    return [];
+    return [{ app: { bundleId: configApp.bundleId } }];
   }
   if (getMetroInjectedBundleId(appName)) {
+    return [];
+  }
+  if (!appSymbolsBundleId) {
     return [];
   }
   return [{ app: { bundleId: appSymbolsBundleId } }];
@@ -137,11 +138,7 @@ export function makeRNConfig(
       ...defaultSessionTrackingConfig,
       ...config.sessionTracking,
     },
-    metas: [
-      ...defaultMetas,
-      ...customMetas,
-      ...symbolsBundleIdMeta(config.app, config.app?.name, appSymbolsBundleId),
-    ],
+    metas: [...defaultMetas, ...customMetas, ...symbolsBundleIdMeta(config.app, config.app?.name, appSymbolsBundleId)],
     instrumentations,
     transports,
     ignoreUrls: config.ignoreUrls ?? [],
