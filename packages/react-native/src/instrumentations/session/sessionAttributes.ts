@@ -1,5 +1,10 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
+
+import type { Meta } from '@grafana/faro-core';
+
+const INSTALLATION_ID_STORAGE_KEY = '@grafana/faro-react-native/installation_id';
 
 /**
  * Session attributes for React Native
@@ -65,6 +70,11 @@ export interface SessionAttributes {
   device_carrier?: string;
 }
 
+export interface PreloadedMobileMeta {
+  sessionAttributes: SessionAttributes;
+  meta: Pick<Meta, 'app' | 'device' | 'os'>;
+}
+
 /**
  * React Native framework version from `Platform.constants` (host app runtime), not `@grafana/faro-react-native` semver.
  */
@@ -103,6 +113,46 @@ async function getDeviceId(): Promise<string> {
   }
 }
 
+function createRandomBytes(length: number): Uint8Array {
+  const bytes = new Uint8Array(length);
+  const cryptoObject = globalThis.crypto;
+
+  if (cryptoObject && typeof cryptoObject.getRandomValues === 'function') {
+    cryptoObject.getRandomValues(bytes);
+    return bytes;
+  }
+
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = Math.floor(Math.random() * 256);
+  }
+
+  return bytes;
+}
+
+function generateInstallationId(): string {
+  const bytes = createRandomBytes(16);
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function getInstallationId(): Promise<string | undefined> {
+  try {
+    const storedInstallationId = await AsyncStorage.getItem(INSTALLATION_ID_STORAGE_KEY);
+    if (storedInstallationId) {
+      return storedInstallationId;
+    }
+
+    const installationId = generateInstallationId();
+    await AsyncStorage.setItem(INSTALLATION_ID_STORAGE_KEY, installationId);
+    return installationId;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
 /**
  * Get OS detail string matching Flutter SDK format
  * iOS: "iOS 17.0"
@@ -122,6 +172,15 @@ async function getDeviceOsDetail(): Promise<string> {
   }
 
   return `${systemName} ${systemVersion}`;
+}
+
+async function getDeviceOsBuildId(): Promise<string | undefined> {
+  try {
+    const buildId = await DeviceInfo.getBuildId();
+    return buildId && buildId !== 'unknown' ? buildId : undefined;
+  } catch (_error) {
+    return undefined;
+  }
 }
 
 /**
@@ -151,16 +210,23 @@ export function minimalSessionDeviceAttributes(): SessionAttributes {
  * - device_carrier
  */
 export async function getSessionAttributes(): Promise<SessionAttributes> {
+  return (await collectMobileMeta()).sessionAttributes;
+}
+
+async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
   try {
     // Get device ID asynchronously
     const deviceId = await getDeviceId();
     const deviceOsDetail = await getDeviceOsDetail();
+    const deviceOsBuildId = await getDeviceOsBuildId();
+    const installationId = await getInstallationId();
 
     // Get synchronous device info
     const systemName = DeviceInfo.getSystemName();
     const systemVersion = DeviceInfo.getSystemVersion();
     const manufacturer = DeviceInfo.getManufacturerSync();
     const model = DeviceInfo.getModel();
+    const modelIdentifier = Platform.OS === 'ios' ? DeviceInfo.getDeviceId() : model;
     const deviceName = DeviceInfo.getDeviceNameSync();
     const brand = DeviceInfo.getBrand();
     const isEmulator = DeviceInfo.isEmulatorSync();
@@ -230,10 +296,56 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
       device_low_power_mode: lowPowerMode,
       device_carrier: carrier,
     };
+    const appMeta = installationId ? { installationId } : {};
+    const osMeta = {
+      ...(deviceOsBuildId ? { build_id: deviceOsBuildId } : {}),
+      detail: deviceOsDetail,
+      name: systemName,
+      version: systemVersion,
+    };
 
-    return attributes;
+    return {
+      sessionAttributes: attributes,
+      meta: {
+        app: appMeta,
+        device: {
+          brand,
+          is_physical: !isEmulator,
+          manufacturer: manufacturer.toLowerCase(),
+          ...(modelIdentifier ? { model_identifier: modelIdentifier } : {}),
+          model_name: model,
+          type: isTablet ? 'tablet' : 'mobile',
+        },
+        os: osMeta,
+      },
+    };
   } catch (_error) {
-    return minimalSessionDeviceAttributes();
+    const installationId = await getInstallationId();
+
+    return {
+      sessionAttributes: minimalSessionDeviceAttributes(),
+      meta: {
+        app: installationId ? { installationId } : {},
+      },
+    };
+  }
+}
+
+/**
+ * Get structured mobile meta plus legacy session attributes for async `initializeFaro`.
+ */
+export async function loadMobileMetaForInit(): Promise<PreloadedMobileMeta> {
+  try {
+    return await collectMobileMeta();
+  } catch {
+    const installationId = await getInstallationId();
+
+    return {
+      sessionAttributes: minimalSessionDeviceAttributes(),
+      meta: {
+        app: installationId ? { installationId } : {},
+      },
+    };
   }
 }
 
@@ -243,7 +355,7 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
  */
 export async function loadSessionDeviceAttributesForInit(): Promise<SessionAttributes> {
   try {
-    return await getSessionAttributes();
+    return (await loadMobileMetaForInit()).sessionAttributes;
   } catch {
     return minimalSessionDeviceAttributes();
   }

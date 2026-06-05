@@ -178,6 +178,7 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
               parseError: String(parseError),
               raw: crashJson.substring(0, 500), // Limit size
             },
+            fatal: true,
             type: 'crash',
           });
         }
@@ -222,6 +223,7 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
     this.api.pushError(error, {
       type: 'crash',
       context,
+      fatal: true,
     });
 
     this.logDebug(`Reported crash: ${crash.reason} at ${crash.timestamp}`);

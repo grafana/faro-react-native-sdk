@@ -1,6 +1,9 @@
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 
-import { minimalSessionDeviceAttributes } from '../instrumentations/session/sessionAttributes';
+import {
+  minimalSessionDeviceAttributes,
+  type PreloadedMobileMeta,
+} from '../instrumentations/session/sessionAttributes';
 import { defaultSessionTrackingConfig } from '../instrumentations/session/sessionManager/sessionConstants';
 import { ConsoleTransport } from '../transports/console';
 import { FetchTransport } from '../transports/fetch';
@@ -116,16 +119,69 @@ describe('makeRNConfig', () => {
     expect(minimal.instrumentations?.map((i) => i.name)).toEqual(direct.map((i) => i.name));
   });
 
-  it('passes preloaded session device attributes to core config when provided as second argument', () => {
+  it('passes preloaded mobile meta and legacy session device attributes to core config', () => {
     const preloaded = minimalSessionDeviceAttributes();
     preloaded.device_id = 'test-preloaded-id';
-    const cfg = makeRNConfig({ ...base }, preloaded);
+    const preloadedMobileMeta: PreloadedMobileMeta = {
+      sessionAttributes: preloaded,
+      meta: {
+        app: {
+          installationId: 'test-installation-id',
+        },
+        device: {
+          is_physical: true,
+          model_identifier: 'iPhone16,1',
+        },
+        os: {
+          name: 'iOS',
+          version: '17.0',
+        },
+      },
+    };
+
+    const cfg = makeRNConfig({ ...base }, preloadedMobileMeta);
+
+    expect(cfg.app.name).toBe('test-app');
+    expect(cfg.app.installationId).toBe('test-installation-id');
+    expect(cfg.preloadedMobileMeta).toEqual(preloadedMobileMeta.meta);
     expect(
       (cfg as { preloadedSessionDeviceAttributes?: { device_id: string } }).preloadedSessionDeviceAttributes
     ).toBeDefined();
     expect(
       (cfg as { preloadedSessionDeviceAttributes?: { device_id: string } }).preloadedSessionDeviceAttributes?.device_id
     ).toBe('test-preloaded-id');
+    expect(cfg.metas).toContainEqual({
+      device: {
+        is_physical: true,
+        model_identifier: 'iPhone16,1',
+      },
+      os: {
+        name: 'iOS',
+        version: '17.0',
+      },
+    });
+  });
+
+  it('keeps explicit config app installationId over preloaded installationId', () => {
+    const cfg = makeRNConfig(
+      {
+        ...base,
+        app: {
+          ...base.app,
+          installationId: 'explicit-installation-id',
+        },
+      },
+      {
+        sessionAttributes: minimalSessionDeviceAttributes(),
+        meta: {
+          app: {
+            installationId: 'preloaded-installation-id',
+          },
+        },
+      }
+    );
+
+    expect(cfg.app.installationId).toBe('explicit-installation-id');
   });
 
   it('uses releaseBundleFilename in default parseStacktrace when set', () => {

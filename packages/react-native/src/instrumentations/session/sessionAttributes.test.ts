@@ -1,7 +1,8 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
-import { getSessionAttributes } from './sessionAttributes';
+import { getSessionAttributes, loadMobileMetaForInit } from './sessionAttributes';
 
 // Mock react-native-device-info
 jest.mock('react-native-device-info', () => ({
@@ -10,6 +11,7 @@ jest.mock('react-native-device-info', () => ({
   getSystemVersion: jest.fn(),
   getManufacturerSync: jest.fn(),
   getModel: jest.fn(),
+  getDeviceId: jest.fn(),
   getDeviceNameSync: jest.fn(),
   getBrand: jest.fn(),
   isEmulatorSync: jest.fn(),
@@ -20,10 +22,12 @@ jest.mock('react-native-device-info', () => ({
   isBatteryCharging: jest.fn(),
   getCarrier: jest.fn(),
   getApiLevel: jest.fn(),
+  getBuildId: jest.fn(),
 }));
 
 describe('sessionAttributes', () => {
   beforeEach(() => {
+    (global as any).mockAsyncStorage = {};
     jest.clearAllMocks();
   });
 
@@ -50,8 +54,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('17.0');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone16,1');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Vishwan's iPhone");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -69,8 +74,8 @@ describe('sessionAttributes', () => {
           device_os_version: '17.0',
           device_os_detail: 'iOS 17.0',
           device_manufacturer: 'apple',
-          device_model: 'iPhone16,1',
-          device_model_name: 'iPhone 15 Pro',
+          device_model: 'iPhone 15 Pro',
+          device_model_name: "Vishwan's iPhone",
           device_brand: 'Apple',
           device_is_physical: 'true',
           device_id: 'ios-device-uuid-123',
@@ -89,8 +94,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('17.0');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.getModel as jest.Mock).mockReturnValue('x86_64');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('iPhone Simulator');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone Simulator');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('x86_64');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Test iPhone Simulator');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(true);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -100,7 +106,7 @@ describe('sessionAttributes', () => {
         const attributes = await getSessionAttributes();
 
         expect(attributes.device_is_physical).toBe('false');
-        expect(attributes.device_model_name).toBe('iPhone Simulator');
+        expect(attributes.device_model_name).toBe('Test iPhone Simulator');
       });
 
       it('should handle iOS with different OS versions', async () => {
@@ -108,8 +114,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('16.4');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone15,2');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('iPhone 14 Pro');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 14 Pro');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone15,2');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's iPhone");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -146,6 +153,8 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('15');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Samsung');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('SM-A155F');
+        // Android getDeviceId() is the board code; structured model_identifier should use Build.MODEL instead.
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('a15');
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('SM-A155F');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('samsung');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
@@ -186,6 +195,7 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('13');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Google');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('sdk_gphone64_arm64');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('emu64a');
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Pixel 5');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('google');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(true);
@@ -206,6 +216,7 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('12');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Xiaomi');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('M2101K7AG');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('camellia');
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('M2101K7AG');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('xiaomi');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
@@ -218,6 +229,173 @@ describe('sessionAttributes', () => {
 
         // Should fallback to version without SDK level
         expect(attributes.device_os_detail).toBe('Android 12');
+      });
+    });
+
+    describe('structured mobile meta', () => {
+      beforeEach(() => {
+        (Platform as any).OS = 'android';
+        Object.defineProperty(Platform, 'constants', {
+          value: {
+            reactNativeVersion: {
+              major: 0,
+              minor: 75,
+              patch: 1,
+            },
+          },
+          writable: true,
+        });
+      });
+
+      it('should collect structured app, device, and OS meta with legacy session attributes', async () => {
+        (global as any).mockAsyncStorage = {
+          '@grafana/faro-react-native/installation_id': 'stored-installation-id',
+        };
+        (DeviceInfo.getUniqueId as jest.Mock).mockResolvedValue('legacy-device-id');
+        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('Android');
+        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('15');
+        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Samsung');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('SM-A155F');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('a15');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Galaxy A15');
+        (DeviceInfo.getBrand as jest.Mock).mockReturnValue('samsung');
+        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(true);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(8000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(4000000000);
+        (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(35);
+        (DeviceInfo.getBuildId as jest.Mock).mockResolvedValue('AP3A.240905.015.A2');
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta).toEqual({
+          app: {
+            installationId: 'stored-installation-id',
+          },
+          device: {
+            brand: 'samsung',
+            is_physical: true,
+            manufacturer: 'samsung',
+            model_identifier: 'SM-A155F',
+            model_name: 'SM-A155F',
+            type: 'tablet',
+          },
+          os: {
+            build_id: 'AP3A.240905.015.A2',
+            detail: 'Android 15 (SDK 35)',
+            name: 'Android',
+            version: '15',
+          },
+        });
+        expect(mobileMeta.sessionAttributes).toMatchObject({
+          device_id: 'legacy-device-id',
+          device_model: 'SM-A155F',
+          device_os: 'Android',
+          device_os_detail: 'Android 15 (SDK 35)',
+          device_type: 'tablet',
+        });
+        expect(AsyncStorage.getItem).toHaveBeenCalledWith('@grafana/faro-react-native/installation_id');
+        expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+      });
+
+      it('should collect iOS structured app, device, and OS meta with legacy session attributes', async () => {
+        (Platform as any).OS = 'ios';
+        (global as any).mockAsyncStorage = {
+          '@grafana/faro-react-native/installation_id': 'stored-installation-id',
+        };
+        (DeviceInfo.getUniqueId as jest.Mock).mockResolvedValue('legacy-ios-device-id');
+        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
+        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('17.2');
+        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Vishwan's iPhone");
+        (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
+        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(4000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(2000000000);
+        (DeviceInfo.getBuildId as jest.Mock).mockResolvedValue('21C62');
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta).toEqual({
+          app: {
+            installationId: 'stored-installation-id',
+          },
+          device: {
+            brand: 'Apple',
+            is_physical: true,
+            manufacturer: 'apple',
+            model_identifier: 'iPhone16,1',
+            model_name: 'iPhone 15 Pro',
+            type: 'mobile',
+          },
+          os: {
+            build_id: '21C62',
+            detail: 'iOS 17.2',
+            name: 'iOS',
+            version: '17.2',
+          },
+        });
+        expect(mobileMeta.sessionAttributes).toMatchObject({
+          device_id: 'legacy-ios-device-id',
+          device_model: 'iPhone 15 Pro',
+          device_os: 'iOS',
+          device_os_detail: 'iOS 17.2',
+          device_type: 'mobile',
+        });
+        expect(mobileMeta.meta.device?.model_name).not.toContain('Vishwan');
+      });
+
+      it('should create and persist an SDK installation id when one does not exist yet', async () => {
+        (DeviceInfo.getUniqueId as jest.Mock).mockResolvedValue('legacy-device-id');
+        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('Android');
+        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('15');
+        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Google');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('sdk_gphone64_arm64');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('emu64a');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Pixel 5');
+        (DeviceInfo.getBrand as jest.Mock).mockReturnValue('google');
+        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(true);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(2000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(1000000000);
+        (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(35);
+        (DeviceInfo.getBuildId as jest.Mock).mockResolvedValue('AP3A.240905.015.A2');
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.app?.installationId).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+        );
+        expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+          '@grafana/faro-react-native/installation_id',
+          mobileMeta.meta.app?.installationId
+        );
+      });
+
+      it('should keep installation id when DeviceInfo collection fails', async () => {
+        (global as any).mockAsyncStorage = {
+          '@grafana/faro-react-native/installation_id': 'stored-installation-id',
+        };
+        (DeviceInfo.getUniqueId as jest.Mock).mockRejectedValue(new Error('Failed to get UUID'));
+        (DeviceInfo.getSystemName as jest.Mock).mockImplementation(() => {
+          throw new Error('Failed to get system name');
+        });
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta).toEqual({
+          sessionAttributes: {
+            react_native_version: '0.75.1',
+          },
+          meta: {
+            app: {
+              installationId: 'stored-installation-id',
+            },
+          },
+        });
       });
     });
 
@@ -239,8 +417,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('17.0');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone16,1');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's iPhone");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
 
@@ -259,8 +438,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('17.0');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone16,1');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's iPhone");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
 
@@ -285,6 +465,9 @@ describe('sessionAttributes', () => {
         });
         (DeviceInfo.getModel as jest.Mock).mockImplementation(() => {
           throw new Error('Failed to get model');
+        });
+        (DeviceInfo.getDeviceId as jest.Mock).mockImplementation(() => {
+          throw new Error('Failed to get device id');
         });
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockImplementation(() => {
           throw new Error('Failed to get device name');
@@ -315,8 +498,9 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getManufacturerSync as jest.Mock).mockImplementation(() => {
           throw new Error('Manufacturer unavailable');
         });
-        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone16,1');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's iPhone");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
 
@@ -339,6 +523,7 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('14');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('SAMSUNG');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('SM-G998B');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('p3s');
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Galaxy S21 Ultra');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('samsung');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
@@ -358,6 +543,7 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('14');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('OnePlus');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('LE2121');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('lemonade');
         (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('OnePlus 9 Pro');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('OnePlus');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);

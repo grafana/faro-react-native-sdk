@@ -137,6 +137,7 @@ export class ANRInstrumentation extends BaseInstrumentation {
                 stacktrace: anr.stacktrace,
                 timestamp: String(anr.timestamp),
               },
+              fatal: true,
               type: 'ANR',
             });
           } catch {
@@ -146,6 +147,7 @@ export class ANRInstrumentation extends BaseInstrumentation {
                 mechanism: ErrorMechanism.ANR,
                 raw: anrJson,
               },
+              fatal: true,
               type: 'ANR',
             });
           }

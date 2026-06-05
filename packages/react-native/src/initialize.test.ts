@@ -92,21 +92,41 @@ describe('initializeFaro', () => {
     ).rejects.toThrow('url is required');
   });
 
-  it('should await device attributes then merge preloaded session attributes', async () => {
-    const spy = jest.spyOn(sessionAttributes, 'loadSessionDeviceAttributesForInit').mockResolvedValue({
-      react_native_version: '0.0.1',
-      device_os: 'iOS',
-      device_os_version: '17.0',
-      device_os_detail: 'iOS 17.0',
-      device_manufacturer: 'apple',
-      device_model: 'test-model',
-      device_model_name: 'Test Phone',
-      device_brand: 'Apple',
-      device_is_physical: 'true',
-      device_id: 'preloaded-device-id',
-      device_type: 'mobile',
-      device_memory_total: '100',
-      device_memory_used: '50',
+  it('should await mobile meta then merge structured meta and preloaded session attributes', async () => {
+    const spy = jest.spyOn(sessionAttributes, 'loadMobileMetaForInit').mockResolvedValue({
+      sessionAttributes: {
+        react_native_version: '0.0.1',
+        device_os: 'iOS',
+        device_os_version: '17.0',
+        device_os_detail: 'iOS 17.0',
+        device_manufacturer: 'apple',
+        device_model: 'Test Phone',
+        device_model_name: "Test's iPhone",
+        device_brand: 'Apple',
+        device_is_physical: 'true',
+        device_id: 'preloaded-device-id',
+        device_type: 'mobile',
+        device_memory_total: '100',
+        device_memory_used: '50',
+      },
+      meta: {
+        app: {
+          installationId: 'preloaded-installation-id',
+        },
+        device: {
+          brand: 'Apple',
+          is_physical: true,
+          manufacturer: 'apple',
+          model_identifier: 'test-model-identifier',
+          model_name: 'Test Phone',
+          type: 'mobile',
+        },
+        os: {
+          detail: 'iOS 17.0',
+          name: 'iOS',
+          version: '17.0',
+        },
+      },
     });
 
     const faro = await initializeFaro(
@@ -125,6 +145,9 @@ describe('initializeFaro', () => {
     expect(faro.metas.value.sdk?.name).toBe('faro-react-native');
     expect(faro.metas.value.sdk?.version).toBe(VERSION);
     expect(faro.metas.value.sdk?.integrations).toEqual([{ name: packageJson.name, version: packageJson.version }]);
+    expect(faro.metas.value.app?.installationId).toBe('preloaded-installation-id');
+    expect(faro.metas.value.device?.model_identifier).toBe('test-model-identifier');
+    expect(faro.metas.value.os?.name).toBe('iOS');
     expect(faro.metas.value.session?.attributes?.['react_native_version']).toBe('0.0.1');
     expect(faro.metas.value.session?.attributes?.['device_id']).toBe('preloaded-device-id');
 

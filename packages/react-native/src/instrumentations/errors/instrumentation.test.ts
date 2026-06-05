@@ -104,7 +104,7 @@ describe('ErrorsInstrumentation', () => {
       expect(item.payload.context?.mechanism).toBe('uncaught');
     });
 
-    it('should include isFatal context', () => {
+    it('should mark global JavaScript errors as non-fatal', () => {
       const transport = new MockTransport();
       let errorHandler: any;
 
@@ -124,7 +124,8 @@ describe('ErrorsInstrumentation', () => {
 
       expect(transport.items).toHaveLength(1);
       const item = transport.items[0] as TransportItem<ExceptionEvent>;
-      expect(item.payload.context?.isFatal).toBe('true');
+      expect(item.payload.fatal).toBe(false);
+      expect(item.payload.context?.isFatal).toBeUndefined();
     });
 
     it('should call original error handler', () => {
@@ -399,6 +400,7 @@ describe('ErrorsInstrumentation', () => {
       expect(item.payload.value).toContain('Unhandled Promise Rejection');
       expect(item.payload.value).toContain('String rejection');
       expect(item.payload.context?.mechanism).toBe('unhandledrejection');
+      expect(item.payload.fatal).toBe(false);
     });
 
     it('should use actual error type for Error rejections with mechanism', () => {
@@ -527,6 +529,7 @@ describe('ErrorsInstrumentation', () => {
   describe('error handling resilience', () => {
     it('should not crash if error reporting fails', () => {
       let errorHandler: any;
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
       mockGlobal.ErrorUtils.setGlobalHandler = jest.fn((handler) => {
         errorHandler = handler;
@@ -534,6 +537,7 @@ describe('ErrorsInstrumentation', () => {
 
       // Create a transport that throws
       const failingTransport = {
+        isBatched: () => false,
         send: jest.fn(() => {
           throw new Error('Transport failed');
         }),
@@ -548,6 +552,7 @@ describe('ErrorsInstrumentation', () => {
 
       const testError = new Error('Test error');
       expect(() => errorHandler(testError, false)).not.toThrow();
+      consoleErrorSpy.mockRestore();
     });
 
     it('should handle errors without stack', () => {
