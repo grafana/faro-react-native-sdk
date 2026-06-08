@@ -30,22 +30,22 @@ export interface SessionAttributes {
   /** Detailed OS info (e.g., "iOS 17.0" or "Android 15 (SDK 35)") */
   device_os_detail?: string;
 
-  /** Device manufacturer (e.g., "apple", "samsung") */
+  /** Device manufacturer (e.g., "apple", "samsung", "Google") */
   device_manufacturer?: string;
 
-  /** Raw model identifier (e.g., "iPhone16,1", "SM-A155F") */
+  /** Legacy device model value from `react-native-device-info` (e.g., "iPhone 15 Pro", "SM-A155F") */
   device_model?: string;
 
   /** Human-readable model name (e.g., "iPhone 15 Pro") */
   device_model_name?: string;
 
-  /** Device brand (e.g., "iPhone", "samsung") */
+  /** Legacy device brand (e.g., "Apple", "samsung"). Structured meta uses "iPhone"/"iPad" on iOS. */
   device_brand?: string;
 
   /** Whether device is physical or emulator ("true" or "false") */
   device_is_physical?: string;
 
-  /** Unique device ID (UUID) */
+  /** Legacy device identifier from `react-native-device-info`. Structured meta uses `app.installationId`. */
   device_id?: string;
 
   /** Device type ("mobile" or "tablet") */
@@ -101,12 +101,13 @@ function getReactNativeVersion(): string {
 }
 
 /**
- * Get device ID using react-native-device-info
- * Returns unique device identifier or 'unknown' on error
+ * Get the legacy device id used by `session.attributes.device_id`.
+ *
+ * `app.installationId` uses an SDK-owned persisted UUID instead, so it more closely
+ * represents this app install and does not reuse platform/vendor device identifiers.
  */
 async function getDeviceId(): Promise<string> {
   try {
-    // getUniqueId returns a UUID that persists across app installations
     return await DeviceInfo.getUniqueId();
   } catch (_error) {
     return 'unknown';
@@ -153,6 +154,18 @@ async function getInstallationId(): Promise<string | undefined> {
   }
 }
 
+function getStructuredDeviceBrand(model: string, brand: string): string {
+  if (Platform.OS !== 'ios') {
+    return brand;
+  }
+
+  return model.toLowerCase().includes('ipad') ? 'iPad' : 'iPhone';
+}
+
+function getStructuredDeviceManufacturer(manufacturer: string): string {
+  return Platform.OS === 'ios' ? manufacturer.toLowerCase() : manufacturer;
+}
+
 /**
  * Get OS detail string matching Flutter SDK format
  * iOS: "iOS 17.0"
@@ -176,6 +189,8 @@ async function getDeviceOsDetail(): Promise<string> {
 
 async function getDeviceOsBuildId(): Promise<string | undefined> {
   try {
+    // RN device-info exposes a useful OS build id on both Android and iOS.
+    // Keep it omitted when unavailable instead of sending "unknown".
     const buildId = await DeviceInfo.getBuildId();
     return buildId && buildId !== 'unknown' ? buildId : undefined;
   } catch (_error) {
@@ -230,6 +245,8 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     const deviceName = DeviceInfo.getDeviceNameSync();
     const brand = DeviceInfo.getBrand();
     const isEmulator = DeviceInfo.isEmulatorSync();
+    // Unlike Flutter's current device_info_plus source, RN can ask
+    // react-native-device-info whether the device is a tablet.
     const isTablet = DeviceInfo.isTablet();
 
     // Memory info
@@ -297,6 +314,8 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
       device_carrier: carrier,
     };
     const appMeta = installationId ? { installationId } : {};
+    const structuredDeviceBrand = getStructuredDeviceBrand(model, brand);
+    const structuredDeviceManufacturer = getStructuredDeviceManufacturer(manufacturer);
     const osMeta = {
       ...(deviceOsBuildId ? { build_id: deviceOsBuildId } : {}),
       detail: deviceOsDetail,
@@ -309,9 +328,9 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
       meta: {
         app: appMeta,
         device: {
-          brand,
+          brand: structuredDeviceBrand,
           is_physical: !isEmulator,
-          manufacturer: manufacturer.toLowerCase(),
+          manufacturer: structuredDeviceManufacturer,
           ...(modelIdentifier ? { model_identifier: modelIdentifier } : {}),
           model_name: model,
           type: isTablet ? 'tablet' : 'mobile',

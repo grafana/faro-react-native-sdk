@@ -114,7 +114,7 @@ describe('initializeFaro', () => {
           installationId: 'preloaded-installation-id',
         },
         device: {
-          brand: 'Apple',
+          brand: 'iPhone',
           is_physical: true,
           manufacturer: 'apple',
           model_identifier: 'test-model-identifier',

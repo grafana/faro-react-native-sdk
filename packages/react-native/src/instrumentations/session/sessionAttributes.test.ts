@@ -275,7 +275,7 @@ describe('sessionAttributes', () => {
           device: {
             brand: 'samsung',
             is_physical: true,
-            manufacturer: 'samsung',
+            manufacturer: 'Samsung',
             model_identifier: 'SM-A155F',
             model_name: 'SM-A155F',
             type: 'tablet',
@@ -324,7 +324,7 @@ describe('sessionAttributes', () => {
             installationId: 'stored-installation-id',
           },
           device: {
-            brand: 'Apple',
+            brand: 'iPhone',
             is_physical: true,
             manufacturer: 'apple',
             model_identifier: 'iPhone16,1',
@@ -346,6 +346,42 @@ describe('sessionAttributes', () => {
           device_type: 'mobile',
         });
         expect(mobileMeta.meta.device?.model_name).not.toContain('Vishwan');
+      });
+
+      it('should classify iPad structured meta as iPad tablet', async () => {
+        (Platform as any).OS = 'ios';
+        (global as any).mockAsyncStorage = {
+          '@grafana/faro-react-native/installation_id': 'stored-installation-id',
+        };
+        (DeviceInfo.getUniqueId as jest.Mock).mockResolvedValue('legacy-ios-device-id');
+        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iPadOS');
+        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('18.1');
+        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPad Pro');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPad14,3');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's iPad");
+        (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
+        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(true);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(8000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(3000000000);
+        (DeviceInfo.getBuildId as jest.Mock).mockResolvedValue('22B83');
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device).toMatchObject({
+          brand: 'iPad',
+          manufacturer: 'apple',
+          model_identifier: 'iPad14,3',
+          model_name: 'iPad Pro',
+          type: 'tablet',
+        });
+        expect(mobileMeta.meta.os).toMatchObject({
+          build_id: '22B83',
+          detail: 'iPadOS 18.1',
+          name: 'iPadOS',
+          version: '18.1',
+        });
       });
 
       it('should create and persist an SDK installation id when one does not exist yet', async () => {

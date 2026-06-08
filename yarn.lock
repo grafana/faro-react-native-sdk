@@ -1717,16 +1717,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@grafana/faro-core@npm:2.0.2":
-  version: 2.0.2
-  resolution: "@grafana/faro-core@npm:2.0.2"
-  dependencies:
-    "@opentelemetry/api": "npm:^1.9.0"
-    "@opentelemetry/otlp-transformer": "npm:^0.208.0"
-  checksum: 10c0/68fc9d87a6def2f92ad3ef235e35c24f686a5c4072d68f4f39cc4d873109572f30fbc82275c6e77acce5f6bb8031e681bec382fa46f3f8da0f6283d9566dd5ab
-  languageName: node
-  linkType: hard
-
 "@grafana/faro-core@npm:^2.7.0":
   version: 2.7.0
   resolution: "@grafana/faro-core@npm:2.7.0"
@@ -1843,7 +1833,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@grafana/faro-test-utils@workspace:packages/test-utils"
   dependencies:
-    "@grafana/faro-core": "npm:2.0.2"
+    "@grafana/faro-core": "npm:^2.7.0"
   languageName: unknown
   linkType: soft
 
