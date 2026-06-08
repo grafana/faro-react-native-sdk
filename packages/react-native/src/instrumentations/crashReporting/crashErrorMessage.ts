@@ -1,9 +1,10 @@
 import type { ParsedAndroidCrashTrace } from './parseAndroidCrashTrace';
+import { isPlausibleJavaExceptionIdentifier } from './parseAndroidCrashTrace';
 import type { CrashReport } from './types';
 
 /**
  * Human-readable exception value for ApplicationExitInfo crash reports.
- * Priority: parsed trace message → system description → exception class → Flutter-style fallback.
+ * Priority: parsed trace message → exception class → description → fallback.
  */
 export function resolveCrashErrorMessage(
   crash: CrashReport,
@@ -14,17 +15,93 @@ export function resolveCrashErrorMessage(
     return fromTrace;
   }
 
-  const fromDescription = crash.description?.trim();
-  if (fromDescription) {
-    return fromDescription;
-  }
-
   const fromType = parsedTrace?.exceptionType?.trim();
-  if (fromType) {
+  if (fromType && isPlausibleJavaExceptionIdentifier(fromType)) {
     return fromType;
   }
 
-  return buildFallbackCrashMessage(crash);
+  const fromDescriptionType = exceptionTypeFromDescription(crash.description);
+  if (fromDescriptionType) {
+    return fromDescriptionType;
+  }
+
+  const fromDescription = crash.description?.trim();
+  if (fromDescription && !isGenericCrashDescription(fromDescription)) {
+    return fromDescription;
+  }
+
+  const fallback = buildFallbackCrashMessage(crash);
+  return fallback.trim() || crash.reason || 'Application crash';
+}
+
+const ANR_TIMEOUT_DESCRIPTION_PATTERN =
+  /input dispatching timed out|not responding|application not responding/i;
+
+/**
+ * Android ANR watchdog descriptions from ApplicationExitInfo (any app).
+ */
+export function isAnrTimeoutDescription(description: string | undefined): boolean {
+  const trimmed = description?.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return ANR_TIMEOUT_DESCRIPTION_PATTERN.test(trimmed);
+}
+
+/**
+ * Skip duplicate ApplicationExitInfo rows that have no stack and no useful title,
+ * and ANR incidents mis-tagged as previous-session crashes.
+ */
+export function shouldSkipCrashReport(crash: CrashReport): boolean {
+  if (isAnrTimeoutDescription(crash.description)) {
+    return true;
+  }
+
+  return shouldSkipLowSignalCrashReport(crash);
+}
+
+/**
+ * Skip duplicate ApplicationExitInfo rows that have no stack and no useful title.
+ * These surface in the plugin as a second generic `crash` row for a single button press.
+ */
+export function shouldSkipLowSignalCrashReport(crash: CrashReport): boolean {
+  if (crash.trace?.trim()) {
+    return false;
+  }
+
+  const description = crash.description?.trim();
+  if (description && !isGenericCrashDescription(description)) {
+    return false;
+  }
+
+  return true;
+}
+
+/** Extract `java.lang.NullPointerException` from ApplicationExitInfo description text. */
+function exceptionTypeFromDescription(description: string | undefined): string | undefined {
+  const trimmed = description?.trim();
+  if (!trimmed || isGenericCrashDescription(trimmed)) {
+    return undefined;
+  }
+
+  const match = trimmed.match(/^([\w.$]+)(?::(.*))?$/);
+  const candidate = match?.[1]?.trim();
+  if (!candidate || !isPlausibleJavaExceptionIdentifier(candidate)) {
+    return undefined;
+  }
+
+  return candidate;
+}
+
+function isGenericCrashDescription(description: string): boolean {
+  const normalized = description.trim().toLowerCase();
+  return (
+    normalized === 'crash' ||
+    normalized === 'native crash' ||
+    normalized === 'application crash' ||
+    normalized === 'application crash (java/kotlin)' ||
+    normalized === 'application crash (native)'
+  );
 }
 
 /** Flutter-aligned fallback when the trace carries no parseable message or type. */

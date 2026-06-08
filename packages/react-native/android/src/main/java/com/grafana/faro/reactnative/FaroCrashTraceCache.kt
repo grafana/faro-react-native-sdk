@@ -21,11 +21,13 @@ internal object FaroCrashTraceCache {
             .commit()
     }
 
+    data class PendingTrace(val trace: String, val timestampMs: Long)
+
     /**
-     * Returns a cached trace when ApplicationExitInfo has no trace stream but the
-     * exit timestamp matches the cached crash (same session).
+     * Returns a cached trace without clearing it so multiple ApplicationExitInfo
+     * rows for the same crash can share the UncaughtExceptionHandler stack.
      */
-    fun consumePendingCrashTrace(context: Context, exitTimestampMs: Long): String? {
+    fun peekPendingCrashTrace(context: Context): PendingTrace? {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val trace = prefs.getString(KEY_TRACE, null)?.trim().orEmpty()
         val cachedTimestamp = prefs.getLong(KEY_TIMESTAMP, 0L)
@@ -34,16 +36,36 @@ internal object FaroCrashTraceCache {
             return null
         }
 
-        val delta = kotlin.math.abs(exitTimestampMs - cachedTimestamp)
-        if (delta > MAX_TIMESTAMP_DELTA_MS) {
-            return null
-        }
+        return PendingTrace(trace, cachedTimestamp)
+    }
 
-        prefs.edit()
+    fun traceForExitTimestamp(pending: PendingTrace?, exitTimestampMs: Long): String {
+        if (pending == null) {
+            return ""
+        }
+        val delta = kotlin.math.abs(exitTimestampMs - pending.timestampMs)
+        return if (delta <= MAX_TIMESTAMP_DELTA_MS) pending.trace else ""
+    }
+
+    fun clearPendingCrashTrace(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
             .remove(KEY_TRACE)
             .remove(KEY_TIMESTAMP)
             .apply()
+    }
 
+    /**
+     * @deprecated Prefer peek + clearPendingCrashTrace so one crash can backfill several exit rows.
+     */
+    fun consumePendingCrashTrace(context: Context, exitTimestampMs: Long): String? {
+        val pending = peekPendingCrashTrace(context) ?: return null
+        val trace = traceForExitTimestamp(pending, exitTimestampMs)
+        if (trace.isEmpty()) {
+            return null
+        }
+        clearPendingCrashTrace(context)
         return trace
     }
 }

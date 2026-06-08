@@ -4,7 +4,7 @@ import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 
 import { ErrorMechanism } from '../errors/const';
 
-import { resolveCrashErrorMessage } from './crashErrorMessage';
+import { resolveCrashErrorMessage, shouldSkipCrashReport } from './crashErrorMessage';
 import { parseAndroidCrashTrace } from './parseAndroidCrashTrace';
 import type { CrashReport, CrashReportingOptions } from './types';
 
@@ -168,10 +168,27 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
 
       this.logDebug(`Processing ${crashReports.length} crash report(s) from previous session`);
 
+      const reportedTimestamps = new Set<number>();
+
       for (const crashJson of crashReports) {
         try {
           this.logDebug(`Parsing crash report JSON: ${crashJson.substring(0, 200)}...`);
           const crash = JSON.parse(crashJson) as CrashReport;
+
+          if (crash.timestamp && reportedTimestamps.has(crash.timestamp)) {
+            this.logDebug(`Skipping duplicate crash report at ${crash.timestamp}`);
+            continue;
+          }
+
+          if (shouldSkipCrashReport(crash)) {
+            this.logDebug(`Skipping crash report at ${crash.timestamp} (ANR replay or low-signal)`);
+            continue;
+          }
+
+          if (crash.timestamp) {
+            reportedTimestamps.add(crash.timestamp);
+          }
+
           this.sendCrashReport(crash);
         } catch (parseError) {
           // If parsing fails, still try to report something
@@ -197,7 +214,7 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
           releaseBundleFilename: this.options.releaseBundleFilename,
         })
       : null;
-    const errorMessage = resolveCrashErrorMessage(crash, parsedTrace);
+    const errorMessage = resolveCrashErrorMessage(crash, parsedTrace).trim() || 'Application crash';
 
     // Use a message-only Error so pushError does not capture the JS reporter stack
     // (sendCrashReport / asyncGeneratorStep / node_modules) as the exception frames.

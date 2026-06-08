@@ -35,6 +35,18 @@ const FRAME_LINE = /^\s*at\s+([\w$.]+)\.([\w$<>]+)\(([^):]*)(?::(\d+))?\)\s*$/;
 const THREAD_STACK_FRAME_LINE = /^\s*([\w$.]+)\.([\w$<>]+)\(([^):]*)(?::(\d+))?\)\s*$/;
 const EXCEPTION_HEADER = /^\s*(?:Caused by:\s*)?([\w$.]+)(?::(.*))?$/;
 
+/** Reject version tokens (e.g. "18.2213") and other non-class header lines. */
+export function isPlausibleJavaExceptionIdentifier(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || !/[a-zA-Z]/.test(trimmed)) {
+    return false;
+  }
+  if (/^\d+(\.\d+)+$/.test(trimmed)) {
+    return false;
+  }
+  return true;
+}
+
 /**
  * Normalize raw Java thread stacks (e.g. ANRTracker) to Log.getStackTraceString shape
  * so collector R8 retrace (mapping.RetraceText) can rewrite frame lines.
@@ -105,7 +117,7 @@ export function parseAndroidCrashTrace(
   let exceptionType: string | undefined;
   let exceptionMessage: string | undefined;
 
-  lines.forEach((line, index) => {
+  lines.forEach((line) => {
     const frameMatch = line.match(FRAME_LINE) ?? line.trim().match(THREAD_STACK_FRAME_LINE);
 
     if (frameMatch) {
@@ -125,12 +137,10 @@ export function parseAndroidCrashTrace(
       return;
     }
 
-    if (index === 0 || line.trimStart().startsWith('Caused by:')) {
-      const headerMatch = line.match(EXCEPTION_HEADER);
-      if (headerMatch?.[1]) {
-        exceptionType = headerMatch[1];
-        exceptionMessage = normalizeCrashTraceExceptionMessage(headerMatch[2]);
-      }
+    const headerMatch = line.match(EXCEPTION_HEADER);
+    if (headerMatch?.[1] && isPlausibleJavaExceptionIdentifier(headerMatch[1])) {
+      exceptionType = headerMatch[1];
+      exceptionMessage = normalizeCrashTraceExceptionMessage(headerMatch[2]);
     }
   });
 
