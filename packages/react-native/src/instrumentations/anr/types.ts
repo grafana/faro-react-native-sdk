@@ -11,7 +11,7 @@ export interface ANRInstrumentationOptions {
 
   /**
    * Interval in milliseconds for polling ANR status from native.
-   * Default: 60000 (60 seconds, matching Flutter SDK's default)
+   * Default: 10000 (10 seconds). Native also emits onANRDetected immediately.
    */
   pollingInterval?: number;
 }

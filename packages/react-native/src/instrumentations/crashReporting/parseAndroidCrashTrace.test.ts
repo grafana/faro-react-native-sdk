@@ -5,36 +5,36 @@ import {
 } from './parseAndroidCrashTrace';
 
 describe('parseAndroidCrashTrace', () => {
-  it('parses QuickPizza-style ApplicationExitInfo traces', () => {
+  it('parses obfuscated ApplicationExitInfo traces', () => {
     const trace = [
-      'com.quickpizza.c: QuickPizza RN intentional native crash',
-      '\tat com.quickpizza.c.a(SourceFile:33)',
-      '\tat com.quickpizza.c.b(SourceFile:45)',
-      '\tat com.quickpizza.c.d(SourceFile)',
+      'com.example.c: Intentional native crash',
+      '\tat com.example.c.a(SourceFile:33)',
+      '\tat com.example.c.b(SourceFile:45)',
+      '\tat com.example.c.d(SourceFile)',
       '\tat com.unknown.x.y(SourceFile:7)',
     ].join('\n');
 
     const parsed = parseAndroidCrashTrace(trace);
 
     expect(parsed).toEqual({
-      exceptionType: 'com.quickpizza.c',
-      exceptionMessage: 'QuickPizza RN intentional native crash',
+      exceptionType: 'com.example.c',
+      exceptionMessage: 'Intentional native crash',
       jsFrames: [],
       frames: [
         {
-          module: 'com.quickpizza.c',
+          module: 'com.example.c',
           function: 'a',
           filename: 'SourceFile',
           lineno: 33,
         },
         {
-          module: 'com.quickpizza.c',
+          module: 'com.example.c',
           function: 'b',
           filename: 'SourceFile',
           lineno: 45,
         },
         {
-          module: 'com.quickpizza.c',
+          module: 'com.example.c',
           function: 'd',
           filename: 'SourceFile',
           lineno: undefined,
@@ -51,9 +51,9 @@ describe('parseAndroidCrashTrace', () => {
 
   it('parses Android Log.getStackTraceString format', () => {
     const trace = [
-      'java.lang.RuntimeException: QuickPizza RN intentional native crash',
-      '    at com.quickpizza.QuickPizzaCrashModule.raiseQuickPizzaFailure(QuickPizzaCrashModule.kt:60)',
-      '    at com.quickpizza.QuickPizzaCrashModule.triggerRuntimeException(QuickPizzaCrashModule.kt:33)',
+      'java.lang.RuntimeException: Intentional native crash',
+      '    at com.example.CrashModule.raiseFailure(CrashModule.kt:60)',
+      '    at com.example.CrashModule.triggerRuntimeException(CrashModule.kt:33)',
     ].join('\n');
 
     const parsed = parseAndroidCrashTrace(trace);
@@ -61,15 +61,15 @@ describe('parseAndroidCrashTrace', () => {
     expect(parsed?.exceptionType).toBe('java.lang.RuntimeException');
     expect(parsed?.frames).toEqual([
       {
-        module: 'com.quickpizza.QuickPizzaCrashModule',
-        function: 'raiseQuickPizzaFailure',
-        filename: 'QuickPizzaCrashModule.kt',
+        module: 'com.example.CrashModule',
+        function: 'raiseFailure',
+        filename: 'CrashModule.kt',
         lineno: 60,
       },
       {
-        module: 'com.quickpizza.QuickPizzaCrashModule',
+        module: 'com.example.CrashModule',
         function: 'triggerRuntimeException',
-        filename: 'QuickPizzaCrashModule.kt',
+        filename: 'CrashModule.kt',
         lineno: 33,
       },
     ]);
@@ -77,8 +77,8 @@ describe('parseAndroidCrashTrace', () => {
 
   it('parses java.lang.RuntimeException headers', () => {
     const trace = [
-      'java.lang.RuntimeException: QuickPizza RN intentional native crash',
-      '\tat com.quickpizza.c.a(SourceFile:33)',
+      'java.lang.RuntimeException: Intentional native crash',
+      '\tat com.example.c.a(SourceFile:33)',
     ].join('\n');
 
     const parsed = parseAndroidCrashTrace(trace);
@@ -94,7 +94,7 @@ describe('parseAndroidCrashTrace', () => {
 
   it('parses RN fatal JavascriptException ApplicationExitInfo traces', () => {
     const trace = [
-      'com.facebook.react.common.JavascriptException: Error: QuickPizza RN unhandled debug exception, stack:',
+      'com.facebook.react.common.JavascriptException: Error: Unhandled debug exception, stack:',
       'anonymous@1:1390953',
       '',
       '\tat com.facebook.react.modules.core.ExceptionsManagerModule.reportException(ExceptionsManagerModule.kt:52)',
@@ -104,7 +104,7 @@ describe('parseAndroidCrashTrace', () => {
     const parsed = parseAndroidCrashTrace(trace, { releaseBundleFilename: 'index.android.bundle' });
 
     expect(parsed?.exceptionType).toBe('com.facebook.react.common.JavascriptException');
-    expect(parsed?.exceptionMessage).toBe('QuickPizza RN unhandled debug exception');
+    expect(parsed?.exceptionMessage).toBe('Unhandled debug exception');
     expect(parsed?.jsFrames).toEqual([
       {
         function: 'anonymous',
@@ -123,7 +123,7 @@ describe('parseAndroidCrashTrace', () => {
 
   it('parses dev-style JS frames embedded in Android crash traces', () => {
     const trace = [
-      'com.facebook.react.common.JavascriptException: Error: QuickPizza RN unhandled debug exception, stack:',
+      'com.facebook.react.common.JavascriptException: Error: Unhandled debug exception, stack:',
       'at triggerUnhandledException (/Users/me/DebugScreen.tsx:133:7)',
       'at com.facebook.react.modules.core.ExceptionsManagerModule.reportException(ExceptionsManagerModule.kt:52)',
     ].join('\n');
@@ -139,43 +139,53 @@ describe('parseAndroidCrashTrace', () => {
   });
 
   it('normalizes RN fatal JS error header shape without relying on exception type', () => {
-    expect(normalizeCrashTraceExceptionMessage('Error: QuickPizza RN unhandled debug exception, stack:')).toBe(
-      'QuickPizza RN unhandled debug exception'
+    expect(normalizeCrashTraceExceptionMessage('Error: Unhandled debug exception, stack:')).toBe(
+      'Unhandled debug exception',
     );
   });
 
   it('leaves native exception messages unchanged', () => {
-    expect(normalizeCrashTraceExceptionMessage('QuickPizza RN intentional native crash')).toBe(
-      'QuickPizza RN intentional native crash'
-    );
+    expect(normalizeCrashTraceExceptionMessage('Intentional native crash')).toBe('Intentional native crash');
   });
 
   it('parses ANRTracker Thread.getStackTrace lines without an "at " prefix', () => {
     const trace = [
-      'com.quickpizza.QuickPizzaCrashModule.triggerApplicationNotResponding(QuickPizzaCrashModule.kt:42)',
-      'com.quickpizza.QuickPizzaCrashModule.crash(QuickPizzaCrashModule.kt:22)',
+      'com.example.CrashModule.blockMainThread(CrashModule.kt:42)',
+      'com.example.CrashModule.crash(CrashModule.kt:22)',
     ].join('\n');
 
     const parsed = parseAndroidCrashTrace(trace);
 
     expect(parsed?.frames).toEqual([
       {
-        module: 'com.quickpizza.QuickPizzaCrashModule',
-        function: 'triggerApplicationNotResponding',
-        filename: 'QuickPizzaCrashModule.kt',
+        module: 'com.example.CrashModule',
+        function: 'blockMainThread',
+        filename: 'CrashModule.kt',
         lineno: 42,
       },
       {
-        module: 'com.quickpizza.QuickPizzaCrashModule',
+        module: 'com.example.CrashModule',
         function: 'crash',
-        filename: 'QuickPizzaCrashModule.kt',
+        filename: 'CrashModule.kt',
         lineno: 22,
       },
     ]);
   });
 
   it('normalizes thread stacks for ingest R8 retrace', () => {
-    const raw = 'com.quickpizza.c.a(SourceFile:33)';
-    expect(normalizeJavaStackTraceForRetrace(raw)).toBe('    at com.quickpizza.c.a(SourceFile:33)');
+    const raw = 'com.example.c.a(SourceFile:33)';
+    expect(normalizeJavaStackTraceForRetrace(raw)).toBe('    at com.example.c.a(SourceFile:33)');
+  });
+
+  it('ignores version-like header lines such as 18.2213', () => {
+    const trace = [
+      '18.2213',
+      '    at com.example.CrashModule.blockMainThread(CrashModule.kt:56)',
+    ].join('\n');
+
+    const parsed = parseAndroidCrashTrace(trace);
+
+    expect(parsed?.exceptionType).toBeUndefined();
+    expect(parsed?.frames).toHaveLength(1);
   });
 });

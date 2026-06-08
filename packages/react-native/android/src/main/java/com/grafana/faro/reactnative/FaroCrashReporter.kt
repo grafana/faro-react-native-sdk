@@ -70,30 +70,45 @@ object FaroCrashReporter {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lastProcessedTimestamp = prefs.getLong(KEY_LAST_PROCESSED_TIMESTAMP, 0)
 
+        val pendingTrace = FaroCrashTraceCache.peekPendingCrashTrace(context)
+        var usedPendingTrace = false
+
         val crashReports = mutableListOf<String>()
         var latestTimestamp = lastProcessedTimestamp
+        val reportedTimestamps = mutableSetOf<Long>()
 
-        for (exitInfo in exitInfoList) {
-            // Skip already processed entries
-            if (exitInfo.timestamp <= lastProcessedTimestamp) {
+        // Android can return multiple ApplicationExitInfo rows for one fatal exit
+        // (e.g. REASON_CRASH plus a companion row with no trace). Collapse to one
+        // report per timestamp and share the UncaughtExceptionHandler cache.
+        val candidates = exitInfoList
+            .filter { it.timestamp > lastProcessedTimestamp && isCrashReason(it.reason) }
+            .groupBy { it.timestamp }
+            .mapValues { (_, exits) -> pickBestExitInfo(exits) }
+            .toSortedMap()
+
+        for ((timestamp, exitInfo) in candidates) {
+            if (reportedTimestamps.contains(timestamp)) {
                 continue
             }
 
-            // Only process crash-related exit reasons
-            if (!isCrashReason(exitInfo.reason)) {
-                continue
-            }
-
-            // Track the latest timestamp
             if (exitInfo.timestamp > latestTimestamp) {
                 latestTimestamp = exitInfo.timestamp
             }
 
-            // Convert to JSON
-            val jsonString = exportExitInfoAsJSON(context, exitInfo)
+            val jsonString = exportExitInfoAsJSON(context, exitInfo, pendingTrace) { consumed ->
+                if (consumed) {
+                    usedPendingTrace = true
+                }
+            }
+
             if (jsonString != null) {
                 crashReports.add(jsonString)
+                reportedTimestamps.add(timestamp)
             }
+        }
+
+        if (usedPendingTrace) {
+            FaroCrashTraceCache.clearPendingCrashTrace(context)
         }
 
         // Update the last processed timestamp
@@ -104,6 +119,36 @@ object FaroCrashReporter {
         }
 
         return if (crashReports.isEmpty()) null else crashReports
+    }
+
+    /**
+     * Prefer the row that already carries a trace stream; otherwise keep the first entry.
+     */
+    private fun pickBestExitInfo(exits: List<ApplicationExitInfo>): ApplicationExitInfo {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return exits.first()
+        }
+
+        return exits.maxByOrNull { exit ->
+            var score = 0
+            if (exit.reason == ApplicationExitInfo.REASON_CRASH) {
+                score += 4
+            } else if (exit.reason == ApplicationExitInfo.REASON_CRASH_NATIVE) {
+                score += 3
+            }
+            val trace = getTraceInfo(exit)
+            if (trace.isNotEmpty()) {
+                score += 2
+            }
+            if (hasExceptionHeader(trace)) {
+                score += 2
+            }
+            val description = exit.description?.trim().orEmpty()
+            if (description.isNotEmpty()) {
+                score += 1
+            }
+            score
+        } ?: exits.first()
     }
 
     /**
@@ -127,7 +172,12 @@ object FaroCrashReporter {
     /**
      * Convert ApplicationExitInfo to JSON string matching iOS format.
      */
-    private fun exportExitInfoAsJSON(context: Context, exitInfo: ApplicationExitInfo): String? {
+    private fun exportExitInfoAsJSON(
+        context: Context,
+        exitInfo: ApplicationExitInfo,
+        pendingTrace: FaroCrashTraceCache.PendingTrace?,
+        onPendingTraceUsed: (Boolean) -> Unit,
+    ): String? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return null
         }
@@ -145,7 +195,10 @@ object FaroCrashReporter {
             json.put("status", exitInfo.status)
 
             // Description - human-readable description
-            json.put("description", exitInfo.description ?: getDefaultDescription(exitInfo.reason))
+            val rawDescription = exitInfo.description?.trim().orEmpty()
+            val description = rawDescription.takeIf { it.isNotEmpty() && !isGenericDescription(it) }
+                ?: getDefaultDescription(exitInfo.reason)
+            json.put("description", description)
 
             // Process info
             json.put("processName", exitInfo.processName ?: "")
@@ -157,17 +210,105 @@ object FaroCrashReporter {
             // Stack trace from ApplicationExitInfo, or from UncaughtExceptionHandler cache
             // when traceInputStream is null (common on emulators / Android 16+).
             val exitTrace = getTraceInfo(exitInfo)
-            val trace = exitTrace.ifEmpty {
-                FaroCrashTraceCache.consumePendingCrashTrace(context, exitInfo.timestamp).orEmpty()
+            val cachedTrace = FaroCrashTraceCache.traceForExitTimestamp(pendingTrace, exitInfo.timestamp)
+            if (isAnrTimeoutDescription(rawDescription)) {
+                // ANRInstrumentation reports these with type ANR.
+                return null
             }
+
+            if (FaroAnrCache.hasNearbyAnrDetection(context, exitInfo.timestamp)) {
+                // Same incident already captured by ANRTracker + ANRInstrumentation.
+                return null
+            }
+
+            val trace = resolveCrashTrace(exitTrace, cachedTrace)
             if (trace.isNotEmpty()) {
+                if (exitTrace.isEmpty() && cachedTrace.isNotEmpty()) {
+                    onPendingTraceUsed(true)
+                } else if (cachedTrace.isNotEmpty() && trace == cachedTrace) {
+                    onPendingTraceUsed(true)
+                }
                 json.put("trace", trace)
+            } else if (!hasMeaningfulDescription(exitInfo)) {
+                // Skip duplicate/no-signal rows that would surface as generic "crash" in the UI.
+                return null
             }
 
             json.toString()
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * ApplicationExitInfo traces on emulators often contain only "at …" frame lines.
+     * UncaughtExceptionHandler cache includes the exception class + message header
+     * required for plugin titles (e.g. java.lang.NullPointerException).
+     */
+    private fun resolveCrashTrace(exitTrace: String, cachedTrace: String): String {
+        val exit = exitTrace.trim()
+        val cached = cachedTrace.trim()
+
+        if (exit.isEmpty()) {
+            return cached
+        }
+        if (cached.isEmpty()) {
+            return exit
+        }
+
+        val exitHasHeader = hasExceptionHeader(exit)
+        val cachedHasHeader = hasExceptionHeader(cached)
+
+        return when {
+            cachedHasHeader && !exitHasHeader -> cached
+            exitHasHeader && !cachedHasHeader -> exit
+            cached.length > exit.length -> cached
+            else -> exit
+        }
+    }
+
+    private fun isAnrTimeoutDescription(description: String): Boolean {
+        val normalized = description.trim().lowercase()
+        if (normalized.isEmpty()) {
+            return false
+        }
+        return normalized.contains("input dispatching timed out") ||
+            normalized.contains("not responding") ||
+            normalized.contains("application not responding")
+    }
+
+    private fun hasExceptionHeader(trace: String): Boolean {
+        return trace.lineSequence().any { line ->
+            val trimmed = line.trim()
+            trimmed.isNotEmpty() &&
+                !trimmed.startsWith("at ") &&
+                trimmed.contains('.') &&
+                !trimmed.startsWith("Caused by:")
+        }
+    }
+
+    private fun isGenericDescription(description: String): Boolean {
+        val normalized = description.trim().lowercase()
+        return normalized in setOf(
+            "crash",
+            "native crash",
+            "application crash",
+            "application crash (java/kotlin)",
+            "application crash (native)",
+        )
+    }
+
+    private fun hasMeaningfulDescription(exitInfo: ApplicationExitInfo): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return false
+        }
+
+        val description = exitInfo.description?.trim().orEmpty()
+        if (description.isEmpty()) {
+            return false
+        }
+
+        return !isGenericDescription(description)
     }
 
     /**
