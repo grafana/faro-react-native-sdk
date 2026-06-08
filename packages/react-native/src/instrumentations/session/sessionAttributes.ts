@@ -230,11 +230,12 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
 
 async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
   try {
-    // Get device ID asynchronously
-    const deviceId = await getDeviceId();
-    const deviceOsDetail = await getDeviceOsDetail();
-    const deviceOsBuildId = await getDeviceOsBuildId();
-    const installationId = await getInstallationId();
+    const [deviceId, deviceOsDetail, deviceOsBuildId, installationId] = await Promise.all([
+      getDeviceId(),
+      getDeviceOsDetail(),
+      getDeviceOsBuildId(),
+      getInstallationId(),
+    ]);
 
     // Get synchronous device info
     const systemName = DeviceInfo.getSystemName();
@@ -354,18 +355,7 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
  * Get structured mobile meta plus legacy session attributes for async `initializeFaro`.
  */
 export async function loadMobileMetaForInit(): Promise<PreloadedMobileMeta> {
-  try {
-    return await collectMobileMeta();
-  } catch {
-    const installationId = await getInstallationId();
-
-    return {
-      sessionAttributes: minimalSessionDeviceAttributes(),
-      meta: {
-        app: installationId ? { installationId } : {},
-      },
-    };
-  }
+  return collectMobileMeta();
 }
 
 /**
