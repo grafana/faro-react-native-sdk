@@ -4,6 +4,7 @@ import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 
 import { ErrorMechanism } from '../errors/const';
 
+import { resolveCrashErrorMessage } from './crashErrorMessage';
 import { parseAndroidCrashTrace } from './parseAndroidCrashTrace';
 import type { CrashReport, CrashReportingOptions } from './types';
 
@@ -14,7 +15,8 @@ import type { CrashReport, CrashReportingOptions } from './types';
  *
  * **Platform Support**:
  * - **Android**: Uses ApplicationExitInfo API (Android 11+ / API 30+)
- *   Captures: CRASH, CRASH_NATIVE, ANR, LOW_MEMORY, EXCESSIVE_RESOURCE_USAGE
+ *   Captures: CRASH, CRASH_NATIVE, LOW_MEMORY, EXCESSIVE_RESOURCE_USAGE
+ *   (ANRs are reported by ANRInstrumentation, not ApplicationExitInfo replay)
  * - **iOS**: Uses PLCrashReporter (requires adding dependency to podspec)
  *   Captures: Signal crashes (SIGSEGV, SIGABRT, etc.) and Mach exceptions
  *
@@ -195,7 +197,7 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
           releaseBundleFilename: this.options.releaseBundleFilename,
         })
       : null;
-    const errorMessage = parsedTrace?.exceptionMessage ?? crash.description ?? this.getErrorMessage(crash);
+    const errorMessage = resolveCrashErrorMessage(crash, parsedTrace);
 
     // Use a message-only Error so pushError does not capture the JS reporter stack
     // (sendCrashReport / asyncGeneratorStep / node_modules) as the exception frames.
@@ -254,41 +256,5 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
     });
 
     this.logDebug(`Reported crash: ${crash.reason} at ${crash.timestamp}`);
-  }
-
-  /**
-   * Build error message matching Flutter SDK format:
-   * "{reason}: {description}, status: {status}"
-   */
-  private getErrorMessage(crash: CrashReport): string {
-    const reason = crash.reason || 'UNKNOWN';
-    const status = crash.status ?? 0;
-
-    let description: string;
-    switch (crash.reason) {
-      case 'ANR':
-        description = 'Application Not Responding';
-        break;
-      case 'CRASH':
-        description = 'Application crash (Java/Kotlin)';
-        break;
-      case 'CRASH_NATIVE':
-        description = 'Application crash (Native)';
-        break;
-      case 'LOW_MEMORY':
-        description = 'Application terminated due to low memory';
-        break;
-      case 'EXCESSIVE_RESOURCE_USAGE':
-        description = 'Application terminated due to excessive resource usage';
-        break;
-      case 'INITIALIZATION_FAILURE':
-        description = 'Application failed to initialize';
-        break;
-      default:
-        description = crash.description || 'Application crash';
-        break;
-    }
-
-    return `${reason}: ${description}, status: ${status}`;
   }
 }
