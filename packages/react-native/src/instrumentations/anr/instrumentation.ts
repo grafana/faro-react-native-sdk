@@ -3,6 +3,10 @@ import { NativeModules, Platform } from 'react-native';
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 
 import { ErrorMechanism } from '../errors/const';
+import {
+  normalizeJavaStackTraceForRetrace,
+  parseAndroidCrashTrace,
+} from '../crashReporting/parseAndroidCrashTrace';
 
 import type { ANREvent, ANRInstrumentationOptions } from './types';
 
@@ -107,6 +111,39 @@ export class ANRInstrumentation extends BaseInstrumentation {
     }
   }
 
+  /**
+   * Report a detected ANR using the blocked main-thread stack, not the JS reporter stack.
+   * Mirrors CrashReportingInstrumentation.sendCrashReport (error.stack cleared + stackFrames).
+   */
+  private reportANR(anr: ANREvent): void {
+    const rawStacktrace = anr.stacktrace?.trim() ?? '';
+    const traceForRetrace = rawStacktrace ? normalizeJavaStackTraceForRetrace(rawStacktrace) : '';
+    const parsed = traceForRetrace ? parseAndroidCrashTrace(traceForRetrace) : null;
+
+    const error = new Error('ANR (Application Not Responding)');
+    error.stack = undefined;
+
+    const context: Record<string, string> = {
+      duration: String(anr.duration),
+      mechanism: ErrorMechanism.ANR,
+      timestamp: String(anr.timestamp),
+    };
+    if (traceForRetrace) {
+      context.stacktrace = traceForRetrace;
+    }
+
+    const stackFrames = parsed?.frames ?? [];
+    if (!stackFrames.length && rawStacktrace) {
+      this.logWarn('ANR main-thread stack present but no Java/Kotlin frames parsed');
+    }
+
+    this.api.pushError(error, {
+      type: 'ANR',
+      context,
+      ...(stackFrames.length ? { stackFrames } : {}),
+    });
+  }
+
   private async checkANRStatus(nativeModule: typeof NativeModules.FaroReactNativeModule): Promise<void> {
     try {
       if (typeof nativeModule.getANRStatus !== 'function') {
@@ -129,19 +166,12 @@ export class ANRInstrumentation extends BaseInstrumentation {
         for (const anrJson of anrList) {
           try {
             const anr = JSON.parse(anrJson) as ANREvent;
-
-            this.api.pushError(new Error('ANR (Application Not Responding)'), {
-              context: {
-                duration: String(anr.duration),
-                mechanism: ErrorMechanism.ANR,
-                stacktrace: anr.stacktrace,
-                timestamp: String(anr.timestamp),
-              },
-              type: 'ANR',
-            });
+            this.reportANR(anr);
           } catch {
             // If parsing fails, still log the raw ANR
-            this.api.pushError(new Error('ANR (Application Not Responding)'), {
+            const error = new Error('ANR (Application Not Responding)');
+            error.stack = undefined;
+            this.api.pushError(error, {
               context: {
                 mechanism: ErrorMechanism.ANR,
                 raw: anrJson,

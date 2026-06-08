@@ -31,7 +31,32 @@ export interface ParsedAndroidCrashTrace {
 
 // Mirrors pkg/exporter/androidretrace/mapping.go frameLine / exceptionHeader.
 const FRAME_LINE = /^\s*at\s+([\w$.]+)\.([\w$<>]+)\(([^):]*)(?::(\d+))?\)\s*$/;
+// Thread.getStackTrace() / legacy ANRTracker lines without the "at " prefix.
+const THREAD_STACK_FRAME_LINE = /^\s*([\w$.]+)\.([\w$<>]+)\(([^):]*)(?::(\d+))?\)\s*$/;
 const EXCEPTION_HEADER = /^\s*(?:Caused by:\s*)?([\w$.]+)(?::(.*))?$/;
+
+/**
+ * Normalize raw Java thread stacks (e.g. ANRTracker) to Log.getStackTraceString shape
+ * so collector R8 retrace (mapping.RetraceText) can rewrite frame lines.
+ */
+export function normalizeJavaStackTraceForRetrace(trace: string): string {
+  return trace
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        return line;
+      }
+      if (/^\s*at\s+/.test(line)) {
+        return line;
+      }
+      if (THREAD_STACK_FRAME_LINE.test(trimmed)) {
+        return `    at ${trimmed}`;
+      }
+      return line;
+    })
+    .join('\n');
+}
 
 /**
  * Normalize exception text from ApplicationExitInfo / Log.getStackTraceString headers.
@@ -81,7 +106,7 @@ export function parseAndroidCrashTrace(
   let exceptionMessage: string | undefined;
 
   lines.forEach((line, index) => {
-    const frameMatch = line.match(FRAME_LINE);
+    const frameMatch = line.match(FRAME_LINE) ?? line.trim().match(THREAD_STACK_FRAME_LINE);
 
     if (frameMatch) {
       const [, module, method, filename, lineNo] = frameMatch;

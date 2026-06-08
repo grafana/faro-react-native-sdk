@@ -175,9 +175,12 @@ class ANRTracker : Thread("ANRTracker") {
             val stackTrace = mainThread.stackTrace
             
             // Build a readable stack trace
+            // Match Android Log.getStackTraceString / ApplicationExitInfo format so
+            // ingest R8 retrace and parseAndroidCrashTrace can consume the text.
             val stackTraceStr = StringBuilder()
             for (element in stackTrace) {
-                stackTraceStr.append(element.className)
+                stackTraceStr.append("    at ")
+                    .append(element.className)
                     .append(".")
                     .append(element.methodName)
                     .append("(")
