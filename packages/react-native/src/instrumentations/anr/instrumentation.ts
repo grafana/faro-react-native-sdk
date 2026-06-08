@@ -129,7 +129,7 @@ export class ANRInstrumentation extends BaseInstrumentation {
       timestamp: String(anr.timestamp),
     };
     if (traceForRetrace) {
-      context.stacktrace = traceForRetrace;
+      context['stacktrace'] = traceForRetrace;
     }
 
     const stackFrames = parsed?.frames ?? [];

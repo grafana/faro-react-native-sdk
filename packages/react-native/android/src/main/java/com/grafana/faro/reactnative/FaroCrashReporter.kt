@@ -23,7 +23,6 @@ import java.io.InputStreamReader
  * ## Supported Exit Reasons
  * - REASON_CRASH: Java/Kotlin exception crash
  * - REASON_CRASH_NATIVE: Native (NDK) crash
- * - REASON_ANR: Application Not Responding
  * - REASON_LOW_MEMORY: Killed due to low memory
  * - REASON_EXCESSIVE_RESOURCE_USAGE: Killed due to excessive resource usage
  *
@@ -108,7 +107,8 @@ object FaroCrashReporter {
     }
 
     /**
-     * Check if the exit reason indicates a crash or ANR.
+     * Check if the exit reason should be replayed as a previous-session crash.
+     * ANRs are excluded: ANRInstrumentation reports them with the blocked main-thread stack.
      */
     private fun isCrashReason(reason: Int): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -118,7 +118,6 @@ object FaroCrashReporter {
         return when (reason) {
             ApplicationExitInfo.REASON_CRASH,
             ApplicationExitInfo.REASON_CRASH_NATIVE,
-            ApplicationExitInfo.REASON_ANR,
             ApplicationExitInfo.REASON_LOW_MEMORY,
             ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> true
             else -> false
