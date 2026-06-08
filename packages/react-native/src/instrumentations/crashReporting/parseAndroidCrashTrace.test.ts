@@ -1,4 +1,8 @@
-import { normalizeCrashTraceExceptionMessage, parseAndroidCrashTrace } from './parseAndroidCrashTrace';
+import {
+  normalizeCrashTraceExceptionMessage,
+  normalizeJavaStackTraceForRetrace,
+  parseAndroidCrashTrace,
+} from './parseAndroidCrashTrace';
 
 describe('parseAndroidCrashTrace', () => {
   it('parses QuickPizza-style ApplicationExitInfo traces', () => {
@@ -144,5 +148,34 @@ describe('parseAndroidCrashTrace', () => {
     expect(normalizeCrashTraceExceptionMessage('QuickPizza RN intentional native crash')).toBe(
       'QuickPizza RN intentional native crash'
     );
+  });
+
+  it('parses ANRTracker Thread.getStackTrace lines without an "at " prefix', () => {
+    const trace = [
+      'com.quickpizza.QuickPizzaCrashModule.triggerApplicationNotResponding(QuickPizzaCrashModule.kt:42)',
+      'com.quickpizza.QuickPizzaCrashModule.crash(QuickPizzaCrashModule.kt:22)',
+    ].join('\n');
+
+    const parsed = parseAndroidCrashTrace(trace);
+
+    expect(parsed?.frames).toEqual([
+      {
+        module: 'com.quickpizza.QuickPizzaCrashModule',
+        function: 'triggerApplicationNotResponding',
+        filename: 'QuickPizzaCrashModule.kt',
+        lineno: 42,
+      },
+      {
+        module: 'com.quickpizza.QuickPizzaCrashModule',
+        function: 'crash',
+        filename: 'QuickPizzaCrashModule.kt',
+        lineno: 22,
+      },
+    ]);
+  });
+
+  it('normalizes thread stacks for ingest R8 retrace', () => {
+    const raw = 'com.quickpizza.c.a(SourceFile:33)';
+    expect(normalizeJavaStackTraceForRetrace(raw)).toBe('    at com.quickpizza.c.a(SourceFile:33)');
   });
 });
