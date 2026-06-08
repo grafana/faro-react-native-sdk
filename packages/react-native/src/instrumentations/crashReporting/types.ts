@@ -3,7 +3,7 @@
  *
  * **Platform Support**:
  * - **Android**: Uses ApplicationExitInfo API (Android 11+ / API 30+)
- *   Captures: CRASH, CRASH_NATIVE, ANR, LOW_MEMORY, EXCESSIVE_RESOURCE_USAGE
+ *   Captures: CRASH, CRASH_NATIVE, LOW_MEMORY, EXCESSIVE_RESOURCE_USAGE
  * - **iOS**: Uses PLCrashReporter (automatically included via podspec)
  *   Captures: Signal crashes (SIGSEGV, SIGABRT, etc.) and Mach exceptions
  */
