@@ -112,20 +112,24 @@ function getStructuredDeviceManufacturer(manufacturer: string): string {
 }
 
 function getStructuredDeviceModelIdentifier(model: string): string | undefined {
-  // iOS device-info exposes the hardware identifier here. On Android the same
-  // API returns a board code, so use Build.MODEL for the Faro model identifier.
-  if (Platform.OS === 'ios') {
-    return DeviceInfo.getDeviceId();
-  }
-
+  // Android getDeviceId() returns a board code, so use Build.MODEL for the Faro
+  // model identifier.
   if (Platform.OS === 'android') {
     return model;
+  }
+
+  // React Native reports iPhone and iPadOS apps as Platform.OS === 'ios'.
+  // react-native-device-info exposes the Apple hardware identifier here.
+  if (Platform.OS === 'ios') {
+    return DeviceInfo.getDeviceId();
   }
 
   return undefined;
 }
 
 function getMobileDeviceType(isTablet: boolean): 'mobile' | 'tablet' | undefined {
+  // iPadOS is still reported as Platform.OS === 'ios'; DeviceInfo.isTablet()
+  // distinguishes iPad/tablet form factor from phone form factor.
   if (Platform.OS === 'ios' || Platform.OS === 'android') {
     return isTablet ? 'tablet' : 'mobile';
   }
