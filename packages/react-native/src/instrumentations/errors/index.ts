@@ -144,7 +144,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
         this.api.pushError(enhancedError, {
           type: enhancedError.name || 'Error',
           context,
-          fatal: false,
+          fatal: isFatal ?? false,
           stackFrames,
         });
 

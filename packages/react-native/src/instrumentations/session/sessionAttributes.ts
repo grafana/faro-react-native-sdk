@@ -1,10 +1,9 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
 import type { Meta } from '@grafana/faro-core';
 
-const INSTALLATION_ID_STORAGE_KEY = '@grafana/faro-react-native/installation_id';
+import { getInstallationId } from './installationId';
 
 /**
  * Session attributes for React Native
@@ -33,19 +32,19 @@ export interface SessionAttributes {
   /** Device manufacturer (e.g., "apple", "samsung", "Google") */
   device_manufacturer?: string;
 
-  /** Legacy device model value from `react-native-device-info` (e.g., "iPhone 15 Pro", "SM-A155F") */
+  /** Device model in flat session attributes (e.g., "iPhone 15 Pro", "SM-A155F") */
   device_model?: string;
 
   /** Human-readable model name (e.g., "iPhone 15 Pro") */
   device_model_name?: string;
 
-  /** Legacy device brand (e.g., "Apple", "samsung"). Structured meta uses "iPhone"/"iPad" on iOS. */
+  /** Device brand in flat session attributes (e.g., "Apple", "samsung") */
   device_brand?: string;
 
   /** Whether device is physical or emulator ("true" or "false") */
   device_is_physical?: string;
 
-  /** Legacy device identifier from `react-native-device-info`. Structured meta uses `app.installationId`. */
+  /** Temporary flat attribute mirroring `app.installationId` during migration. */
   device_id?: string;
 
   /** Device type ("mobile" or "tablet") */
@@ -100,60 +99,6 @@ function getReactNativeVersion(): string {
   }
 }
 
-/**
- * Get the legacy device id used by `session.attributes.device_id`.
- *
- * `app.installationId` uses an SDK-owned persisted UUID instead, so it more closely
- * represents this app install and does not reuse platform/vendor device identifiers.
- */
-async function getDeviceId(): Promise<string> {
-  try {
-    return await DeviceInfo.getUniqueId();
-  } catch (_error) {
-    return 'unknown';
-  }
-}
-
-function createRandomBytes(length: number): Uint8Array {
-  const bytes = new Uint8Array(length);
-  const cryptoObject = globalThis.crypto;
-
-  if (cryptoObject && typeof cryptoObject.getRandomValues === 'function') {
-    cryptoObject.getRandomValues(bytes);
-    return bytes;
-  }
-
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Math.floor(Math.random() * 256);
-  }
-
-  return bytes;
-}
-
-function generateInstallationId(): string {
-  const bytes = createRandomBytes(16);
-  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
-  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
-
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-async function getInstallationId(): Promise<string | undefined> {
-  try {
-    const storedInstallationId = await AsyncStorage.getItem(INSTALLATION_ID_STORAGE_KEY);
-    if (storedInstallationId) {
-      return storedInstallationId;
-    }
-
-    const installationId = generateInstallationId();
-    await AsyncStorage.setItem(INSTALLATION_ID_STORAGE_KEY, installationId);
-    return installationId;
-  } catch (_error) {
-    return undefined;
-  }
-}
-
 function getStructuredDeviceBrand(model: string, brand: string): string {
   if (Platform.OS !== 'ios') {
     return brand;
@@ -164,6 +109,28 @@ function getStructuredDeviceBrand(model: string, brand: string): string {
 
 function getStructuredDeviceManufacturer(manufacturer: string): string {
   return Platform.OS === 'ios' ? manufacturer.toLowerCase() : manufacturer;
+}
+
+function getStructuredDeviceModelIdentifier(model: string): string | undefined {
+  // iOS device-info exposes the hardware identifier here. On Android the same
+  // API returns a board code, so use Build.MODEL for the Faro model identifier.
+  if (Platform.OS === 'ios') {
+    return DeviceInfo.getDeviceId();
+  }
+
+  if (Platform.OS === 'android') {
+    return model;
+  }
+
+  return undefined;
+}
+
+function getMobileDeviceType(isTablet: boolean): 'mobile' | 'tablet' | undefined {
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    return isTablet ? 'tablet' : 'mobile';
+  }
+
+  return undefined;
 }
 
 /**
@@ -230,8 +197,7 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
 
 async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
   try {
-    const [deviceId, deviceOsDetail, deviceOsBuildId, installationId] = await Promise.all([
-      getDeviceId(),
+    const [deviceOsDetail, deviceOsBuildId, installationId] = await Promise.all([
       getDeviceOsDetail(),
       getDeviceOsBuildId(),
       getInstallationId(),
@@ -242,13 +208,12 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     const systemVersion = DeviceInfo.getSystemVersion();
     const manufacturer = DeviceInfo.getManufacturerSync();
     const model = DeviceInfo.getModel();
-    const modelIdentifier = Platform.OS === 'ios' ? DeviceInfo.getDeviceId() : model;
+    const modelIdentifier = getStructuredDeviceModelIdentifier(model);
     const deviceName = DeviceInfo.getDeviceNameSync();
     const brand = DeviceInfo.getBrand();
     const isEmulator = DeviceInfo.isEmulatorSync();
-    // Unlike Flutter's current device_info_plus source, RN can ask
-    // react-native-device-info whether the device is a tablet.
     const isTablet = DeviceInfo.isTablet();
+    const deviceType = getMobileDeviceType(isTablet);
 
     // Memory info
     const totalMemory = DeviceInfo.getTotalMemorySync();
@@ -305,8 +270,8 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
       device_model_name: deviceName,
       device_brand: brand,
       device_is_physical: String(!isEmulator),
-      device_id: deviceId,
-      device_type: isTablet ? 'tablet' : 'mobile',
+      ...(installationId ? { device_id: installationId } : {}),
+      ...(deviceType ? { device_type: deviceType } : {}),
       device_memory_total: String(totalMemory),
       device_memory_used: String(usedMemory),
       device_battery_level: batteryLevel,
@@ -334,7 +299,7 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
           manufacturer: structuredDeviceManufacturer,
           ...(modelIdentifier ? { model_identifier: modelIdentifier } : {}),
           model_name: model,
-          type: isTablet ? 'tablet' : 'mobile',
+          ...(deviceType ? { type: deviceType } : {}),
         },
         os: osMeta,
       },
@@ -352,7 +317,7 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
 }
 
 /**
- * Get structured mobile meta plus legacy session attributes for async `initializeFaro`.
+ * Get structured mobile meta plus flat session attributes for async `initializeFaro`.
  */
 export async function loadMobileMetaForInit(): Promise<PreloadedMobileMeta> {
   return collectMobileMeta();

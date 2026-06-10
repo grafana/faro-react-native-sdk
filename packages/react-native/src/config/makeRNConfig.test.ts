@@ -119,7 +119,7 @@ describe('makeRNConfig', () => {
     expect(minimal.instrumentations?.map((i) => i.name)).toEqual(direct.map((i) => i.name));
   });
 
-  it('passes preloaded mobile meta and legacy session device attributes to core config', () => {
+  it('passes preloaded mobile meta and flat session device attributes to core config', () => {
     const preloaded = minimalSessionDeviceAttributes();
     preloaded.device_id = 'test-preloaded-id';
     const preloadedMobileMeta: PreloadedMobileMeta = {

@@ -78,6 +78,7 @@ describe('ErrorsInstrumentation', () => {
       expect(item.payload.type).toBe('Error');
       expect(item.payload.value).toBe('Test error');
       expect(item.payload.context?.mechanism).toBe('uncaught');
+      expect(item.payload.fatal).toBe(false);
     });
 
     it('should include mechanism in context and use error.name for type (TypeError)', () => {
@@ -104,7 +105,7 @@ describe('ErrorsInstrumentation', () => {
       expect(item.payload.context?.mechanism).toBe('uncaught');
     });
 
-    it('should mark global JavaScript errors as non-fatal', () => {
+    it('should use the React Native fatal signal for global JavaScript errors', () => {
       const transport = new MockTransport();
       let errorHandler: any;
 
@@ -124,7 +125,7 @@ describe('ErrorsInstrumentation', () => {
 
       expect(transport.items).toHaveLength(1);
       const item = transport.items[0] as TransportItem<ExceptionEvent>;
-      expect(item.payload.fatal).toBe(false);
+      expect(item.payload.fatal).toBe(true);
       expect(item.payload.context?.isFatal).toBeUndefined();
     });
 
