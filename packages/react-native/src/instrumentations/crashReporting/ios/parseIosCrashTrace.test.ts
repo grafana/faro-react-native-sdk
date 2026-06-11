@@ -51,10 +51,7 @@ describe('parseIosCrashTrace', () => {
   });
 
   it('handles stack traces with whitespace variations', () => {
-    const trace = [
-      '  0   libsystem_kernel.dylib   0x00000001a2b3c000  ',
-      '1  MyApp  0x0000000100abc123',
-    ].join('\n');
+    const trace = ['  0   libsystem_kernel.dylib   0x00000001a2b3c000  ', '1  MyApp  0x0000000100abc123'].join('\n');
 
     const parsed = parseIosCrashTrace(trace);
 
@@ -67,11 +64,7 @@ describe('parseIosCrashTrace', () => {
   });
 
   it('returns null when no valid frames are found', () => {
-    const trace = [
-      'Not a valid frame',
-      'Another invalid line',
-      'Signal: SIGSEGV',
-    ].join('\n');
+    const trace = ['Not a valid frame', 'Another invalid line', 'Signal: SIGSEGV'].join('\n');
 
     expect(parseIosCrashTrace(trace)).toBeNull();
   });

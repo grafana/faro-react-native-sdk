@@ -1,15 +1,13 @@
-import type { ParsedAndroidCrashTrace } from './parseAndroidCrashTrace';
-import { isPlausibleJavaExceptionIdentifier } from './parseAndroidCrashTrace';
 import type { CrashReport } from '../types';
+
+import { isPlausibleJavaExceptionIdentifier } from './parseAndroidCrashTrace';
+import type { ParsedAndroidCrashTrace } from './parseAndroidCrashTrace';
 
 /**
  * Human-readable exception value for ApplicationExitInfo crash reports.
  * Priority: parsed trace message → exception class → description → generic fallback.
  */
-export function resolveCrashErrorMessage(
-  crash: CrashReport,
-  parsedTrace: ParsedAndroidCrashTrace | null,
-): string {
+export function resolveCrashErrorMessage(crash: CrashReport, parsedTrace: ParsedAndroidCrashTrace | null): string {
   const fromTrace = parsedTrace?.exceptionMessage?.trim();
   if (fromTrace) {
     return fromTrace;
@@ -34,8 +32,7 @@ export function resolveCrashErrorMessage(
   return fallback.trim() || crash.reason || 'Application crash';
 }
 
-const ANR_TIMEOUT_DESCRIPTION_PATTERN =
-  /input dispatching timed out|not responding|application not responding/i;
+const ANR_TIMEOUT_DESCRIPTION_PATTERN = /input dispatching timed out|not responding|application not responding/i;
 
 /**
  * Android ANR watchdog descriptions from ApplicationExitInfo (any app).

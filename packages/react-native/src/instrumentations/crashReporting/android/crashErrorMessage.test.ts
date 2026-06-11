@@ -1,3 +1,5 @@
+import type { CrashReport } from '../types';
+
 import {
   buildFallbackCrashMessage,
   isAnrTimeoutDescription,
@@ -6,7 +8,6 @@ import {
   shouldSkipLowSignalCrashReport,
 } from './crashErrorMessage';
 import type { ParsedAndroidCrashTrace } from './parseAndroidCrashTrace';
-import type { CrashReport } from '../types';
 
 const baseCrash: CrashReport = {
   reason: 'CRASH',
@@ -29,11 +30,12 @@ describe('resolveCrashErrorMessage', () => {
   it('uses ApplicationExitInfo description when the trace has no message', () => {
     const crash: CrashReport = {
       ...baseCrash,
-      description: 'Input dispatching timed out (com.example.app/.MainActivity is not responding. Waited 5002ms for FocusEvent)',
+      description:
+        'Input dispatching timed out (com.example.app/.MainActivity is not responding. Waited 5002ms for FocusEvent)',
     };
 
     expect(resolveCrashErrorMessage(crash, null)).toBe(
-      'Input dispatching timed out (com.example.app/.MainActivity is not responding. Waited 5002ms for FocusEvent)',
+      'Input dispatching timed out (com.example.app/.MainActivity is not responding. Waited 5002ms for FocusEvent)'
     );
   });
 
@@ -112,8 +114,8 @@ describe('isAnrTimeoutDescription', () => {
   it('detects Android ANR watchdog descriptions', () => {
     expect(
       isAnrTimeoutDescription(
-        'Input dispatching timed out (com.example.app/com.example.app.MainActivity is not responding. Waited 5002ms for FocusEvent)',
-      ),
+        'Input dispatching timed out (com.example.app/com.example.app.MainActivity is not responding. Waited 5002ms for FocusEvent)'
+      )
     ).toBe(true);
     expect(isAnrTimeoutDescription('Application Not Responding')).toBe(true);
     expect(isAnrTimeoutDescription('java.lang.RuntimeException: something broke')).toBe(false);
@@ -127,7 +129,7 @@ describe('shouldSkipCrashReport', () => {
         ...baseCrash,
         description:
           'Input dispatching timed out (com.example.app/com.example.app.MainActivity is not responding. Waited 5002ms for FocusEvent)',
-      }),
+      })
     ).toBe(true);
   });
 
@@ -137,7 +139,7 @@ describe('shouldSkipCrashReport', () => {
         ...baseCrash,
         description: 'java.lang.RuntimeException: Network failure',
         trace: 'java.lang.RuntimeException: Network failure\n    at com.example.Foo.bar(Foo.kt:1)',
-      }),
+      })
     ).toBe(false);
   });
 });
@@ -148,7 +150,7 @@ describe('shouldSkipLowSignalCrashReport', () => {
       shouldSkipLowSignalCrashReport({
         ...baseCrash,
         description: 'Application crash (Java/Kotlin)',
-      }),
+      })
     ).toBe(true);
   });
 
@@ -157,7 +159,7 @@ describe('shouldSkipLowSignalCrashReport', () => {
       shouldSkipLowSignalCrashReport({
         ...baseCrash,
         trace: 'java.lang.NullPointerException\n    at com.example.Foo.bar(Foo.kt:1)',
-      }),
+      })
     ).toBe(false);
   });
 
@@ -166,7 +168,7 @@ describe('shouldSkipLowSignalCrashReport', () => {
       shouldSkipLowSignalCrashReport({
         ...baseCrash,
         description: 'java.lang.RuntimeException: intentional native crash',
-      }),
+      })
     ).toBe(false);
   });
 });
@@ -174,7 +176,7 @@ describe('shouldSkipLowSignalCrashReport', () => {
 describe('buildFallbackCrashMessage', () => {
   it('formats native crash reasons', () => {
     expect(buildFallbackCrashMessage({ ...baseCrash, reason: 'CRASH_NATIVE' })).toBe(
-      'CRASH_NATIVE: Application crash (Native), status: 0',
+      'CRASH_NATIVE: Application crash (Native), status: 0'
     );
   });
 });

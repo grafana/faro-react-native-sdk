@@ -1,10 +1,7 @@
-import {
-  buildFallbackCrashMessage,
-  resolveCrashErrorMessage,
-  shouldSkipCrashReport,
-} from './crashErrorMessage';
-import type { ParsedIosCrashTrace } from './parseIosCrashTrace';
 import type { CrashReport } from '../types';
+
+import { buildFallbackCrashMessage, resolveCrashErrorMessage, shouldSkipCrashReport } from './crashErrorMessage';
+import type { ParsedIosCrashTrace } from './parseIosCrashTrace';
 
 const baseCrash: CrashReport = {
   reason: 'SIGSEGV',
@@ -71,9 +68,7 @@ describe('resolveCrashErrorMessage', () => {
   });
 
   it('falls back to crash description if present', () => {
-    expect(resolveCrashErrorMessage({ ...baseCrash, description: 'Fatal error' }, null)).toBe(
-      'Fatal error'
-    );
+    expect(resolveCrashErrorMessage({ ...baseCrash, description: 'Fatal error' }, null)).toBe('Fatal error');
   });
 
   it('uses crash reason with signal mapping', () => {
@@ -85,8 +80,44 @@ describe('resolveCrashErrorMessage', () => {
     expect(resolveCrashErrorMessage(crashWithGeneric, null)).toBe('SIGSEGV: Segmentation fault, status: 0');
   });
 
-  it('uses generic fallback when nothing else is available', () => {
-    expect(resolveCrashErrorMessage(baseCrash, null)).toBe('SIGSEGV: Segmentation fault, status: 0');
+  it('recognizes all generic crash description variations (case-insensitive)', () => {
+    expect(resolveCrashErrorMessage({ ...baseCrash, description: 'CRASH' }, null)).toBe(
+      'SIGSEGV: Segmentation fault, status: 0'
+    );
+    expect(resolveCrashErrorMessage({ ...baseCrash, description: 'Application Crash' }, null)).toBe(
+      'SIGSEGV: Segmentation fault, status: 0'
+    );
+    expect(resolveCrashErrorMessage({ ...baseCrash, description: 'Signal Crash' }, null)).toBe(
+      'SIGSEGV: Segmentation fault, status: 0'
+    );
+  });
+
+  it('uses simple signal description when no description is provided', () => {
+    expect(resolveCrashErrorMessage(baseCrash, null)).toBe('Segmentation fault');
+  });
+
+  it('uses exception reason alone with default "Exception" name', () => {
+    const parsed: ParsedIosCrashTrace = {
+      exceptionReason: 'Array index out of bounds',
+      frames: [],
+    };
+
+    expect(resolveCrashErrorMessage(baseCrash, parsed)).toBe('Exception: Array index out of bounds');
+  });
+
+  it('uses meaningful description even for unknown crash reason', () => {
+    const crashWithUnknownReason = { ...baseCrash, reason: 'CUSTOM_SIGNAL', description: 'Custom error' };
+    expect(resolveCrashErrorMessage(crashWithUnknownReason, null)).toBe('Custom error');
+  });
+
+  it('uses buildFallbackCrashMessage for unknown signal with no description', () => {
+    const crashWithUnknownReason = { reason: 'CUSTOM_SIGNAL', timestamp: 123, status: 5 };
+    expect(resolveCrashErrorMessage(crashWithUnknownReason, null)).toBe('CUSTOM_SIGNAL: Application crash, status: 5');
+  });
+
+  it('handles empty/whitespace strings correctly', () => {
+    const crashWithEmptyDescription = { ...baseCrash, description: '   ' };
+    expect(resolveCrashErrorMessage(crashWithEmptyDescription, null)).toBe('Segmentation fault');
   });
 });
 
@@ -110,6 +141,14 @@ describe('shouldSkipCrashReport', () => {
   it('skips crashes with only generic descriptions', () => {
     expect(shouldSkipCrashReport({ ...baseCrash, description: 'crash' })).toBe(true);
   });
+
+  it('handles empty/whitespace trace and signal correctly', () => {
+    expect(shouldSkipCrashReport({ ...baseCrash, trace: '   ', signal: '   ' })).toBe(true);
+  });
+
+  it('keeps crashes with signal crash description if trace or signal present', () => {
+    expect(shouldSkipCrashReport({ ...baseCrash, trace: 'stack', description: 'signal crash' })).toBe(false);
+  });
 });
 
 describe('buildFallbackCrashMessage', () => {
@@ -120,14 +159,12 @@ describe('buildFallbackCrashMessage', () => {
   });
 
   it('uses description for unknown signals', () => {
-    expect(buildFallbackCrashMessage({ reason: 'CUSTOM', timestamp: 123, status: 0, description: 'Custom crash' })).toBe(
-      'CUSTOM: Custom crash, status: 0'
-    );
+    expect(
+      buildFallbackCrashMessage({ reason: 'CUSTOM', timestamp: 123, status: 0, description: 'Custom crash' })
+    ).toBe('CUSTOM: Custom crash, status: 0');
   });
 
   it('handles missing reason', () => {
-    expect(buildFallbackCrashMessage({ timestamp: 123, status: 0 })).toBe(
-      'UNKNOWN: Application crash, status: 0'
-    );
+    expect(buildFallbackCrashMessage({ timestamp: 123, status: 0 })).toBe('UNKNOWN: Application crash, status: 0');
   });
 });

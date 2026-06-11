@@ -39,17 +39,14 @@ const IOS_STACK_FRAME_LINE = /^\s*(\d+)\s+(.+?)\s+(0x[0-9a-fA-F]+)\s*$/;
 
 /**
  * Parse a raw iOS crash trace from PLCrashReporter into structured stack frames.
- * 
+ *
  * iOS crashes from PLCrashReporter come with formatted stack traces where each line
  * contains: frame number, library name, and instruction pointer hex address.
- * 
+ *
  * The collector will use the library name and instruction pointer for symbolication
  * with dSYM files or Breakpad symbols.
  */
-export function parseIosCrashTrace(
-  trace: string,
-  _options?: ParseIosCrashTraceOptions
-): ParsedIosCrashTrace | null {
+export function parseIosCrashTrace(trace: string, _options?: ParseIosCrashTraceOptions): ParsedIosCrashTrace | null {
   const trimmed = trace.trim();
   if (!trimmed) {
     return null;
@@ -63,6 +60,10 @@ export function parseIosCrashTrace(
 
     if (frameMatch) {
       const [, frameNumber, libraryName, instructionPointer] = frameMatch;
+
+      if (!libraryName || !instructionPointer || !frameNumber) {
+        continue;
+      }
 
       frames.push({
         module: libraryName.trim(),

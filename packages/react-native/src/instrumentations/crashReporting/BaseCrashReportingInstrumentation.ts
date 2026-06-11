@@ -1,45 +1,21 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules } from 'react-native';
 
-import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
+import { BaseInstrumentation } from '@grafana/faro-core';
 
-import { ErrorMechanism } from '../errors/const';
-
-import * as AndroidCrash from './android';
-import * as IosCrash from './ios';
 import type { CrashReport, CrashReportingOptions } from './types';
 
 /**
- * Crash Reporting Instrumentation (Experimental).
+ * Abstract base class for platform-specific crash reporting implementations.
  *
- * Retrieves crash reports from previous app sessions and sends them via Faro API.
- *
- * **Platform Support**:
- * - **Android**: Uses ApplicationExitInfo API (Android 11+ / API 30+)
- *   Captures: CRASH, CRASH_NATIVE, LOW_MEMORY, EXCESSIVE_RESOURCE_USAGE
- *   (ANRs are reported by ANRInstrumentation, not ApplicationExitInfo replay)
- * - **iOS**: Uses PLCrashReporter (requires adding dependency to podspec)
- *   Captures: Signal crashes (SIGSEGV, SIGABRT, etc.) and Mach exceptions
- *
- * **Note**: This instrumentation only retrieves crash data from previous sessions.
- * The crash itself terminates the app, so the report is sent on next app launch.
- *
- * @example
- * ```typescript
- * import { initializeFaro, CrashReportingInstrumentation } from '@grafana/faro-react-native';
- *
- * initializeFaro({
- *   url: 'https://collector.example.com',
- *   instrumentations: [
- *     new CrashReportingInstrumentation(),
- *   ],
- * });
- * ```
+ * Defines the common contract that both Android and iOS implementations must follow.
+ * Handles the shared logic for retrieving crash reports from native modules and
+ * processing them, while delegating platform-specific parsing and validation to subclasses.
  */
-export class CrashReportingInstrumentation extends BaseInstrumentation {
-  readonly name = '@grafana/faro-react-native:instrumentation-crash';
-  readonly version = VERSION;
+export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentation {
+  abstract override readonly name: string;
+  abstract override readonly version: string;
 
-  private readonly options: { enabled: boolean; releaseBundleFilename?: string };
+  protected readonly options: { enabled: boolean; releaseBundleFilename?: string };
 
   constructor(options: CrashReportingOptions = {}) {
     super();
@@ -63,49 +39,62 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
 
     this.logDebug('Initializing crash reporting instrumentation');
 
-    // Wait for session attributes to be populated before sending crash reports
-    // This ensures crash reports include full session metadata
+    // Wait for session attributes before sending crash reports
     await this.waitForSessionAttributes();
 
-    // Get crash reports from previous session
+    // Get and process crash reports from previous session
     await this.processCrashReports(nativeModule);
   }
 
   /**
-   * Wait for session attributes to be populated.
-   *
-   * Crash reports are sent in a new session, so we need to wait for
-   * SessionInstrumentation to finish collecting device info, OS version, etc.
-   * before sending the crash report. Otherwise, the crash report will be missing
-   * session metadata.
-   *
-   * This checks for multiple device-specific attributes that are collected
-   * asynchronously (device_id, device_os_detail, device_model_name) to ensure
-   * the async getSessionAttributes() call has completed.
-   *
-   * @param maxWaitMs Maximum time to wait in milliseconds (default 10000ms)
+   * Platform-specific: Parse a crash trace string into structured stack frames.
    */
+  protected abstract parseCrashTrace(trace: string): any | null;
+
+  /**
+   * Platform-specific: Resolve human-readable error message from crash data.
+   */
+  protected abstract resolveCrashErrorMessage(crash: CrashReport, parsedTrace: any | null): string;
+
+  /**
+   * Platform-specific: Determine if a crash report should be skipped.
+   */
+  protected abstract shouldSkipCrashReport(crash: CrashReport): boolean;
+
+  /**
+   * Platform-specific: Extract stack frames from parsed trace.
+   */
+  protected abstract getStackFrames(parsedTrace: any | null): any[];
+
+  /**
+   * Platform-specific: Build platform-specific context from parsed trace.
+   */
+  protected abstract buildPlatformContext(parsedTrace: any | null, context: Record<string, string>): void;
+
+  /**
+   * Platform-specific: Get warning message when trace parsing fails.
+   */
+  protected abstract getParseFailureWarning(): string;
+
+  /**
+   * Platform-specific: Get warning message when trace is unavailable.
+   */
+  protected abstract getTraceUnavailableWarning(): string;
+
   private async waitForSessionAttributes(maxWaitMs = 10000): Promise<void> {
     const startTime = Date.now();
-    const pollInterval = 200; // Check every 200ms
+    const pollInterval = 200;
     let checkCount = 0;
 
     while (Date.now() - startTime < maxWaitMs) {
       checkCount++;
       try {
-        // Check if session attributes are populated
         const sessionAttrs = this.metas?.value?.session?.attributes;
 
         if (sessionAttrs) {
           const attrCount = Object.keys(sessionAttrs).length;
           const attrKeys = JSON.stringify(Object.keys(sessionAttrs));
 
-          // Look for multiple device-specific attributes that indicate full async collection is done.
-          // getSessionAttributes() collects these asynchronously:
-          // - device_id (async getDeviceId)
-          // - device_os_detail (async getDeviceOsDetail)
-          // - device_model_name (DeviceInfo.getDeviceNameSync)
-          // All three should be present when collection is complete.
           const hasDeviceId = 'device_id' in sessionAttrs && sessionAttrs['device_id'] !== 'unknown';
           const hasDeviceOsDetail =
             'device_os_detail' in sessionAttrs && sessionAttrs['device_os_detail'] !== 'unknown';
@@ -124,15 +113,12 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
           this.logDebug(`Check #${checkCount}: No session attributes available yet`);
         }
       } catch (error) {
-        // Continue waiting if we can't access metas yet
         this.logDebug(`Check #${checkCount}: Error accessing metas: ${error}`);
       }
 
-      // Wait before next check
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
-    // Timeout reached - log warning but continue
     const finalAttrs = this.metas?.value?.session?.attributes;
     const finalAttrCount = finalAttrs ? Object.keys(finalAttrs).length : 0;
     const finalAttrKeys = finalAttrs ? JSON.stringify(Object.keys(finalAttrs)) : 'none';
@@ -180,13 +166,8 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
             continue;
           }
 
-          // Platform-specific skip logic
-          const shouldSkip = Platform.OS === 'android'
-            ? AndroidCrash.shouldSkipCrashReport(crash)
-            : IosCrash.shouldSkipCrashReport(crash);
-
-          if (shouldSkip) {
-            this.logDebug(`Skipping crash report at ${crash.timestamp} (ANR replay or low-signal)`);
+          if (this.shouldSkipCrashReport(crash)) {
+            this.logDebug(`Skipping crash report at ${crash.timestamp} (platform-specific skip logic)`);
             continue;
           }
 
@@ -196,13 +177,12 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
 
           this.sendCrashReport(crash);
         } catch (parseError) {
-          // If parsing fails, still try to report something
           this.logError('Failed to parse crash report JSON', parseError);
           this.api.pushError(new Error('Application crash (parse error)'), {
             context: {
-              mechanism: ErrorMechanism.CRASH,
+              mechanism: 'crash',
               parseError: String(parseError),
-              raw: crashJson.substring(0, 500), // Limit size
+              raw: crashJson.substring(0, 500),
             },
             type: 'crash',
           });
@@ -214,32 +194,17 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
   }
 
   private sendCrashReport(crash: CrashReport): void {
-    // Platform-specific trace parsing and error message resolution
-    let parsedTrace: AndroidCrash.ParsedAndroidCrashTrace | IosCrash.ParsedIosCrashTrace | null = null;
-    let errorMessage = 'Application crash';
-
-    if (crash.trace) {
-      if (Platform.OS === 'android') {
-        const androidParsed = AndroidCrash.parseAndroidCrashTrace(crash.trace, {
-          releaseBundleFilename: this.options.releaseBundleFilename,
-        });
-        parsedTrace = androidParsed;
-        errorMessage = AndroidCrash.resolveCrashErrorMessage(crash, androidParsed).trim() || errorMessage;
-      } else if (Platform.OS === 'ios') {
-        const iosParsed = IosCrash.parseIosCrashTrace(crash.trace);
-        parsedTrace = iosParsed;
-        errorMessage = IosCrash.resolveCrashErrorMessage(crash, iosParsed).trim() || errorMessage;
-      }
-    }
+    // Platform-specific parsing
+    const parsedTrace = crash.trace ? this.parseCrashTrace(crash.trace) : null;
+    const errorMessage = this.resolveCrashErrorMessage(crash, parsedTrace).trim() || 'Application crash';
 
     // Use a message-only Error so pushError does not capture the JS reporter stack
-    // (sendCrashReport / asyncGeneratorStep / node_modules) as the exception frames.
     const error = new Error(errorMessage);
     error.stack = undefined;
 
-    // Build context from crash data (matching Flutter pattern)
+    // Build context from crash data
     const context: Record<string, string> = {
-      mechanism: ErrorMechanism.CRASH,
+      mechanism: 'crash',
     };
 
     if (crash.trace) {
@@ -264,40 +229,46 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
       context['importance'] = String(crash.importance);
     }
 
-    // Extract stack frames - platform-specific structure
-    const stackFrames =
-      Platform.OS === 'android' && parsedTrace && 'jsFrames' in parsedTrace
-        ? [...(parsedTrace.jsFrames ?? []), ...(parsedTrace.frames ?? [])]
-        : parsedTrace?.frames ?? [];
+    // Platform-specific context
+    this.buildPlatformContext(parsedTrace, context);
 
-    // Plugin overview metrics key off exception_type = 'crash' (see app-o11y-kwl mobile
-    // queries). Keep type stable; store the native/Java class separately for drill-down.
-    if (Platform.OS === 'android' && parsedTrace && 'exceptionType' in parsedTrace && parsedTrace.exceptionType) {
-      context['nativeExceptionType'] = parsedTrace.exceptionType;
-    }
+    // Platform-specific stack frames
+    const stackFrames = this.getStackFrames(parsedTrace);
 
+    // Warnings for missing/unparseable traces
     if (!stackFrames.length && crash.trace) {
-      this.logWarn(
-        `Native crash trace present but no frames parsed; check ${Platform.OS} trace format${
-          Platform.OS === 'android' ? ' or UncaughtExceptionHandler cache' : ''
-        }`
-      );
+      this.logWarn(this.getParseFailureWarning());
     } else if (!crash.trace) {
-      this.logWarn(
-        `Native crash trace unavailable (${
-          Platform.OS === 'android'
-            ? 'ApplicationExitInfo traceInputStream was null at crash time'
-            : 'PLCrashReporter traceInputStream was null'
-        })`
-      );
+      this.logWarn(this.getTraceUnavailableWarning());
     }
 
     this.api.pushError(error, {
-      type: 'crash',
+      stackFrames,
       context,
-      ...(stackFrames.length ? { stackFrames } : {}),
+      type: 'crash',
     });
 
-    this.logDebug(`Reported crash: ${crash.reason} at ${crash.timestamp}`);
+    this.logDebug(`Sent crash report: ${errorMessage}`);
+  }
+
+  // Logging helpers
+  override logDebug(message: string, ...args: any[]): void {
+    this.internalLogger?.debug?.(message, ...args);
+  }
+
+  override logInfo(message: string, ...args: any[]): void {
+    this.internalLogger?.info?.(message, ...args);
+  }
+
+  override logWarn(message: string, ...args: any[]): void {
+    this.internalLogger?.warn?.(message, ...args);
+  }
+
+  override logError(message: string, ...args: any[]): void {
+    this.internalLogger?.error?.(message, ...args);
+  }
+
+  unpatch(): void {
+    // No patching to undo
   }
 }
