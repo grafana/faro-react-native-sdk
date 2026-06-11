@@ -1,11 +1,11 @@
-import { NativeModules } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 
 import { ErrorMechanism } from '../errors/const';
 
-import { resolveCrashErrorMessage, shouldSkipCrashReport } from './crashErrorMessage';
-import { parseAndroidCrashTrace } from './parseAndroidCrashTrace';
+import * as AndroidCrash from './android';
+import * as IosCrash from './ios';
 import type { CrashReport, CrashReportingOptions } from './types';
 
 /**
@@ -180,7 +180,12 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
             continue;
           }
 
-          if (shouldSkipCrashReport(crash)) {
+          // Platform-specific skip logic
+          const shouldSkip = Platform.OS === 'android'
+            ? AndroidCrash.shouldSkipCrashReport(crash)
+            : IosCrash.shouldSkipCrashReport(crash);
+
+          if (shouldSkip) {
             this.logDebug(`Skipping crash report at ${crash.timestamp} (ANR replay or low-signal)`);
             continue;
           }
@@ -209,12 +214,23 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
   }
 
   private sendCrashReport(crash: CrashReport): void {
-    const parsedTrace = crash.trace
-      ? parseAndroidCrashTrace(crash.trace, {
+    // Platform-specific trace parsing and error message resolution
+    let parsedTrace: AndroidCrash.ParsedAndroidCrashTrace | IosCrash.ParsedIosCrashTrace | null = null;
+    let errorMessage = 'Application crash';
+
+    if (crash.trace) {
+      if (Platform.OS === 'android') {
+        const androidParsed = AndroidCrash.parseAndroidCrashTrace(crash.trace, {
           releaseBundleFilename: this.options.releaseBundleFilename,
-        })
-      : null;
-    const errorMessage = resolveCrashErrorMessage(crash, parsedTrace).trim() || 'Application crash';
+        });
+        parsedTrace = androidParsed;
+        errorMessage = AndroidCrash.resolveCrashErrorMessage(crash, androidParsed).trim() || errorMessage;
+      } else if (Platform.OS === 'ios') {
+        const iosParsed = IosCrash.parseIosCrashTrace(crash.trace);
+        parsedTrace = iosParsed;
+        errorMessage = IosCrash.resolveCrashErrorMessage(crash, iosParsed).trim() || errorMessage;
+      }
+    }
 
     // Use a message-only Error so pushError does not capture the JS reporter stack
     // (sendCrashReport / asyncGeneratorStep / node_modules) as the exception frames.
@@ -248,21 +264,31 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
       context['importance'] = String(crash.importance);
     }
 
-    const stackFrames = [...(parsedTrace?.jsFrames ?? []), ...(parsedTrace?.frames ?? [])];
+    // Extract stack frames - platform-specific structure
+    const stackFrames =
+      Platform.OS === 'android' && parsedTrace && 'jsFrames' in parsedTrace
+        ? [...(parsedTrace.jsFrames ?? []), ...(parsedTrace.frames ?? [])]
+        : parsedTrace?.frames ?? [];
 
     // Plugin overview metrics key off exception_type = 'crash' (see app-o11y-kwl mobile
     // queries). Keep type stable; store the native/Java class separately for drill-down.
-    if (parsedTrace?.exceptionType) {
+    if (Platform.OS === 'android' && parsedTrace && 'exceptionType' in parsedTrace && parsedTrace.exceptionType) {
       context['nativeExceptionType'] = parsedTrace.exceptionType;
     }
 
     if (!stackFrames.length && crash.trace) {
       this.logWarn(
-        'Native crash trace present but no frames parsed; check Android trace format or UncaughtExceptionHandler cache'
+        `Native crash trace present but no frames parsed; check ${Platform.OS} trace format${
+          Platform.OS === 'android' ? ' or UncaughtExceptionHandler cache' : ''
+        }`
       );
     } else if (!crash.trace) {
       this.logWarn(
-        'Native crash trace unavailable (ApplicationExitInfo traceInputStream was null at crash time)'
+        `Native crash trace unavailable (${
+          Platform.OS === 'android'
+            ? 'ApplicationExitInfo traceInputStream was null at crash time'
+            : 'PLCrashReporter traceInputStream was null'
+        })`
       );
     }
 

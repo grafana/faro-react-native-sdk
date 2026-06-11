@@ -1,6 +1,6 @@
 import type { ParsedAndroidCrashTrace } from './parseAndroidCrashTrace';
 import { isPlausibleJavaExceptionIdentifier } from './parseAndroidCrashTrace';
-import type { CrashReport } from './types';
+import type { CrashReport } from '../types';
 
 /**
  * Human-readable exception value for ApplicationExitInfo crash reports.

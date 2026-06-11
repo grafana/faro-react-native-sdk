@@ -6,7 +6,7 @@ import {
   shouldSkipLowSignalCrashReport,
 } from './crashErrorMessage';
 import type { ParsedAndroidCrashTrace } from './parseAndroidCrashTrace';
-import type { CrashReport } from './types';
+import type { CrashReport } from '../types';
 
 const baseCrash: CrashReport = {
   reason: 'CRASH',
