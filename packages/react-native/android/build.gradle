@@ -6,7 +6,7 @@ buildscript {
 
     dependencies {
         classpath 'com.android.tools.build:gradle:7.4.2'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25'
     }
 }
 
@@ -41,7 +41,7 @@ repositories {
 dependencies {
     //noinspection GradleDynamicVersion
     implementation 'com.facebook.react:react-native:+'
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.0'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.25'
 }
 
 /* ---------------------------------------------------------------------------
