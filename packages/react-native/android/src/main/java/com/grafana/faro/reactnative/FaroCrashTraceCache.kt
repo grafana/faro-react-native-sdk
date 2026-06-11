@@ -39,12 +39,16 @@ internal object FaroCrashTraceCache {
         return PendingTrace(trace, cachedTimestamp)
     }
 
-    fun traceForExitTimestamp(pending: PendingTrace?, exitTimestampMs: Long): String {
+    fun traceForExitTimestamp(context: Context, pending: PendingTrace?, exitTimestampMs: Long): String {
         if (pending == null) {
             return ""
         }
         val delta = kotlin.math.abs(exitTimestampMs - pending.timestampMs)
-        return if (delta <= MAX_TIMESTAMP_DELTA_MS) pending.trace else ""
+        if (delta > MAX_TIMESTAMP_DELTA_MS) {
+            clearPendingCrashTrace(context)
+            return ""
+        }
+        return pending.trace
     }
 
     fun clearPendingCrashTrace(context: Context) {
@@ -61,7 +65,7 @@ internal object FaroCrashTraceCache {
      */
     fun consumePendingCrashTrace(context: Context, exitTimestampMs: Long): String? {
         val pending = peekPendingCrashTrace(context) ?: return null
-        val trace = traceForExitTimestamp(pending, exitTimestampMs)
+        val trace = traceForExitTimestamp(context, pending, exitTimestampMs)
         if (trace.isEmpty()) {
             return null
         }
