@@ -179,6 +179,6 @@ describe('initializeFaro', () => {
       })
     );
 
-    expect(faro.metas.value.app?.bundleId).toBe('com.grafana.quickpizza@42@1.0.0');
+    expect(faro.metas.value.app?.bundleId).toBe('com.example.myapp@42@1.0.0');
   });
 });

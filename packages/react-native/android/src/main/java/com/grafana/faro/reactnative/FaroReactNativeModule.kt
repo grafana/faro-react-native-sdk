@@ -270,10 +270,29 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
+     * Historical ANRs from ApplicationExitInfo (Android 11+), Sentry AnrV2 style.
+     * Separate from [getCrashReport] so ANRs are not replayed as generic crashes.
+     */
+    @ReactMethod
+    fun getHistoricalAnrReports(promise: Promise) {
+        val anrReports = FaroAnrReporter.getAnrReports(reactApplicationContext)
+
+        if (anrReports != null) {
+            val writableArray = Arguments.createArray()
+            for (report in anrReports) {
+                writableArray.pushString(report)
+            }
+            promise.resolve(writableArray)
+        } else {
+            promise.resolve(null)
+        }
+    }
+
+    /**
      * Get crash reports from previous app sessions
      *
      * Uses Android's ApplicationExitInfo API (Android 11+) to retrieve
-     * crash and ANR information from previous sessions.
+     * crash information from previous sessions (ANRs excluded).
      *
      * @param promise Promise to resolve with the crash reports list
      */
