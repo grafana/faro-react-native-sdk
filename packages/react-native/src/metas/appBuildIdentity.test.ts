@@ -4,7 +4,7 @@ import { formatSymbolsBundleId, loadAppSymbolsBundleIdForInit } from './appBuild
 
 describe('formatSymbolsBundleId', () => {
   it('joins applicationId, versionCode and versionName with @', () => {
-    expect(formatSymbolsBundleId('com.grafana.quickpizza', '42', '1.0.0')).toBe('com.grafana.quickpizza@42@1.0.0');
+    expect(formatSymbolsBundleId('com.example.myapp', '42', '1.0.0')).toBe('com.example.myapp@42@1.0.0');
   });
 });
 
@@ -16,7 +16,7 @@ describe('loadAppSymbolsBundleIdForInit', () => {
   it('maps DeviceInfo build info to an encoded bundle id', async () => {
     const bundleId = await loadAppSymbolsBundleIdForInit();
 
-    expect(bundleId).toBe('com.grafana.quickpizza@42@1.0.0');
+    expect(bundleId).toBe('com.example.myapp@42@1.0.0');
   });
 
   it('coerces a numeric build number to a string in the bundle id', async () => {
@@ -24,7 +24,7 @@ describe('loadAppSymbolsBundleIdForInit', () => {
 
     const bundleId = await loadAppSymbolsBundleIdForInit();
 
-    expect(bundleId).toBe('com.grafana.quickpizza@7@1.0.0');
+    expect(bundleId).toBe('com.example.myapp@7@1.0.0');
   });
 
   it('returns undefined when required fields are missing', async () => {

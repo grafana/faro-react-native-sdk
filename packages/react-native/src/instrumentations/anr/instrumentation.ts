@@ -8,6 +8,7 @@ import {
   parseAndroidCrashTrace,
 } from '../crashReporting/parseAndroidCrashTrace';
 
+import { isInvalidAnrCaptureStack } from './anrStack';
 import type { ANREvent, ANRInstrumentationOptions } from './types';
 
 /**
@@ -21,34 +22,21 @@ const DEFAULT_TIMEOUT = 5000;
  */
 const DEFAULT_POLLING_INTERVAL = 10000;
 
+/** Aligns with native FaroAnrCache.MAX_TIMESTAMP_DELTA_MS */
+const TIMESTAMP_DEDUP_WINDOW_MS = 10_000;
+
+/** ApplicationExitInfo ANR traces (Android 11 / API 30+). */
+const APP_EXIT_INFO_MIN_SDK = 30;
+
 /**
  * ANR (Application Not Responding) Detection Instrumentation.
  *
- * Detects when the main/UI thread is blocked for extended periods on Android.
- * Uses a background thread that posts tasks to the main thread and monitors
- * if they complete within the timeout.
+ * On Android 11+, historical ANRs are read from ApplicationExitInfo (Sentry AnrV2
+ * style) on the next launch. ANRTracker remains a pre-API-30 fallback and a
+ * persistence backup when the OS trace stream is empty.
  *
- * **Note**: ANR detection is only available on Android. iOS does not have
- * the same ANR concept as Android's system watchdog.
- *
- * Sends telemetry via Faro API:
- * - Measurement: `anr` with `anr_count` value (for dashboards)
- * - Error: Each ANR with `type: 'ANR'`, stack trace, duration, timestamp (Sentry-aligned)
- *
- * @example
- * ```typescript
- * import { initializeFaro, ANRInstrumentation } from '@grafana/faro-react-native';
- *
- * initializeFaro({
- *   url: 'https://collector.example.com',
- *   instrumentations: [
- *     new ANRInstrumentation({
- *       timeout: 5000,        // 5 second threshold
- *       pollingInterval: 60000, // Poll every 60 seconds
- *     }),
- *   ],
- * });
- * ```
+ * ANRs stay out of CrashReportingInstrumentation so they are not replayed as
+ * generic previous-session `crash` rows with empty messages.
  */
 export class ANRInstrumentation extends BaseInstrumentation {
   readonly name = '@grafana/faro-react-native:instrumentation-anr';
@@ -58,6 +46,7 @@ export class ANRInstrumentation extends BaseInstrumentation {
   private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
   private anrEventSubscription: ReturnType<NativeEventEmitter['addListener']> | null = null;
   private readonly reportedAnrTimestamps = new Set<number>();
+  private readonly preferAppExitInfoAnr: boolean;
 
   constructor(options: ANRInstrumentationOptions = {}) {
     super();
@@ -65,10 +54,11 @@ export class ANRInstrumentation extends BaseInstrumentation {
       timeout: options.timeout ?? DEFAULT_TIMEOUT,
       pollingInterval: options.pollingInterval ?? DEFAULT_POLLING_INTERVAL,
     };
+    this.preferAppExitInfoAnr =
+      Platform.OS === 'android' && Number(Platform.Version) >= APP_EXIT_INFO_MIN_SDK;
   }
 
   initialize(): void {
-    // ANR detection is only available on Android
     if (Platform.OS !== 'android') {
       this.logDebug('ANR detection is only available on Android');
       return;
@@ -82,19 +72,15 @@ export class ANRInstrumentation extends BaseInstrumentation {
 
     this.logDebug('Initializing ANR detection instrumentation');
 
-    // Report ANRs persisted before process death (previous session or unsent this session).
-    void this.drainPendingANRs(nativeModule);
+    void this.drainAllAnrSources(nativeModule);
 
-    // Start native ANR tracking
     this.startNativeTracking(nativeModule);
 
-    // Report ANRs as soon as the native tracker records them.
     const emitter = new NativeEventEmitter(nativeModule);
     this.anrEventSubscription = emitter.addListener('onANRDetected', (anrJson: string) => {
-      void this.handlePendingAnrPayload(nativeModule, anrJson);
+      void this.handleLiveAnrEvent(nativeModule, anrJson);
     });
 
-    // Poll pending cache as a backup when live events are missed.
     void this.checkANRStatus(nativeModule);
     this.pollingIntervalId = setInterval(() => {
       void this.checkANRStatus(nativeModule);
@@ -124,6 +110,57 @@ export class ANRInstrumentation extends BaseInstrumentation {
     }
   }
 
+  private async drainAllAnrSources(
+    nativeModule: typeof NativeModules.FaroReactNativeModule
+  ): Promise<void> {
+    await this.drainHistoricalAnrs(nativeModule);
+    await this.drainPendingANRs(nativeModule);
+  }
+
+  private async drainHistoricalAnrs(
+    nativeModule: typeof NativeModules.FaroReactNativeModule
+  ): Promise<void> {
+    if (typeof nativeModule.getHistoricalAnrReports !== 'function') {
+      return;
+    }
+
+    try {
+      const anrList = (await nativeModule.getHistoricalAnrReports()) as string[] | null;
+      if (!anrList?.length) {
+        return;
+      }
+
+      const ackTimestamps: number[] = [];
+      let reportedCount = 0;
+
+      for (const anrJson of anrList) {
+        try {
+          const anr = JSON.parse(anrJson) as ANREvent;
+          if (this.reportANRIfNew(anr)) {
+            reportedCount += 1;
+          }
+          ackTimestamps.push(anr.timestamp);
+          await this.acknowledgeNearbyPendingAnrs(nativeModule, anr.timestamp);
+        } catch (error) {
+          this.logError('Failed to parse historical ANR report', error);
+        }
+      }
+
+      if (reportedCount > 0) {
+        this.api.pushMeasurement(
+          {
+            type: 'anr',
+            values: { anr_count: reportedCount },
+          },
+          { skipDedupe: true }
+        );
+        this.logDebug(`Reported ${reportedCount} historical ANR event(s) from ApplicationExitInfo`);
+      }
+    } catch (error) {
+      this.logError('Failed to drain historical ANRs', error);
+    }
+  }
+
   private async drainPendingANRs(nativeModule: typeof NativeModules.FaroReactNativeModule): Promise<void> {
     const anrList = await this.fetchPendingANRs(nativeModule);
     if (!anrList?.length) {
@@ -131,15 +168,27 @@ export class ANRInstrumentation extends BaseInstrumentation {
     }
 
     await this.reportAndAcknowledgePendingANRs(nativeModule, anrList);
-    this.logDebug(`Drained ${anrList.length} persisted ANR event(s)`);
+    this.logDebug(`Processed ${anrList.length} persisted ANR event(s) from tracker cache`);
   }
 
-  private async handlePendingAnrPayload(
+  private async handleLiveAnrEvent(
     nativeModule: typeof NativeModules.FaroReactNativeModule,
     anrJson: string
   ): Promise<void> {
     try {
       const anr = JSON.parse(anrJson) as ANREvent;
+
+      if (this.preferAppExitInfoAnr) {
+        // Process death + ApplicationExitInfo on next launch delivers the main-thread dump.
+        this.logDebug('Deferring live ANR to ApplicationExitInfo on next launch');
+        return;
+      }
+
+      if (!this.shouldReportTrackerAnr(anr)) {
+        await this.acknowledgeANRs(nativeModule, [anr.timestamp]);
+        return;
+      }
+
       if (this.reportANRIfNew(anr)) {
         this.api.pushMeasurement(
           {
@@ -188,16 +237,47 @@ export class ANRInstrumentation extends BaseInstrumentation {
     }
   }
 
+  private async acknowledgeNearbyPendingAnrs(
+    nativeModule: typeof NativeModules.FaroReactNativeModule,
+    exitTimestamp: number
+  ): Promise<void> {
+    const pending = await this.fetchPendingANRs(nativeModule);
+    if (!pending?.length) {
+      return;
+    }
+
+    const ackTimestamps: number[] = [];
+    for (const anrJson of pending) {
+      try {
+        const anr = JSON.parse(anrJson) as ANREvent;
+        if (this.isNearbyTimestamp(anr.timestamp, exitTimestamp)) {
+          ackTimestamps.push(anr.timestamp);
+        }
+      } catch {
+        // ignore malformed cache entries
+      }
+    }
+
+    if (ackTimestamps.length > 0) {
+      await this.acknowledgeANRs(nativeModule, ackTimestamps);
+    }
+  }
+
   private async reportAndAcknowledgePendingANRs(
     nativeModule: typeof NativeModules.FaroReactNativeModule,
     anrList: string[]
   ): Promise<void> {
     const ackTimestamps: number[] = [];
+    let reportedCount = 0;
 
     for (const anrJson of anrList) {
       try {
         const anr = JSON.parse(anrJson) as ANREvent;
-        this.reportANRIfNew(anr);
+
+        if (this.shouldReportTrackerAnr(anr) && this.reportANRIfNew(anr)) {
+          reportedCount += 1;
+        }
+
         ackTimestamps.push(anr.timestamp);
       } catch {
         const error = new Error('ANR (Application Not Responding)');
@@ -212,28 +292,67 @@ export class ANRInstrumentation extends BaseInstrumentation {
       }
     }
 
-    if (ackTimestamps.length > 0) {
+    if (reportedCount > 0) {
       this.api.pushMeasurement(
         {
           type: 'anr',
-          values: { anr_count: ackTimestamps.length },
+          values: { anr_count: reportedCount },
         },
         { skipDedupe: true }
       );
+    }
+
+    if (ackTimestamps.length > 0) {
       await this.acknowledgeANRs(nativeModule, ackTimestamps);
     }
   }
-  /**
-   * Report a detected ANR using the blocked main-thread stack, not the JS reporter stack.
-   * Mirrors CrashReportingInstrumentation.sendCrashReport (error.stack cleared + stackFrames).
-   */
-  private reportANRIfNew(anr: ANREvent): boolean {
-    if (this.reportedAnrTimestamps.has(anr.timestamp)) {
+
+  private shouldReportTrackerAnr(anr: ANREvent): boolean {
+    if (this.isNearbyReportedTimestamp(anr.timestamp)) {
       return false;
     }
-    this.reportedAnrTimestamps.add(anr.timestamp);
+
+    if (isInvalidAnrCaptureStack(anr.stacktrace)) {
+      return false;
+    }
+
+    // On API 30+, ApplicationExitInfo is preferred on launch; tracker pending entries
+    // are reported only when historical did not already cover the same incident.
+    return true;
+  }
+
+  private reportANRIfNew(anr: ANREvent): boolean {
+    if (this.isNearbyReportedTimestamp(anr.timestamp)) {
+      return false;
+    }
+
+    if (isInvalidAnrCaptureStack(anr.stacktrace)) {
+      return false;
+    }
+
+    this.rememberReportedTimestamp(anr.timestamp);
     this.reportANR(anr);
     return true;
+  }
+
+  private rememberReportedTimestamp(timestamp: number): void {
+    this.reportedAnrTimestamps.add(timestamp);
+  }
+
+  private isNearbyReportedTimestamp(timestamp: number): boolean {
+    for (const reported of Array.from(this.reportedAnrTimestamps)) {
+      if (this.isNearbyTimestamp(timestamp, reported)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private isNearbyTimestamp(a: number, b: number): boolean {
+    if (a <= 0 || b <= 0) {
+      return false;
+    }
+    return Math.abs(a - b) <= TIMESTAMP_DEDUP_WINDOW_MS;
   }
 
   private reportANR(anr: ANREvent): void {
@@ -241,7 +360,8 @@ export class ANRInstrumentation extends BaseInstrumentation {
     const traceForRetrace = rawStacktrace ? normalizeJavaStackTraceForRetrace(rawStacktrace) : '';
     const parsed = traceForRetrace ? parseAndroidCrashTrace(traceForRetrace) : null;
 
-    const error = new Error('ANR (Application Not Responding)');
+    const message = anr.description?.trim() || 'ANR (Application Not Responding)';
+    const error = new Error(message);
     error.stack = undefined;
 
     const context: Record<string, string> = {
@@ -249,6 +369,9 @@ export class ANRInstrumentation extends BaseInstrumentation {
       mechanism: ErrorMechanism.ANR,
       timestamp: String(anr.timestamp),
     };
+    if (anr.source) {
+      context['source'] = anr.source;
+    }
     if (traceForRetrace) {
       context['stacktrace'] = traceForRetrace;
     }
@@ -271,18 +394,14 @@ export class ANRInstrumentation extends BaseInstrumentation {
 
       if (anrList && anrList.length > 0) {
         await this.reportAndAcknowledgePendingANRs(nativeModule, anrList);
-        this.logDebug(`Recorded ${anrList.length} ANR event(s) from pending cache`);
+        this.logDebug(`Polled ${anrList.length} ANR event(s) from pending cache`);
       }
     } catch (error) {
       this.logError('Failed to check ANR status', error);
     }
   }
 
-  /**
-   * Clean up resources when instrumentation is disabled.
-   */
   unpatch(): void {
-    // Stop polling
     if (this.pollingIntervalId !== null) {
       clearInterval(this.pollingIntervalId);
       this.pollingIntervalId = null;
@@ -292,7 +411,6 @@ export class ANRInstrumentation extends BaseInstrumentation {
     this.anrEventSubscription = null;
     this.reportedAnrTimestamps.clear();
 
-    // Stop native tracking
     if (Platform.OS === 'android') {
       const nativeModule = this.getNativeModule();
       if (nativeModule && typeof nativeModule.stopANRTracking === 'function') {

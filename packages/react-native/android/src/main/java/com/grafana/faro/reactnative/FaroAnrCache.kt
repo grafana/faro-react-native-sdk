@@ -119,6 +119,15 @@ internal object FaroAnrCache {
         return result
     }
 
+    /** Records an ANR exit timestamp so [FaroCrashReporter] skips duplicate crash rows. */
+    fun recordDetectionTimestamp(context: Context, timestampMs: Long) {
+        if (timestampMs <= 0L) {
+            return
+        }
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        recordDetectionTimestamp(prefs, timestampMs)
+    }
+
     fun acknowledgeAnrs(context: Context, timestamps: Collection<Long>) {
         if (timestamps.isEmpty()) {
             return

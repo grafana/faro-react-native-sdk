@@ -220,6 +220,7 @@ class ANRTracker : Thread("ANRTracker") {
                 put("timestamp", System.currentTimeMillis())
                 put("stacktrace", stackTraceStr.toString())
                 put("duration", timeout)
+                put("source", "ANRTracker")
             }
             
             val payload = anrInfo.toString()

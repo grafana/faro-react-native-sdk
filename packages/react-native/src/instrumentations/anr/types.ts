@@ -39,4 +39,10 @@ export interface ANREvent {
    * Duration of the ANR in milliseconds
    */
   duration: number;
+
+  /** Human-readable ANR description from ApplicationExitInfo when available. */
+  description?: string;
+
+  /** `AppExitInfo` (preferred) or `ANRTracker` (fallback). */
+  source?: string;
 }
