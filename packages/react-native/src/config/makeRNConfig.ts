@@ -1,5 +1,5 @@
 import { defaultGlobalObjectKey, defaultUnpatchedConsole } from '@grafana/faro-core';
-import type { Config, MetaApp, MetaItem } from '@grafana/faro-core';
+import type { Config, MetaApp } from '@grafana/faro-core';
 
 import { getStackFramesFromError } from '../instrumentations/errors/stackTraceParser';
 import type { PreloadedMobileMeta } from '../instrumentations/session/sessionAttributes';
@@ -25,21 +25,19 @@ const DEFAULT_OFFLINE_CACHE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
  * Priority: explicit `config.app.bundleId` → Metro preamble (core) → DeviceInfo
  * fallback (`applicationId@versionCode@versionName`, same shape Gradle/Metro use).
  */
-function symbolsBundleIdMeta(
+function resolveAppBundleId(
   configApp: MetaApp | undefined,
   appName: string | undefined,
   appSymbolsBundleId?: string
-): MetaItem[] {
+): string | undefined {
   if (configApp?.bundleId) {
-    return [{ app: { bundleId: configApp.bundleId } }];
+    return configApp.bundleId;
   }
-  if (getMetroInjectedBundleId(appName)) {
-    return [];
+  const metroId = getMetroInjectedBundleId(appName);
+  if (metroId) {
+    return metroId;
   }
-  if (!appSymbolsBundleId) {
-    return [];
-  }
-  return [{ app: { bundleId: appSymbolsBundleId } }];
+  return appSymbolsBundleId;
 }
 
 /**
@@ -119,6 +117,13 @@ export function makeRNConfig(
   const installationId = config.app.installationId ?? preloadedAppMeta?.installationId;
 
   const releaseBundleFilename = config.releaseBundleFilename;
+  // Merge bundleId (from config, Metro, or DeviceInfo) with preloaded app meta
+  const bundleIdValue = resolveAppBundleId(config.app, config.app?.name, appSymbolsBundleId);
+  const appMetasIfPresent =
+    preloadedAppMeta || bundleIdValue
+      ? [{ app: { ...preloadedAppMeta, ...(bundleIdValue && { bundleId: bundleIdValue }) } }]
+      : [];
+
   return {
     app: {
       ...config.app,
@@ -145,7 +150,7 @@ export function makeRNConfig(
       ...defaultSessionTrackingConfig,
       ...config.sessionTracking,
     },
-    metas: [...defaultMetas, ...customMetas, ...symbolsBundleIdMeta(config.app, config.app?.name, appSymbolsBundleId)],
+    metas: [...defaultMetas, ...customMetas, ...appMetasIfPresent],
     instrumentations,
     transports,
     ignoreUrls: config.ignoreUrls ?? [],

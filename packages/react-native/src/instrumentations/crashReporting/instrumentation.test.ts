@@ -1,7 +1,7 @@
 import { type ExceptionEvent, initializeFaro, type TransportItem } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
-import { CrashReportingInstrumentation } from './instrumentation';
+import { CrashReportingInstrumentation } from './index';
 import type { CrashReport } from './types';
 
 describe('CrashReportingInstrumentation', () => {
