@@ -98,7 +98,7 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
 
           // Look for multiple device-specific attributes that indicate full async collection is done.
           // getSessionAttributes() collects these asynchronously:
-          // - device_id (async getDeviceId)
+          // - device_id (SDK installation id, kept as a flat attr during migration)
           // - device_os_detail (async getDeviceOsDetail)
           // - device_model_name (DeviceInfo.getDeviceNameSync)
           // All three should be present when collection is complete.
@@ -178,6 +178,7 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
               parseError: String(parseError),
               raw: crashJson.substring(0, 500), // Limit size
             },
+            fatal: true,
             type: 'crash',
           });
         }
@@ -222,6 +223,7 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
     this.api.pushError(error, {
       type: 'crash',
       context,
+      fatal: true,
     });
 
     this.logDebug(`Reported crash: ${crash.reason} at ${crash.timestamp}`);

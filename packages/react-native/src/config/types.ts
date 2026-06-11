@@ -2,7 +2,7 @@ import type { Config } from '@grafana/faro-core';
 
 import type { ANRInstrumentationOptions } from '../instrumentations/anr';
 import type { FrameMonitoringOptions } from '../instrumentations/frameMonitoring';
-import type { SessionAttributes } from '../instrumentations/session/sessionAttributes';
+import type { PreloadedMobileMeta, SessionAttributes } from '../instrumentations/session/sessionAttributes';
 
 import type { Sampling } from './sampling';
 
@@ -92,5 +92,6 @@ export type ReactNativeConfig = Partial<
  * Extends faro-core `Config` with RN-specific fields that instrumentations need at init time.
  */
 export type ReactNativeFullConfig = Config & {
+  preloadedMobileMeta?: PreloadedMobileMeta['meta'];
   preloadedSessionDeviceAttributes?: SessionAttributes;
 };
