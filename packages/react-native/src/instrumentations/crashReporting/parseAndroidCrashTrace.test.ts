@@ -188,4 +188,22 @@ describe('parseAndroidCrashTrace', () => {
     expect(parsed?.exceptionType).toBeUndefined();
     expect(parsed?.frames).toHaveLength(1);
   });
+
+  it('captures root cause from wrapped exceptions with "Caused by:" chain', () => {
+    const trace = [
+      'java.lang.RuntimeException: Wrapper exception',
+      '    at com.example.OuterClass.method(OuterClass.kt:10)',
+      'Caused by: java.lang.IllegalStateException: Middle exception',
+      '    at com.example.MiddleClass.method(MiddleClass.kt:20)',
+      'Caused by: java.lang.NullPointerException: Root cause',
+      '    at com.example.InnerClass.method(InnerClass.kt:30)',
+    ].join('\n');
+
+    const parsed = parseAndroidCrashTrace(trace);
+
+    // Should capture the root cause (last "Caused by:")
+    expect(parsed?.exceptionType).toBe('java.lang.NullPointerException');
+    expect(parsed?.exceptionMessage).toBe('Root cause');
+    expect(parsed?.frames).toHaveLength(3);
+  });
 });
