@@ -110,6 +110,9 @@ gradle.projectsEvaluated {
     def composedMap = new File(appProject.buildDir, "generated/sourcemaps/react/release/index.android.bundle.map")
     def bundleIdFile = new File(appProject.buildDir, "faro/bundle-id-release.txt")
 
+    // Security: sourcemaps.config.json is a fallback for local dev only.
+    // In CI/production, prefer FARO_SOURCEMAP_* env vars to avoid committing credentials.
+    // Add sourcemaps.config.json to .gitignore if it contains apiKey.
     def readSourcemapsConfigValue = { String key ->
         def configFile = new File(jsRoot, "sourcemaps.config.json")
         if (!configFile.exists()) {
