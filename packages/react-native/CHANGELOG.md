@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.2.1...faro-react-native-v1.3.0) (2026-06-11)
+
+
+### Features
+
+* **react-native:** align structured mobile meta ([39ac76b](https://github.com/grafana/faro-react-native-sdk/commit/39ac76b5cceb4c87fe8a9f148a6b1762ebb33b68))
+* **react-native:** populate structured mobile meta fields ([271bcad](https://github.com/grafana/faro-react-native-sdk/commit/271bcad1aa341b5b1af0eeca396dfd8cf9f87246))
+* **react-native:** populate structured mobile meta fields ([88082e0](https://github.com/grafana/faro-react-native-sdk/commit/88082e00c91357fb658d400358f1ca90bf4da427))
+
 ## [1.2.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.2.0...faro-react-native-v1.2.1) (2026-06-03)
 
 ### Bug Fixes
