@@ -210,7 +210,7 @@ object FaroCrashReporter {
             // Stack trace from ApplicationExitInfo, or from UncaughtExceptionHandler cache
             // when traceInputStream is null (common on emulators / Android 16+).
             val exitTrace = getTraceInfo(exitInfo)
-            val cachedTrace = FaroCrashTraceCache.traceForExitTimestamp(pendingTrace, exitInfo.timestamp)
+            val cachedTrace = FaroCrashTraceCache.traceForExitTimestamp(context, pendingTrace, exitInfo.timestamp)
             if (isAnrTimeoutDescription(rawDescription)) {
                 // ANRInstrumentation reports these with type ANR.
                 return null
