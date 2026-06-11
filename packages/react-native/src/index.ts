@@ -21,10 +21,11 @@ export { ConsoleInstrumentation } from './instrumentations/console';
 export { SessionInstrumentation } from './instrumentations/session';
 export {
   getSessionAttributes,
+  loadMobileMetaForInit,
   loadSessionDeviceAttributesForInit,
   minimalSessionDeviceAttributes,
 } from './instrumentations/session/sessionAttributes';
-export type { SessionAttributes } from './instrumentations/session/sessionAttributes';
+export type { PreloadedMobileMeta, SessionAttributes } from './instrumentations/session/sessionAttributes';
 export { ViewInstrumentation } from './instrumentations/view';
 export { AppStateInstrumentation } from './instrumentations/appState';
 export { UserActionInstrumentation } from './instrumentations/userActions';

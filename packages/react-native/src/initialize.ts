@@ -2,7 +2,7 @@ import { type Faro, initializeFaro as initializeFaroCore } from '@grafana/faro-c
 
 import { makeRNConfig } from './config/makeRNConfig';
 import type { ReactNativeConfig } from './config/types';
-import { loadSessionDeviceAttributesForInit } from './instrumentations/session/sessionAttributes';
+import { loadMobileMetaForInit } from './instrumentations/session/sessionAttributes';
 import { loadAppSymbolsBundleIdForInit } from './metas/appBuildIdentity';
 
 /**
@@ -12,10 +12,10 @@ import { loadAppSymbolsBundleIdForInit } from './metas/appBuildIdentity';
  * `minimalSessionDeviceAttributes` / an empty build identity before init.
  */
 export async function initializeFaro(config: ReactNativeConfig): Promise<Faro> {
-  const [preloadedSessionDeviceAttributes, appSymbolsBundleId] = await Promise.all([
-    loadSessionDeviceAttributesForInit(),
+  const [preloadedMobileMeta, appSymbolsBundleId] = await Promise.all([
+    loadMobileMetaForInit(),
     loadAppSymbolsBundleIdForInit(),
   ]);
-  const fullConfig = makeRNConfig(config, preloadedSessionDeviceAttributes, appSymbolsBundleId);
+  const fullConfig = makeRNConfig(config, preloadedMobileMeta, appSymbolsBundleId);
   return initializeFaroCore(fullConfig);
 }

@@ -277,6 +277,7 @@ export class ANRInstrumentation extends BaseInstrumentation {
             mechanism: ErrorMechanism.ANR,
             raw: anrJson,
           },
+          fatal: true,
           type: 'ANR',
         });
       }
@@ -374,6 +375,7 @@ export class ANRInstrumentation extends BaseInstrumentation {
     this.api.pushError(error, {
       type: 'ANR',
       context,
+      fatal: true,
       ...(stackFrames.length ? { stackFrames } : {}),
     });
   }

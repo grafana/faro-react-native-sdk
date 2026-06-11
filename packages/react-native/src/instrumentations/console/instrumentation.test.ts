@@ -46,11 +46,13 @@ describe('ConsoleInstrumentation', () => {
     expect((mockTransport.items[0] as TransportItem<ExceptionEvent>)?.payload.value).toBe(
       'console.error: console.error no 1'
     );
+    expect((mockTransport.items[0] as TransportItem<ExceptionEvent>)?.payload.fatal).toBe(false);
     expect((mockTransport.items[0] as TransportItem<ExceptionEvent>)?.payload.context?.mechanism).toBe('console');
     expect((mockTransport.items[1] as TransportItem<ExceptionEvent>)?.payload.type).toBe('Error');
     expect((mockTransport.items[1] as TransportItem<ExceptionEvent>)?.payload.value).toBe(
       'console.error: with object {"foo":"bar","baz":"bam"}'
     );
+    expect((mockTransport.items[1] as TransportItem<ExceptionEvent>)?.payload.fatal).toBe(false);
   });
 
   it('sends a faro error serialized with error serializer when console.error is called', () => {
@@ -80,10 +82,12 @@ describe('ConsoleInstrumentation', () => {
     expect((mockTransport.items[0] as TransportItem<ExceptionEvent>)?.payload.value).toBe(
       'console.error: console.error no 1'
     );
+    expect((mockTransport.items[0] as TransportItem<ExceptionEvent>)?.payload.fatal).toBe(false);
     expect((mockTransport.items[1] as TransportItem<ExceptionEvent>)?.payload.type).toBe('Error');
     expect((mockTransport.items[1] as TransportItem<ExceptionEvent>)?.payload.value).toBe(
       'console.error: with object ' + stringifyExternalJson(context)
     );
+    expect((mockTransport.items[1] as TransportItem<ExceptionEvent>)?.payload.fatal).toBe(false);
   });
 
   it('Handles objects with circular references', () => {
@@ -244,6 +248,7 @@ describe('ConsoleInstrumentation', () => {
     expect((mockTransport.items[2] as TransportItem<ExceptionEvent>)?.payload.value).toBe(
       'console.error: ' + errorLogMessage
     );
+    expect((mockTransport.items[2] as TransportItem<ExceptionEvent>)?.payload.fatal).toBe(false);
   });
 
   it('unpatch restores original console methods', () => {

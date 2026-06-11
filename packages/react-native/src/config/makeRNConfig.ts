@@ -2,7 +2,7 @@ import { defaultGlobalObjectKey, defaultUnpatchedConsole } from '@grafana/faro-c
 import type { Config, MetaApp, MetaItem } from '@grafana/faro-core';
 
 import { getStackFramesFromError } from '../instrumentations/errors/stackTraceParser';
-import type { SessionAttributes } from '../instrumentations/session/sessionAttributes';
+import type { PreloadedMobileMeta } from '../instrumentations/session/sessionAttributes';
 import { defaultSessionTrackingConfig } from '../instrumentations/session/sessionManager/sessionConstants';
 import { InternalLoggerLevel, LogLevel } from '../internalLogger';
 import { getMetroInjectedBundleId } from '../metas/appBuildIdentity';
@@ -102,24 +102,31 @@ function createParseStacktrace(releaseBundleFilename: string | undefined): Confi
  * Based on flags, builds instrumentations and transports automatically.
  * Client just enables what they need; makeRNConfig does the rest.
  *
- * @param preloadedSessionDeviceAttributes Device/session fields for session meta (passed from async `initializeFaro`).
+ * @param preloadedMobileMeta Device/session fields and structured mobile meta (passed from async `initializeFaro`).
  * @param appSymbolsBundleId Encoded `meta.app.bundleId` for server-side symbol retrace.
  */
 export function makeRNConfig(
   config: ReactNativeConfig,
-  preloadedSessionDeviceAttributes?: SessionAttributes,
+  preloadedMobileMeta?: PreloadedMobileMeta,
   appSymbolsBundleId?: string
 ): ReactNativeFullConfig {
-  const defaultMetas = [getSdkMeta(), getPageMeta(), getScreenMeta()];
+  const { app: preloadedAppMeta, ...structuredMobileMeta } = preloadedMobileMeta?.meta ?? {};
+  const mobileMetas = Object.keys(structuredMobileMeta).length > 0 ? [structuredMobileMeta] : [];
+  const defaultMetas = [getSdkMeta(), getPageMeta(), getScreenMeta(), ...mobileMetas];
   const customMetas = config.metas ?? [];
   const transports = buildTransports(config);
   const instrumentations = buildInstrumentations(config);
+  const installationId = config.app.installationId ?? preloadedAppMeta?.installationId;
 
   const releaseBundleFilename = config.releaseBundleFilename;
   return {
-    app: config.app,
-    ...(preloadedSessionDeviceAttributes != null && {
-      preloadedSessionDeviceAttributes,
+    app: {
+      ...config.app,
+      ...(installationId && { installationId }),
+    },
+    ...(preloadedMobileMeta != null && {
+      preloadedMobileMeta: preloadedMobileMeta.meta,
+      preloadedSessionDeviceAttributes: preloadedMobileMeta.sessionAttributes,
     }),
     dedupe: config.dedupe ?? true,
     globalObjectKey: config.globalObjectKey ?? defaultGlobalObjectKey,

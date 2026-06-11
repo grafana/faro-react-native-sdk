@@ -1,6 +1,10 @@
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
+import type { Meta } from '@grafana/faro-core';
+
+import { getInstallationId } from './installationId';
+
 /**
  * Session attributes for React Native
  * These attributes are automatically included with every telemetry event
@@ -25,22 +29,22 @@ export interface SessionAttributes {
   /** Detailed OS info (e.g., "iOS 17.0" or "Android 15 (SDK 35)") */
   device_os_detail?: string;
 
-  /** Device manufacturer (e.g., "apple", "samsung") */
+  /** Device manufacturer (e.g., "apple", "samsung", "Google") */
   device_manufacturer?: string;
 
-  /** Raw model identifier (e.g., "iPhone16,1", "SM-A155F") */
+  /** Device model in flat session attributes (e.g., "iPhone 15 Pro", "SM-A155F") */
   device_model?: string;
 
   /** Human-readable model name (e.g., "iPhone 15 Pro") */
   device_model_name?: string;
 
-  /** Device brand (e.g., "iPhone", "samsung") */
+  /** Device brand in flat session attributes (e.g., "Apple", "samsung") */
   device_brand?: string;
 
   /** Whether device is physical or emulator ("true" or "false") */
   device_is_physical?: string;
 
-  /** Unique device ID (UUID) */
+  /** Temporary flat attribute mirroring `app.installationId` during migration. */
   device_id?: string;
 
   /** Device type ("mobile" or "tablet") */
@@ -63,6 +67,11 @@ export interface SessionAttributes {
 
   /** Mobile carrier name (e.g., "Verizon") - empty if unavailable */
   device_carrier?: string;
+}
+
+export interface PreloadedMobileMeta {
+  sessionAttributes: SessionAttributes;
+  meta: Pick<Meta, 'app' | 'device' | 'os'>;
 }
 
 /**
@@ -90,17 +99,42 @@ function getReactNativeVersion(): string {
   }
 }
 
-/**
- * Get device ID using react-native-device-info
- * Returns unique device identifier or 'unknown' on error
- */
-async function getDeviceId(): Promise<string> {
-  try {
-    // getUniqueId returns a UUID that persists across app installations
-    return await DeviceInfo.getUniqueId();
-  } catch (_error) {
-    return 'unknown';
+function getStructuredDeviceBrand(model: string, brand: string): string {
+  if (Platform.OS !== 'ios') {
+    return brand;
   }
+
+  return model.toLowerCase().includes('ipad') ? 'iPad' : 'iPhone';
+}
+
+function getStructuredDeviceManufacturer(manufacturer: string): string {
+  return Platform.OS === 'ios' ? manufacturer.toLowerCase() : manufacturer;
+}
+
+function getStructuredDeviceModelIdentifier(model: string): string | undefined {
+  // Android getDeviceId() returns a board code, so use Build.MODEL for the Faro
+  // model identifier.
+  if (Platform.OS === 'android') {
+    return model;
+  }
+
+  // React Native reports iPhone and iPadOS apps as Platform.OS === 'ios'.
+  // react-native-device-info exposes the Apple hardware identifier here.
+  if (Platform.OS === 'ios') {
+    return DeviceInfo.getDeviceId();
+  }
+
+  return undefined;
+}
+
+function getMobileDeviceType(isTablet: boolean): 'mobile' | 'tablet' | undefined {
+  // iPadOS is still reported as Platform.OS === 'ios'; DeviceInfo.isTablet()
+  // distinguishes iPad/tablet form factor from phone form factor.
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    return isTablet ? 'tablet' : 'mobile';
+  }
+
+  return undefined;
 }
 
 /**
@@ -122,6 +156,17 @@ async function getDeviceOsDetail(): Promise<string> {
   }
 
   return `${systemName} ${systemVersion}`;
+}
+
+async function getDeviceOsBuildId(): Promise<string | undefined> {
+  try {
+    // RN device-info exposes a useful OS build id on both Android and iOS.
+    // Keep it omitted when unavailable instead of sending "unknown".
+    const buildId = await DeviceInfo.getBuildId();
+    return buildId && buildId !== 'unknown' ? buildId : undefined;
+  } catch (_error) {
+    return undefined;
+  }
 }
 
 /**
@@ -151,20 +196,28 @@ export function minimalSessionDeviceAttributes(): SessionAttributes {
  * - device_carrier
  */
 export async function getSessionAttributes(): Promise<SessionAttributes> {
+  return (await collectMobileMeta()).sessionAttributes;
+}
+
+async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
   try {
-    // Get device ID asynchronously
-    const deviceId = await getDeviceId();
-    const deviceOsDetail = await getDeviceOsDetail();
+    const [deviceOsDetail, deviceOsBuildId, installationId] = await Promise.all([
+      getDeviceOsDetail(),
+      getDeviceOsBuildId(),
+      getInstallationId(),
+    ]);
 
     // Get synchronous device info
     const systemName = DeviceInfo.getSystemName();
     const systemVersion = DeviceInfo.getSystemVersion();
     const manufacturer = DeviceInfo.getManufacturerSync();
     const model = DeviceInfo.getModel();
+    const modelIdentifier = getStructuredDeviceModelIdentifier(model);
     const deviceName = DeviceInfo.getDeviceNameSync();
     const brand = DeviceInfo.getBrand();
     const isEmulator = DeviceInfo.isEmulatorSync();
     const isTablet = DeviceInfo.isTablet();
+    const deviceType = getMobileDeviceType(isTablet);
 
     // Memory info
     const totalMemory = DeviceInfo.getTotalMemorySync();
@@ -221,8 +274,8 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
       device_model_name: deviceName,
       device_brand: brand,
       device_is_physical: String(!isEmulator),
-      device_id: deviceId,
-      device_type: isTablet ? 'tablet' : 'mobile',
+      ...(installationId ? { device_id: installationId } : {}),
+      ...(deviceType ? { device_type: deviceType } : {}),
       device_memory_total: String(totalMemory),
       device_memory_used: String(usedMemory),
       device_battery_level: batteryLevel,
@@ -230,11 +283,48 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
       device_low_power_mode: lowPowerMode,
       device_carrier: carrier,
     };
+    const appMeta = installationId ? { installationId } : {};
+    const structuredDeviceBrand = getStructuredDeviceBrand(model, brand);
+    const structuredDeviceManufacturer = getStructuredDeviceManufacturer(manufacturer);
+    const osMeta = {
+      ...(deviceOsBuildId ? { build_id: deviceOsBuildId } : {}),
+      detail: deviceOsDetail,
+      name: systemName,
+      version: systemVersion,
+    };
 
-    return attributes;
+    return {
+      sessionAttributes: attributes,
+      meta: {
+        app: appMeta,
+        device: {
+          brand: structuredDeviceBrand,
+          is_physical: !isEmulator,
+          manufacturer: structuredDeviceManufacturer,
+          ...(modelIdentifier ? { model_identifier: modelIdentifier } : {}),
+          model_name: model,
+          ...(deviceType ? { type: deviceType } : {}),
+        },
+        os: osMeta,
+      },
+    };
   } catch (_error) {
-    return minimalSessionDeviceAttributes();
+    const installationId = await getInstallationId();
+
+    return {
+      sessionAttributes: minimalSessionDeviceAttributes(),
+      meta: {
+        app: installationId ? { installationId } : {},
+      },
+    };
   }
+}
+
+/**
+ * Get structured mobile meta plus flat session attributes for async `initializeFaro`.
+ */
+export async function loadMobileMetaForInit(): Promise<PreloadedMobileMeta> {
+  return collectMobileMeta();
 }
 
 /**
@@ -243,7 +333,7 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
  */
 export async function loadSessionDeviceAttributesForInit(): Promise<SessionAttributes> {
   try {
-    return await getSessionAttributes();
+    return (await loadMobileMetaForInit()).sessionAttributes;
   } catch {
     return minimalSessionDeviceAttributes();
   }
