@@ -1,70 +1,31 @@
 /**
- * Configuration options for Crash Reporting instrumentation.
- *
- * **Platform Support**:
- * - **Android**: Uses ApplicationExitInfo API (Android 11+ / API 30+)
- *   Captures: CRASH, CRASH_NATIVE, ANR, LOW_MEMORY, EXCESSIVE_RESOURCE_USAGE
- * - **iOS**: Uses PLCrashReporter (automatically included via podspec)
- *   Captures: Signal crashes (SIGSEGV, SIGABRT, etc.) and Mach exceptions
+ * Crash report data structure returned from native module.
  */
-export interface CrashReportingOptions {
-  /**
-   * Whether to enable crash reporting.
-   * Default: true
-   */
-  enabled?: boolean;
+export interface CrashReport {
+  trace?: string;
+  signal?: string;
+  timestamp?: number;
+  description?: string;
+  processName?: string;
+  pid?: number;
+  importance?: number;
+  // iOS-specific fields
+  reason?: string; // Signal name (e.g., 'SIGSEGV')
+  status?: number; // Exit status code
 }
 
 /**
- * Crash report data from native module.
- *
- * Field names match Faro Flutter SDK for consistency across mobile platforms.
- * Both Android (ApplicationExitInfo) and iOS (PLCrashReporter) produce JSON
- * matching this interface.
+ * Configuration options for crash reporting instrumentation.
  */
-export interface CrashReport {
+export interface CrashReportingOptions {
   /**
-   * Reason for the crash (e.g., "CRASH", "CRASH_NATIVE", "ANR", "LOW_MEMORY")
+   * Enable or disable crash reporting. Defaults to true.
    */
-  reason: string;
+  enabled?: boolean;
 
   /**
-   * Timestamp when the crash occurred (milliseconds since epoch)
+   * Optional release bundle filename hint for R8 retracing.
+   * e.g., "index.android.bundle"
    */
-  timestamp: number;
-
-  /**
-   * Exit status code
-   */
-  status?: number;
-
-  /**
-   * Description of the crash
-   */
-  description?: string;
-
-  /**
-   * Process importance level
-   */
-  importance?: number;
-
-  /**
-   * Process ID
-   */
-  pid?: number;
-
-  /**
-   * Process name
-   */
-  processName?: string;
-
-  /**
-   * Stack trace (if available)
-   */
-  trace?: string;
-
-  /**
-   * Signal name (for iOS crashes)
-   */
-  signal?: string;
+  releaseBundleFilename?: string;
 }

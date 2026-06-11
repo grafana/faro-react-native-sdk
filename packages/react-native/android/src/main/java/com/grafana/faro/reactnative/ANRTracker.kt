@@ -1,5 +1,6 @@
 package com.grafana.faro.reactnative
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -49,13 +50,36 @@ class ANRTracker : Thread("ANRTracker") {
         }
         
         /**
-         * Clear the ANR events list
+         * Application context used to persist ANRs before JS delivery.
          */
-        fun resetANR() {
+        @Volatile
+        var applicationContext: Context? = null
+
+        /**
+         * Remove in-memory ANRs that were acknowledged on disk.
+         */
+        fun acknowledgeInMemory(timestamps: Collection<Long>) {
+            if (timestamps.isEmpty()) {
+                return
+            }
+            val timestampSet = timestamps.toSet()
             synchronized(anrListLock) {
-                anrList.clear()
+                anrList.removeAll { json ->
+                    try {
+                        JSONObject(json).optLong("timestamp", 0L) in timestampSet
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
             }
         }
+
+        /**
+         * Optional callback invoked on the ANR tracker thread when an ANR is recorded.
+         * Used to push telemetry immediately instead of waiting for the JS poll interval.
+         */
+        @Volatile
+        var onAnrDetected: ((String) -> Unit)? = null
     }
     
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -175,9 +199,12 @@ class ANRTracker : Thread("ANRTracker") {
             val stackTrace = mainThread.stackTrace
             
             // Build a readable stack trace
+            // Match Android Log.getStackTraceString / ApplicationExitInfo format so
+            // ingest R8 retrace and parseAndroidCrashTrace can consume the text.
             val stackTraceStr = StringBuilder()
             for (element in stackTrace) {
-                stackTraceStr.append(element.className)
+                stackTraceStr.append("    at ")
+                    .append(element.className)
                     .append(".")
                     .append(element.methodName)
                     .append("(")
@@ -193,12 +220,21 @@ class ANRTracker : Thread("ANRTracker") {
                 put("timestamp", System.currentTimeMillis())
                 put("stacktrace", stackTraceStr.toString())
                 put("duration", timeout)
+                put("source", "ANRTracker")
             }
             
-            // Store the ANR information
-            synchronized(anrListLock) {
-                anrList.add(anrInfo.toString())
+            val payload = anrInfo.toString()
+
+            // Persist first: survives process kill before JS/network can run.
+            applicationContext?.let { context ->
+                FaroAnrCache.savePendingAnr(context, payload)
             }
+
+            synchronized(anrListLock) {
+                anrList.add(payload)
+            }
+
+            onAnrDetected?.invoke(payload)
             
             Log.w(TAG, "ANR detected: $stackTraceStr")
         } catch (e: Exception) {
