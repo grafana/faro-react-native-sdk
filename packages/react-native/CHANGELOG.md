@@ -32,6 +32,9 @@
 
 ### Added
 
+- Structured mobile payload fields: `meta.device`, `meta.os`,
+  `meta.app.installationId`, and `exception.fatal`. Legacy flat
+  `session.attributes` device/OS fields are still emitted during migration.
 - Hermes release error symbolication: new `releaseBundleFilename` config option
   (must match the Metro plugin source map top-level `file`, e.g.
   `index.android.bundle` or `main.jsbundle`) so error stack frames align with

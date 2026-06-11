@@ -68,11 +68,15 @@ export class ConsoleInstrumentation extends BaseInstrumentation {
 
             if (value && !type && !stackFrames) {
               // Simple error without stack frames
-              this.api.pushError(new Error(ConsoleInstrumentation.consoleErrorPrefix + value), { context });
+              this.api.pushError(new Error(ConsoleInstrumentation.consoleErrorPrefix + value), {
+                context,
+                fatal: false,
+              });
             } else {
               // Error with type and/or stack frames (type from error.name, matches Web SDK)
               this.api.pushError(new Error(ConsoleInstrumentation.consoleErrorPrefix + (value ?? '')), {
                 context,
+                fatal: false,
                 type,
                 stackFrames,
               });

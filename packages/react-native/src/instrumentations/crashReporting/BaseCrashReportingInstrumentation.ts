@@ -95,6 +95,12 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
           const attrCount = Object.keys(sessionAttrs).length;
           const attrKeys = JSON.stringify(Object.keys(sessionAttrs));
 
+          // Look for multiple device-specific attributes that indicate full async collection is done.
+          // getSessionAttributes() collects these asynchronously:
+          // - device_id (SDK installation id, kept as a flat attr during migration)
+          // - device_os_detail (async getDeviceOsDetail)
+          // - device_model_name (DeviceInfo.getDeviceNameSync)
+          // All three should be present when collection is complete.
           const hasDeviceId = 'device_id' in sessionAttrs && sessionAttrs['device_id'] !== 'unknown';
           const hasDeviceOsDetail =
             'device_os_detail' in sessionAttrs && sessionAttrs['device_os_detail'] !== 'unknown';
@@ -184,6 +190,7 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
               parseError: String(parseError),
               raw: crashJson.substring(0, 500),
             },
+            fatal: true,
             type: 'crash',
           });
         }
@@ -246,6 +253,7 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
       stackFrames,
       context,
       type: 'crash',
+      fatal: true,
     });
 
     this.logDebug(`Sent crash report: ${errorMessage}`);

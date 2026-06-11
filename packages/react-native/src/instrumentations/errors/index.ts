@@ -136,7 +136,6 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
           error,
           {
             mechanism: ErrorMechanism.UNCAUGHT,
-            isFatal: String(isFatal ?? false),
           },
           { releaseBundleFilename: this.options.releaseBundleFilename }
         );
@@ -145,6 +144,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
         this.api.pushError(enhancedError, {
           type: enhancedError.name || 'Error',
           context,
+          fatal: isFatal ?? false,
           stackFrames,
         });
 
@@ -209,6 +209,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
         this.api.pushError(enhancedError, {
           type: errorType,
           context,
+          fatal: false,
           stackFrames,
         });
 
