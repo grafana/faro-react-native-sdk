@@ -21,3 +21,6 @@ node_modules/
 # Misc
 .DS_Store
 *.log
+
+# Credentials (do not commit)
+sourcemaps.config.json
