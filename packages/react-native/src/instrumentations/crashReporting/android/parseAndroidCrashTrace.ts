@@ -1,6 +1,6 @@
 import type { ExceptionStackFrame } from '@grafana/faro-core';
 
-import { parseStackTraceLine, toFaroStackFrames } from '../errors/stackTraceParser';
+import { parseStackTraceLine, toFaroStackFrames } from '../../errors/stackTraceParser';
 
 /**
  * Android ApplicationExitInfo traces use Java/Kotlin stack-trace formatting.

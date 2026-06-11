@@ -1,76 +1,31 @@
 /**
- * Configuration options for Crash Reporting instrumentation.
- *
- * **Platform Support**:
- * - **Android**: Uses ApplicationExitInfo API (Android 11+ / API 30+)
- *   Captures: CRASH, CRASH_NATIVE, LOW_MEMORY, EXCESSIVE_RESOURCE_USAGE
- * - **iOS**: Uses PLCrashReporter (automatically included via podspec)
- *   Captures: Signal crashes (SIGSEGV, SIGABRT, etc.) and Mach exceptions
+ * Crash report data structure returned from native module.
+ */
+export interface CrashReport {
+  trace?: string;
+  signal?: string;
+  timestamp?: number;
+  description?: string;
+  processName?: string;
+  pid?: number;
+  importance?: number;
+  // iOS-specific fields
+  reason?: string; // Signal name (e.g., 'SIGSEGV')
+  status?: number; // Exit status code
+}
+
+/**
+ * Configuration options for crash reporting instrumentation.
  */
 export interface CrashReportingOptions {
   /**
-   * Whether to enable crash reporting.
-   * Default: true
+   * Enable or disable crash reporting. Defaults to true.
    */
   enabled?: boolean;
 
   /**
-   * Bundle filename for Hermes/minified JS lines embedded in Android crash traces
-   * (`anonymous@line:col`). Must match Metro source map `file` (e.g. `index.android.bundle`).
+   * Optional release bundle filename hint for R8 retracing.
+   * e.g., "index.android.bundle"
    */
   releaseBundleFilename?: string;
-}
-
-/**
- * Crash report data from native module.
- *
- * Field names match Faro Flutter SDK for consistency across mobile platforms.
- * Both Android (ApplicationExitInfo) and iOS (PLCrashReporter) produce JSON
- * matching this interface.
- */
-export interface CrashReport {
-  /**
-   * Reason for the crash (e.g., "CRASH", "CRASH_NATIVE", "ANR", "LOW_MEMORY")
-   */
-  reason: string;
-
-  /**
-   * Timestamp when the crash occurred (milliseconds since epoch)
-   */
-  timestamp: number;
-
-  /**
-   * Exit status code
-   */
-  status?: number;
-
-  /**
-   * Description of the crash
-   */
-  description?: string;
-
-  /**
-   * Process importance level
-   */
-  importance?: number;
-
-  /**
-   * Process ID
-   */
-  pid?: number;
-
-  /**
-   * Process name
-   */
-  processName?: string;
-
-  /**
-   * Stack trace (if available)
-   */
-  trace?: string;
-
-  /**
-   * Signal name (for iOS crashes)
-   */
-  signal?: string;
 }

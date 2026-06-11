@@ -1,14 +1,12 @@
-import type { ParsedIosCrashTrace } from './parseIosCrashTrace';
 import type { CrashReport } from '../types';
+
+import type { ParsedIosCrashTrace } from './parseIosCrashTrace';
 
 /**
  * Human-readable exception value for iOS PLCrashReporter crash reports.
  * Priority: exception reason → signal description → signal name → fallback.
  */
-export function resolveCrashErrorMessage(
-  crash: CrashReport,
-  parsedTrace: ParsedIosCrashTrace | null
-): string {
+export function resolveCrashErrorMessage(crash: CrashReport, parsedTrace: ParsedIosCrashTrace | null): string {
   // iOS uncaught exceptions (NSException) have name and reason
   if (parsedTrace?.exceptionName || parsedTrace?.exceptionReason) {
     const name = parsedTrace.exceptionName || 'Exception';
@@ -19,7 +17,7 @@ export function resolveCrashErrorMessage(
     return name;
   }
 
-  // Use signal description if available
+  // Use signal description if available from parsed trace
   if (parsedTrace?.signalDescription?.trim()) {
     return parsedTrace.signalDescription.trim();
   }
@@ -31,21 +29,24 @@ export function resolveCrashErrorMessage(
     return description || signalName;
   }
 
-  // Fallback to crash report data
-  const fromDescription = crash.description?.trim();
-  if (fromDescription && !isGenericCrashDescription(fromDescription)) {
-    return fromDescription;
+  // Check crash description - use if meaningful
+  const description = crash.description?.trim();
+  if (description && !isGenericCrashDescription(description)) {
+    return description;
   }
 
-  const fromReason = crash.reason?.trim();
-  if (fromReason) {
-    const description = SIGNAL_DESCRIPTIONS[fromReason];
-    if (description) {
-      return description;
+  // Check if we have a known signal reason
+  const reason = crash.reason?.trim();
+  if (reason && SIGNAL_DESCRIPTIONS[reason]) {
+    // If description is explicitly generic, use full format
+    if (description && isGenericCrashDescription(description)) {
+      return buildFallbackCrashMessage(crash);
     }
-    return fromReason;
+    // No description - use simple signal description
+    return SIGNAL_DESCRIPTIONS[reason];
   }
 
+  // Final fallback: format with signal name, description, and status
   return buildFallbackCrashMessage(crash);
 }
 
@@ -91,11 +92,7 @@ const SIGNAL_DESCRIPTIONS: Record<string, string> = {
 
 function isGenericCrashDescription(description: string): boolean {
   const normalized = description.trim().toLowerCase();
-  return (
-    normalized === 'crash' ||
-    normalized === 'application crash' ||
-    normalized === 'signal crash'
-  );
+  return normalized === 'crash' || normalized === 'application crash' || normalized === 'signal crash';
 }
 
 /** Generic fallback when the trace carries no parseable signal or description. */

@@ -2,11 +2,8 @@ import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 
+import { normalizeJavaStackTraceForRetrace, parseAndroidCrashTrace } from '../crashReporting/android';
 import { ErrorMechanism } from '../errors/const';
-import {
-  normalizeJavaStackTraceForRetrace,
-  parseAndroidCrashTrace,
-} from '../crashReporting/parseAndroidCrashTrace';
 
 import { isInvalidAnrCaptureStack } from './anrStack';
 import type { ANREvent, ANRInstrumentationOptions } from './types';
@@ -54,8 +51,7 @@ export class ANRInstrumentation extends BaseInstrumentation {
       timeout: options.timeout ?? DEFAULT_TIMEOUT,
       pollingInterval: options.pollingInterval ?? DEFAULT_POLLING_INTERVAL,
     };
-    this.preferAppExitInfoAnr =
-      Platform.OS === 'android' && Number(Platform.Version) >= APP_EXIT_INFO_MIN_SDK;
+    this.preferAppExitInfoAnr = Platform.OS === 'android' && Number(Platform.Version) >= APP_EXIT_INFO_MIN_SDK;
   }
 
   initialize(): void {
@@ -110,16 +106,12 @@ export class ANRInstrumentation extends BaseInstrumentation {
     }
   }
 
-  private async drainAllAnrSources(
-    nativeModule: typeof NativeModules.FaroReactNativeModule
-  ): Promise<void> {
+  private async drainAllAnrSources(nativeModule: typeof NativeModules.FaroReactNativeModule): Promise<void> {
     await this.drainHistoricalAnrs(nativeModule);
     await this.drainPendingANRs(nativeModule);
   }
 
-  private async drainHistoricalAnrs(
-    nativeModule: typeof NativeModules.FaroReactNativeModule
-  ): Promise<void> {
+  private async drainHistoricalAnrs(nativeModule: typeof NativeModules.FaroReactNativeModule): Promise<void> {
     if (typeof nativeModule.getHistoricalAnrReports !== 'function') {
       return;
     }
@@ -204,9 +196,7 @@ export class ANRInstrumentation extends BaseInstrumentation {
     }
   }
 
-  private async fetchPendingANRs(
-    nativeModule: typeof NativeModules.FaroReactNativeModule
-  ): Promise<string[] | null> {
+  private async fetchPendingANRs(nativeModule: typeof NativeModules.FaroReactNativeModule): Promise<string[] | null> {
     try {
       if (typeof nativeModule.getPendingANRs === 'function') {
         return (await nativeModule.getPendingANRs()) as string[] | null;

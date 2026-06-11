@@ -76,10 +76,9 @@ describe('parseAndroidCrashTrace', () => {
   });
 
   it('parses java.lang.RuntimeException headers', () => {
-    const trace = [
-      'java.lang.RuntimeException: Intentional native crash',
-      '\tat com.example.c.a(SourceFile:33)',
-    ].join('\n');
+    const trace = ['java.lang.RuntimeException: Intentional native crash', '\tat com.example.c.a(SourceFile:33)'].join(
+      '\n'
+    );
 
     const parsed = parseAndroidCrashTrace(trace);
 
@@ -140,7 +139,7 @@ describe('parseAndroidCrashTrace', () => {
 
   it('normalizes RN fatal JS error header shape without relying on exception type', () => {
     expect(normalizeCrashTraceExceptionMessage('Error: Unhandled debug exception, stack:')).toBe(
-      'Unhandled debug exception',
+      'Unhandled debug exception'
     );
   });
 
@@ -178,10 +177,7 @@ describe('parseAndroidCrashTrace', () => {
   });
 
   it('ignores version-like header lines such as 18.2213', () => {
-    const trace = [
-      '18.2213',
-      '    at com.example.CrashModule.blockMainThread(CrashModule.kt:56)',
-    ].join('\n');
+    const trace = ['18.2213', '    at com.example.CrashModule.blockMainThread(CrashModule.kt:56)'].join('\n');
 
     const parsed = parseAndroidCrashTrace(trace);
 
