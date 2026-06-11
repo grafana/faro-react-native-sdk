@@ -70,7 +70,7 @@ describe('resolveCrashErrorMessage', () => {
     expect(resolveCrashErrorMessage(baseCrash, parsed)).toBe('java.lang.NullPointerException');
   });
 
-  it('uses Flutter-style fallback when nothing else is available', () => {
+  it('uses generic fallback when nothing else is available', () => {
     expect(resolveCrashErrorMessage(baseCrash, null)).toBe('CRASH: Application crash (Java/Kotlin), status: 0');
   });
 

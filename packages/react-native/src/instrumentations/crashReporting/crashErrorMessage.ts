@@ -4,7 +4,7 @@ import type { CrashReport } from './types';
 
 /**
  * Human-readable exception value for ApplicationExitInfo crash reports.
- * Priority: parsed trace message → exception class → description → fallback.
+ * Priority: parsed trace message → exception class → description → generic fallback.
  */
 export function resolveCrashErrorMessage(
   crash: CrashReport,
@@ -104,7 +104,7 @@ function isGenericCrashDescription(description: string): boolean {
   );
 }
 
-/** Flutter-aligned fallback when the trace carries no parseable message or type. */
+/** Generic fallback when the trace carries no parseable message or type. */
 export function buildFallbackCrashMessage(crash: CrashReport): string {
   const reason = crash.reason || 'UNKNOWN';
   const status = crash.status ?? 0;
