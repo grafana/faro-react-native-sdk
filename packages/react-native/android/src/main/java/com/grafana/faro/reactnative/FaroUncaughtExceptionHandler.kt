@@ -10,7 +10,7 @@ import android.util.Log
  * (observed on Android 16 / API 36). Without this handler the SDK cannot report
  * native frames for retrace.
  */
-class FaroUncaughtExceptionHandler(
+internal class FaroUncaughtExceptionHandler(
     private val context: Context,
     private val originalHandler: Thread.UncaughtExceptionHandler?,
 ) : Thread.UncaughtExceptionHandler {
