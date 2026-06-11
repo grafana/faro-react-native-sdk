@@ -262,7 +262,7 @@ export class CrashReportingInstrumentation extends BaseInstrumentation {
       );
     } else if (!crash.trace) {
       this.logWarn(
-        'Native crash report has no trace (ApplicationExitInfo traceInputStream was null); install UncaughtExceptionHandler cache'
+        'Native crash trace unavailable (ApplicationExitInfo traceInputStream was null at crash time)'
       );
     }
 
