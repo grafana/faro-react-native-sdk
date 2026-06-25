@@ -22,9 +22,13 @@ describe('CrashReportingInstrumentation', () => {
       }
     ).sendCrashReport({
       reason: 'CRASH_NATIVE',
-      signal: 'SIGSEGV',
+      signal: 'SIGSEGV (11)',
       timestamp: 1710000000000,
-      trace: 'native stack',
+      trace: [
+        "ABI: 'arm64'",
+        'backtrace:',
+        '      #00 pc 0000000000001234  /data/app/lib/arm64-v8a/libappmodules.so (nativeCrash+8)',
+      ].join('\n'),
     });
 
     expect(transport.items).toHaveLength(1);
@@ -32,6 +36,7 @@ describe('CrashReportingInstrumentation', () => {
     expect(item.payload.type).toBe('crash');
     expect(item.payload.fatal).toBe(true);
     expect(item.payload.context?.mechanism).toBe('crash');
-    expect(item.payload.context?.signal).toBe('SIGSEGV');
+    expect(item.payload.context?.signal).toBe('SIGSEGV (11)');
+    expect(item.payload.context?.trace).toContain('#00 pc');
   });
 });

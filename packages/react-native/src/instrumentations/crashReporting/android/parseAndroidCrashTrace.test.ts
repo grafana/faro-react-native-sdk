@@ -20,6 +20,7 @@ describe('parseAndroidCrashTrace', () => {
       exceptionType: 'com.example.c',
       exceptionMessage: 'Intentional native crash',
       jsFrames: [],
+      nativeFrames: [],
       frames: [
         {
           module: 'com.example.c',
@@ -183,6 +184,32 @@ describe('parseAndroidCrashTrace', () => {
 
     expect(parsed?.exceptionType).toBeUndefined();
     expect(parsed?.frames).toHaveLength(1);
+  });
+
+  it('parses NDK tombstone backtrace lines and ignores the backtrace: section label', () => {
+    const trace = [
+      "ABI: 'arm64'",
+      'signal SIGSEGV (11)',
+      'backtrace:',
+      '      #00 pc 000000782a48ce5c  /data/app/base.apk!libappmodules.so (Java_com_quickpizza_QuickPizzaNdkCrashModule_nativeCrash+8)',
+      '      #01 pc 0000000070ae9890  /system/framework/arm64/boot.oat (art_jni_trampoline+112)',
+    ].join('\n');
+
+    const parsed = parseAndroidCrashTrace(trace);
+
+    expect(parsed?.exceptionType).toBeUndefined();
+    expect(parsed?.nativeFrames).toEqual([
+      {
+        module: 'libappmodules.so',
+        function: 'Java_com_quickpizza_QuickPizzaNdkCrashModule_nativeCrash',
+        filename: 'libappmodules.so',
+      },
+      {
+        module: 'boot.oat',
+        function: 'art_jni_trampoline',
+        filename: 'boot.oat',
+      },
+    ]);
   });
 
   it('captures root cause from wrapped exceptions with "Caused by:" chain', () => {

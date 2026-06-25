@@ -1,0 +1,62 @@
+// Android tombstone protobuf (AOSP debuggerd/proto/tombstone.proto).
+// Used to decode ApplicationExitInfo.traceInputStream for REASON_CRASH_NATIVE (API 31+).
+// https://developer.android.com/reference/android/app/ApplicationExitInfo#getTraceInputStream()
+
+syntax = "proto3";
+
+option java_package = "com.grafana.faro.reactnative.tombstone";
+option java_outer_classname = "TombstoneProtos";
+
+message Tombstone {
+  Architecture arch = 1;
+  string build_fingerprint = 2;
+  string timestamp = 4;
+  uint32 pid = 5;
+  uint32 tid = 6;
+  Signal signal_info = 10;
+  string abort_message = 14;
+  map<uint32, Thread> threads = 16;
+  repeated MemoryMapping memory_mappings = 17;
+}
+
+enum Architecture {
+  ARM32 = 0;
+  ARM64 = 1;
+  X86 = 2;
+  X86_64 = 3;
+  RISCV64 = 4;
+  NONE = 5;
+}
+
+message Signal {
+  int32 number = 1;
+  string name = 2;
+  int32 code = 3;
+  string code_name = 4;
+}
+
+message Thread {
+  int32 id = 1;
+  string name = 2;
+  repeated BacktraceFrame current_backtrace = 4;
+}
+
+message BacktraceFrame {
+  uint64 rel_pc = 1;
+  uint64 pc = 2;
+  uint64 sp = 3;
+  string function_name = 4;
+  uint64 function_offset = 5;
+  string file_name = 6;
+  uint64 file_map_offset = 7;
+  string build_id = 8;
+}
+
+message MemoryMapping {
+  uint64 begin_address = 1;
+  uint64 end_address = 2;
+  uint64 offset = 3;
+  string mapping_name = 7;
+  string build_id = 8;
+  uint64 load_bias = 9;
+}

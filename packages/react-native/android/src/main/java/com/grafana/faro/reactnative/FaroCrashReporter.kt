@@ -4,9 +4,8 @@ import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
 
 /**
  * Android Crash Reporter using ApplicationExitInfo API (Android 11+).
@@ -34,6 +33,17 @@ object FaroCrashReporter {
     private const val TAG = "FaroCrashReporter"
     private const val PREFS_NAME = "com.grafana.faro.crash_reporter"
     private const val KEY_LAST_PROCESSED_TIMESTAMP = "last_processed_timestamp"
+
+    /**
+     * Persists a text tombstone backtrace for the next [REASON_CRASH_NATIVE] replay.
+     *
+     * Use when [ApplicationExitInfo.getTraceInputStream] is null (common on emulators)
+     * and the app can capture a native backtrace immediately before a fatal native exit.
+     */
+    @JvmStatic
+    fun cachePendingNativeCrashTrace(context: Context, trace: String) {
+        FaroNativeCrashTrace.cachePendingNativeCrashTrace(context, trace)
+    }
 
     /**
      * Gets crash reports from previous sessions as JSON strings.
@@ -136,9 +146,12 @@ object FaroCrashReporter {
             } else if (exit.reason == ApplicationExitInfo.REASON_CRASH_NATIVE) {
                 score += 3
             }
-            val trace = getTraceInfo(exit)
+            val trace = readExitTrace(exit).text
             if (trace.isNotEmpty()) {
                 score += 2
+            }
+            if (TombstoneBacktraceFormatter.looksLikeNativeBacktrace(trace)) {
+                score += 3
             }
             if (hasExceptionHeader(trace)) {
                 score += 2
@@ -207,10 +220,6 @@ object FaroCrashReporter {
             // Importance (Android-specific)
             json.put("importance", exitInfo.importance)
 
-            // Stack trace from ApplicationExitInfo, or from UncaughtExceptionHandler cache
-            // when traceInputStream is null (common on emulators / Android 16+).
-            val exitTrace = getTraceInfo(exitInfo)
-            val cachedTrace = FaroCrashTraceCache.traceForExitTimestamp(context, pendingTrace, exitInfo.timestamp)
             if (isAnrTimeoutDescription(rawDescription)) {
                 // ANRInstrumentation reports these with type ANR.
                 return null
@@ -221,16 +230,42 @@ object FaroCrashReporter {
                 return null
             }
 
-            val trace = resolveCrashTrace(exitTrace, cachedTrace)
+            val parsedExitTrace = readExitTrace(exitInfo)
+            val cachedTrace = cachedTraceForExit(context, exitInfo, pendingTrace)
+            val trace = resolveCrashTrace(
+                exitTrace = parsedExitTrace.text,
+                cachedTrace = cachedTrace,
+                isNativeCrash = exitInfo.reason == ApplicationExitInfo.REASON_CRASH_NATIVE,
+            )
+
             if (trace.isNotEmpty()) {
-                if (exitTrace.isEmpty() && cachedTrace.isNotEmpty()) {
+                if (parsedExitTrace.text.isEmpty() && cachedTrace.isNotEmpty()) {
                     onPendingTraceUsed(true)
                 } else if (cachedTrace.isNotEmpty() && trace == cachedTrace) {
                     onPendingTraceUsed(true)
                 }
                 json.put("trace", trace)
+
+                val signal = parsedExitTrace.signal.trim()
+                if (signal.isNotEmpty()) {
+                    json.put("signal", signal)
+                }
+
+                if (TombstoneBacktraceFormatter.looksLikeNativeBacktrace(trace)) {
+                    val preview = trace.lineSequence().firstOrNull { it.contains("#00 pc") }?.trim().orEmpty()
+                    Log.i(
+                        TAG,
+                        "[Faro crash native] Exporting crash report with tombstone trace (${trace.lineSequence().count()} lines) preview=$preview",
+                    )
+                }
             } else if (!hasMeaningfulDescription(exitInfo)) {
                 // Skip duplicate/no-signal rows that would surface as generic "crash" in the UI.
+                if (exitInfo.reason == ApplicationExitInfo.REASON_CRASH_NATIVE) {
+                    Log.w(
+                        TAG,
+                        "[Faro crash native] Skipping CRASH_NATIVE without tombstone trace (traceInputStream was null and no cached native backtrace)",
+                    )
+                }
                 return null
             }
 
@@ -240,14 +275,47 @@ object FaroCrashReporter {
         }
     }
 
+    private fun cachedTraceForExit(
+        context: Context,
+        exitInfo: ApplicationExitInfo,
+        pendingTrace: FaroCrashTraceCache.PendingTrace?,
+    ): String {
+        val cached = FaroCrashTraceCache.traceForExitTimestamp(context, pendingTrace, exitInfo.timestamp)
+        if (cached.isEmpty()) {
+            return ""
+        }
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            exitInfo.reason == ApplicationExitInfo.REASON_CRASH_NATIVE
+        ) {
+            cached.takeIf { TombstoneBacktraceFormatter.looksLikeNativeBacktrace(it) }.orEmpty()
+        } else {
+            cached
+        }
+    }
+
     /**
      * ApplicationExitInfo traces on emulators often contain only "at …" frame lines.
      * UncaughtExceptionHandler cache includes the exception class + message header
      * required for plugin titles (e.g. java.lang.NullPointerException).
      */
-    private fun resolveCrashTrace(exitTrace: String, cachedTrace: String): String {
+    private fun resolveCrashTrace(
+        exitTrace: String,
+        cachedTrace: String,
+        isNativeCrash: Boolean,
+    ): String {
         val exit = exitTrace.trim()
         val cached = cachedTrace.trim()
+
+        if (isNativeCrash) {
+            if (TombstoneBacktraceFormatter.looksLikeNativeBacktrace(exit)) {
+                return exit
+            }
+            if (TombstoneBacktraceFormatter.looksLikeNativeBacktrace(cached)) {
+                return cached
+            }
+            return exit.ifEmpty { cached }
+        }
 
         if (exit.isEmpty()) {
             return cached
@@ -267,6 +335,10 @@ object FaroCrashReporter {
         }
     }
 
+    private fun readExitTrace(exitInfo: ApplicationExitInfo): ApplicationExitTraceReader.ParsedExitTrace {
+        return ApplicationExitTraceReader.read(exitInfo)
+    }
+
     private fun isAnrTimeoutDescription(description: String): Boolean {
         val normalized = description.trim().lowercase()
         if (normalized.isEmpty()) {
@@ -282,6 +354,7 @@ object FaroCrashReporter {
             val trimmed = line.trim()
             trimmed.isNotEmpty() &&
                 !trimmed.startsWith("at ") &&
+                !trimmed.startsWith("#") &&
                 trimmed.contains('.') &&
                 !trimmed.startsWith("Caused by:")
         }
@@ -352,35 +425,6 @@ object FaroCrashReporter {
             ApplicationExitInfo.REASON_LOW_MEMORY -> "Application terminated due to low memory"
             ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "Application terminated due to excessive resource usage"
             else -> "Application crash"
-        }
-    }
-
-    /**
-     * Get stack trace info from ApplicationExitInfo.
-     */
-    private fun getTraceInfo(exitInfo: ApplicationExitInfo): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            return ""
-        }
-
-        return try {
-            val traceInputStream = exitInfo.traceInputStream ?: return ""
-            val reader = BufferedReader(InputStreamReader(traceInputStream))
-            val trace = StringBuilder()
-            var lineCount = 0
-            val maxLines = 100 // Limit trace length
-
-            reader.useLines { lines ->
-                for (line in lines) {
-                    if (lineCount >= maxLines) break
-                    trace.appendLine(line)
-                    lineCount++
-                }
-            }
-
-            trace.toString().trim()
-        } catch (e: Exception) {
-            ""
         }
     }
 }

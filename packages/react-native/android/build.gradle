@@ -7,11 +7,13 @@ buildscript {
     dependencies {
         classpath 'com.android.tools.build:gradle:7.4.2'
         classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0'
+        classpath 'com.google.protobuf:protobuf-gradle-plugin:0.9.4'
     }
 }
 
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+apply plugin: 'com.google.protobuf'
 
 android {
     namespace 'com.grafana.faro.reactnative'
@@ -20,16 +22,39 @@ android {
     defaultConfig {
         minSdkVersion 21
         targetSdkVersion 33
+        consumerProguardFiles 'consumer-proguard-rules.pro'
     }
 
     sourceSets {
         main {
             java.srcDirs = ['src/main/java']
+            proto {
+                srcDir 'src/main/proto'
+            }
         }
     }
 
     lintOptions {
         abortOnError false
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+protobuf {
+    protoc {
+        artifact = 'com.google.protobuf:protoc:3.25.1'
+    }
+    generateProtoTasks {
+        all().each { task ->
+            task.builtins {
+                java {
+                    option 'lite'
+                }
+            }
+        }
     }
 }
 
@@ -42,6 +67,9 @@ dependencies {
     //noinspection GradleDynamicVersion
     implementation 'com.facebook.react:react-native:+'
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.0'
+    implementation 'com.google.protobuf:protobuf-javalite:3.25.1'
+
+    testImplementation 'junit:junit:4.13.2'
 }
 
 /* ---------------------------------------------------------------------------

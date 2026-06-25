@@ -19,6 +19,11 @@ export interface ParseAndroidCrashTraceOptions {
   releaseBundleFilename?: string;
 }
 
+export interface NativeTombstoneStackFrame extends ExceptionStackFrame {
+  /** Unstripped .so basename (e.g. libappmodules.so) for NDK retrace on the collector. */
+  module: string;
+}
+
 export interface ParsedAndroidCrashTrace {
   exceptionType?: string;
   /** Human-readable message from the trace header (e.g. the JS error text). */
@@ -27,6 +32,8 @@ export interface ParsedAndroidCrashTrace {
   jsFrames: ExceptionStackFrame[];
   /** Native Java/Kotlin frames (Android R8 retrace targets). */
   frames: AndroidCrashStackFrame[];
+  /** NDK tombstone #NN pc lines (server-side .so retrace targets). */
+  nativeFrames: NativeTombstoneStackFrame[];
 }
 
 // Mirrors pkg/exporter/androidretrace/mapping.go frameLine / exceptionHeader.
@@ -34,6 +41,71 @@ const FRAME_LINE = /^\s*at\s+([\w$.]+)\.([\w$<>]+)\(([^):]*)(?::(\d+))?\)\s*$/;
 // Thread.getStackTrace() / legacy ANRTracker lines without the "at " prefix.
 const THREAD_STACK_FRAME_LINE = /^\s*([\w$.]+)\.([\w$<>]+)\(([^):]*)(?::(\d+))?\)\s*$/;
 const EXCEPTION_HEADER = /^\s*(?:Caused by:\s*)?([\w$.]+)(?::(.*))?$/;
+// Mirrors pkg/exporter/androidretrace/native_frame.go nativeFrameLine.
+const NATIVE_TOMBSTONE_FRAME_LINE =
+  /^\s*#(\d+)\s+pc\s+(?:0x)?([0-9a-fA-F]+)\s+(\S+)(?:\s+\(([^)]+)\))?/i;
+
+const TOMBSTONE_SECTION_LABELS = new Set(['backtrace', 'stack', 'build id', 'memory map', 'memory near', 'abi']);
+
+/** Tombstone section headers and metadata must not become exception_type / nativeExceptionType. */
+export function isTombstoneSectionLabel(value: string): boolean {
+  return TOMBSTONE_SECTION_LABELS.has(value.trim().toLowerCase());
+}
+
+function isTombstoneMetadataLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return true;
+  }
+  if (trimmed.startsWith('***')) {
+    return true;
+  }
+  if (/^ABI:/i.test(trimmed)) {
+    return true;
+  }
+  if (/^signal\s+/i.test(trimmed)) {
+    return true;
+  }
+  if (/^pid:/i.test(trimmed)) {
+    return true;
+  }
+  if (isTombstoneSectionLabel(trimmed.replace(/:$/, ''))) {
+    return true;
+  }
+  return false;
+}
+
+function nativeLibBasename(token: string): string {
+  const bang = token.lastIndexOf('!');
+  if (bang >= 0) {
+    token = token.slice(bang + 1);
+  }
+  const slash = token.lastIndexOf('/');
+  return slash >= 0 ? token.slice(slash + 1) : token;
+}
+
+function parseNativeTombstoneFrameLine(line: string): NativeTombstoneStackFrame | null {
+  const match = line.match(NATIVE_TOMBSTONE_FRAME_LINE);
+  if (!match) {
+    return null;
+  }
+
+  const library = match[3] ?? '';
+  const suffix = match[4]?.trim();
+  let fn = '<unknown>';
+  if (suffix) {
+    const fnMatch = suffix.match(/^([A-Za-z_][A-Za-z0-9_]*)(?:\+(\d+))?$/);
+    if (fnMatch?.[1] && fnMatch[1] !== 'BuildId' && fnMatch[1] !== 'offset') {
+      fn = fnMatch[1];
+    }
+  }
+
+  return {
+    module: nativeLibBasename(library),
+    function: fn,
+    filename: nativeLibBasename(library),
+  };
+}
 
 /** Reject version tokens (e.g. "18.2213") and other non-class header lines. */
 export function isPlausibleJavaExceptionIdentifier(value: string): boolean {
@@ -114,10 +186,17 @@ export function parseAndroidCrashTrace(
   const lines = trimmed.split('\n');
   const jsFrames: ExceptionStackFrame[] = [];
   const frames: AndroidCrashStackFrame[] = [];
+  const nativeFrames: NativeTombstoneStackFrame[] = [];
   let exceptionType: string | undefined;
   let exceptionMessage: string | undefined;
 
   lines.forEach((line) => {
+    const nativeFrame = parseNativeTombstoneFrameLine(line);
+    if (nativeFrame) {
+      nativeFrames.push(nativeFrame);
+      return;
+    }
+
     const frameMatch = line.match(FRAME_LINE) ?? line.trim().match(THREAD_STACK_FRAME_LINE);
 
     if (frameMatch) {
@@ -138,15 +217,20 @@ export function parseAndroidCrashTrace(
     }
 
     const headerMatch = line.match(EXCEPTION_HEADER);
-    if (headerMatch?.[1] && isPlausibleJavaExceptionIdentifier(headerMatch[1])) {
+    if (
+      !isTombstoneMetadataLine(line) &&
+      headerMatch?.[1] &&
+      isPlausibleJavaExceptionIdentifier(headerMatch[1]) &&
+      !isTombstoneSectionLabel(headerMatch[1])
+    ) {
       exceptionType = headerMatch[1];
       exceptionMessage = normalizeCrashTraceExceptionMessage(headerMatch[2]);
     }
   });
 
-  if (frames.length === 0 && jsFrames.length === 0 && !exceptionType) {
+  if (frames.length === 0 && jsFrames.length === 0 && nativeFrames.length === 0 && !exceptionType) {
     return null;
   }
 
-  return { exceptionType, exceptionMessage, jsFrames, frames };
+  return { exceptionType, exceptionMessage, jsFrames, frames, nativeFrames };
 }

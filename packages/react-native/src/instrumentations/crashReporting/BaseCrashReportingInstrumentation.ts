@@ -3,6 +3,7 @@ import { NativeModules } from 'react-native';
 import { BaseInstrumentation } from '@grafana/faro-core';
 
 import type { CrashReport, CrashReportingOptions } from './types';
+import { looksLikeNativeTombstoneTrace } from './android/nativeTombstoneTrace';
 
 /**
  * Abstract base class for platform-specific crash reporting implementations.
@@ -247,6 +248,14 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
       this.logWarn(this.getParseFailureWarning());
     } else if (!crash.trace) {
       this.logWarn(this.getTraceUnavailableWarning());
+    } else if (looksLikeNativeTombstoneTrace(crash.trace)) {
+      const framePreview = crash.trace
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => /#\d+\s+pc\s+/i.test(line));
+      this.logInfo(
+        `[Faro crash native] Sending tombstone trace (${crash.trace.split('\n').length} lines) preview=${framePreview ?? 'n/a'}`
+      );
     }
 
     this.api.pushError(error, {

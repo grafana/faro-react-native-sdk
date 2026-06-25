@@ -40,8 +40,8 @@ export class AndroidCrashReportingInstrumentation extends BaseCrashReportingInst
     if (!parsedTrace) {
       return [];
     }
-    // Android has both JS frames (from embedded RN errors) and native Java/Kotlin frames
-    return [...(parsedTrace.jsFrames ?? []), ...(parsedTrace.frames ?? [])];
+    // Android has JS frames, Java/Kotlin frames (R8 retrace), and NDK tombstone rows (.so retrace).
+    return [...(parsedTrace.jsFrames ?? []), ...(parsedTrace.frames ?? []), ...(parsedTrace.nativeFrames ?? [])];
   }
 
   protected buildPlatformContext(parsedTrace: ParsedAndroidCrashTrace | null, context: Record<string, string>): void {
