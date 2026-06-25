@@ -2,8 +2,8 @@ import { NativeModules } from 'react-native';
 
 import { BaseInstrumentation } from '@grafana/faro-core';
 
-import type { CrashReport, CrashReportingOptions } from './types';
 import { looksLikeNativeTombstoneTrace } from './android/nativeTombstoneTrace';
+import type { CrashReport, CrashReportingOptions } from './types';
 
 /**
  * Abstract base class for platform-specific crash reporting implementations.

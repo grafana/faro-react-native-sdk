@@ -42,8 +42,7 @@ const FRAME_LINE = /^\s*at\s+([\w$.]+)\.([\w$<>]+)\(([^):]*)(?::(\d+))?\)\s*$/;
 const THREAD_STACK_FRAME_LINE = /^\s*([\w$.]+)\.([\w$<>]+)\(([^):]*)(?::(\d+))?\)\s*$/;
 const EXCEPTION_HEADER = /^\s*(?:Caused by:\s*)?([\w$.]+)(?::(.*))?$/;
 // Mirrors pkg/exporter/androidretrace/native_frame.go nativeFrameLine.
-const NATIVE_TOMBSTONE_FRAME_LINE =
-  /^\s*#(\d+)\s+pc\s+(?:0x)?([0-9a-fA-F]+)\s+(\S+)(?:\s+\(([^)]+)\))?/i;
+const NATIVE_TOMBSTONE_FRAME_LINE = /^\s*#(\d+)\s+pc\s+(?:0x)?([0-9a-fA-F]+)\s+(\S+)(?:\s+\(([^)]+)\))?/i;
 
 const TOMBSTONE_SECTION_LABELS = new Set(['backtrace', 'stack', 'build id', 'memory map', 'memory near', 'abi']);
 
