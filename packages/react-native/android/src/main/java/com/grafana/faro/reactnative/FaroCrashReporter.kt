@@ -225,11 +225,6 @@ object FaroCrashReporter {
                 return null
             }
 
-            if (FaroAnrCache.hasNearbyAnrDetection(context, exitInfo.timestamp)) {
-                // Same incident already captured by ANRTracker + ANRInstrumentation.
-                return null
-            }
-
             val parsedExitTrace = readExitTrace(exitInfo)
             val cachedTrace = cachedTraceForExit(context, exitInfo, pendingTrace)
             val trace = resolveCrashTrace(
@@ -237,6 +232,15 @@ object FaroCrashReporter {
                 cachedTrace = cachedTrace,
                 isNativeCrash = exitInfo.reason == ApplicationExitInfo.REASON_CRASH_NATIVE,
             )
+
+            if (FaroAnrCache.hasNearbyAnrDetection(context, exitInfo.timestamp) &&
+                trace.isEmpty() &&
+                !hasMeaningfulDescription(exitInfo)
+            ) {
+                // Suppress empty generic crash rows that duplicate a nearby ANR report.
+                // Real crashes with a trace still surface even when an ANR happened nearby.
+                return null
+            }
 
             if (trace.isNotEmpty()) {
                 if (parsedExitTrace.text.isEmpty() && cachedTrace.isNotEmpty()) {

@@ -21,7 +21,9 @@ class ANRTracker : Thread("ANRTracker") {
         private const val TAG = "ANRTracker"
         
         /**
-         * Time interval for checking ANR, in milliseconds (default 5 seconds)
+         * Watchdog check interval in milliseconds (default 5 seconds).
+         * Updated from JS via [FaroReactNativeModule.startANRTracking].
+         * Exported in ANR payloads as `duration` — the detection threshold, not measured block time.
          */
         var timeout: Long = 5000L
         
@@ -87,6 +89,9 @@ class ANRTracker : Thread("ANRTracker") {
     private val isRunning = AtomicBoolean(true)
     private val taskExecuted = AtomicBoolean(false)
     
+    /** True while the main thread is blocked and we already recorded one ANR for this period. */
+    private val anrInProgress = AtomicBoolean(false)
+    
     private val checkTask = Runnable {
         // This task runs on the main thread
         taskExecuted.set(true)
@@ -115,6 +120,11 @@ class ANRTracker : Thread("ANRTracker") {
                     break
                 }
                 
+                if (taskExecuted.get()) {
+                    // Main thread recovered — allow a future blocked period to be reported again.
+                    anrInProgress.set(false)
+                }
+
                 // If the task hasn't executed after the check interval, start monitoring for ANR
                 if (!taskExecuted.get()) {
                     Log.d(TAG, "Task not executed after initial check")
@@ -138,8 +148,11 @@ class ANRTracker : Thread("ANRTracker") {
                     // Check again if the task has executed
                     if (!taskExecuted.get()) {
                         Log.d(TAG, "Task is still not executed after ${timeout}ms")
-                        // The main thread is blocked - this is an ANR
-                        handleAnrDetected()
+                        // The main thread is blocked - record once per blocked period.
+                        if (!anrInProgress.get()) {
+                            anrInProgress.set(true)
+                            handleAnrDetected()
+                        }
                     }
                 }
                 

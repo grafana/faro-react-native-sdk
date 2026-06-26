@@ -70,6 +70,8 @@ dependencies {
     implementation 'com.google.protobuf:protobuf-javalite:3.25.1'
 
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.11.1'
+    testImplementation 'androidx.test:core:1.5.0'
 }
 
 /* ---------------------------------------------------------------------------
@@ -92,18 +94,19 @@ dependencies {
  * so upload runs only after a successful bundle — never via a finalizer (which
  * can run even when bundling fails and could upload a stale map). The upload
  * task runs `faro-cli metro upload` via a small Node shim. Bundle id comes from
- * the Gradle plugin file; upload credentials from env. All values are passed as
- * **explicit CLI arguments** so the contract is visible in `--info` build output.
+ * the Gradle plugin file; upload credentials from env or sourcemaps.config.json.
+ * Credentials are forwarded as **process environment variables** (not CLI flags)
+ * so secrets do not appear in `ps` or Gradle `--info` command lines.
  *
  * Required at build time:
  *   Bundle id — `app/build/faro/bundle-id-release.txt` from `com.grafana.faro`
  *               (`faroWriteBundleIdRelease`). Same id Metro uses. Forwarded as --bundle-id.
  *
- * Required env (Gradle forwards each as a CLI flag):
- *   FARO_SOURCEMAP_ENDPOINT       — Forwarded as --endpoint.
- *   FARO_SOURCEMAP_APP_ID         — Forwarded as --app-id.
- *   FARO_SOURCEMAP_STACK_ID       — Forwarded as --stack-id.
- *   FARO_SOURCEMAP_API_KEY        — Forwarded as --api-key.
+ * Required env (Gradle forwards to the Node child process):
+ *   FARO_SOURCEMAP_ENDPOINT
+ *   FARO_SOURCEMAP_APP_ID
+ *   FARO_SOURCEMAP_STACK_ID
+ *   FARO_SOURCEMAP_API_KEY
  *
  * Optional env at build time:
  *   FARO_SKIP_SOURCEMAP_UPLOAD=1  — skip the upload (e.g. offline iteration).
@@ -233,14 +236,14 @@ gradle.projectsEvaluated {
 
         doFirst {
             def bundleId = ext.resolvedBundleId ?: resolveFaroBundleId()
+            environment 'FARO_SOURCEMAP_ENDPOINT', faroEndpoint
+            environment 'FARO_SOURCEMAP_APP_ID', faroAppId
+            environment 'FARO_SOURCEMAP_STACK_ID', faroStackId
+            environment 'FARO_SOURCEMAP_API_KEY', faroApiKey
             commandLine(
                 "node", cliPath.absolutePath,
                 "--verbose",
                 "--map", composedMap.absolutePath,
-                "--endpoint", faroEndpoint,
-                "--app-id", faroAppId,
-                "--stack-id", faroStackId,
-                "--api-key", faroApiKey,
                 "--bundle-id", bundleId,
             )
         }

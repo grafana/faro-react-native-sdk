@@ -37,7 +37,12 @@ internal object FaroAnrCache {
 
         for (i in 0 until array.length()) {
             val existing = array.optJSONObject(i) ?: continue
-            if (existing.optLong("timestamp", 0L) == newTimestamp) {
+            val existingTimestamp = existing.optLong("timestamp", 0L)
+            if (existingTimestamp == newTimestamp) {
+                return
+            }
+            if (isWithinDetectionWindow(existingTimestamp, newTimestamp)) {
+                // Collapse repeated tracker detections for the same blocked period.
                 return
             }
         }

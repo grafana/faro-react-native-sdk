@@ -107,6 +107,9 @@ object FaroAnrReporter {
 
         FaroAnrCache.recordDetectionTimestamp(context, exitInfo.timestamp)
 
+        // duration is the configured watchdog threshold (set via startANRTracking), not the
+        // measured main-thread block time — AppExitInfo does not expose exact freeze duration.
+        // TODO: consider renaming the JSON field to detectionThresholdMs for clarity.
         return JSONObject().apply {
             put("type", "ANR")
             put("timestamp", exitInfo.timestamp)
