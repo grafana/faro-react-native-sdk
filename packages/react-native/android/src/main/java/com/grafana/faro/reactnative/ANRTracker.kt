@@ -153,6 +153,9 @@ class ANRTracker : Thread("ANRTracker") {
                             anrInProgress.set(true)
                             handleAnrDetected()
                         }
+                    } else if (anrInProgress.get()) {
+                        // Main thread recovered during the extended wait — same cycle as line 123.
+                        anrInProgress.set(false)
                     }
                 }
                 
