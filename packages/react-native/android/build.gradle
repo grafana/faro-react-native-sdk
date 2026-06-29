@@ -67,7 +67,7 @@ dependencies {
     //noinspection GradleDynamicVersion
     implementation 'com.facebook.react:react-native:+'
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.0'
-    implementation 'com.google.protobuf:protobuf-javalite:3.25.1'
+    implementation 'com.google.protobuf:protobuf-javalite:3.25.5'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.robolectric:robolectric:4.11.1'
