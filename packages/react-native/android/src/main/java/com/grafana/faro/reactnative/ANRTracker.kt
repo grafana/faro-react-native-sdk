@@ -1,5 +1,6 @@
 package com.grafana.faro.reactnative
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -20,7 +21,9 @@ class ANRTracker : Thread("ANRTracker") {
         private const val TAG = "ANRTracker"
         
         /**
-         * Time interval for checking ANR, in milliseconds (default 5 seconds)
+         * Watchdog check interval in milliseconds (default 5 seconds).
+         * Updated from JS via [FaroReactNativeModule.startANRTracking].
+         * Exported in ANR payloads as `duration` — the detection threshold, not measured block time.
          */
         var timeout: Long = 5000L
         
@@ -49,19 +52,45 @@ class ANRTracker : Thread("ANRTracker") {
         }
         
         /**
-         * Clear the ANR events list
+         * Application context used to persist ANRs before JS delivery.
          */
-        fun resetANR() {
+        @Volatile
+        var applicationContext: Context? = null
+
+        /**
+         * Remove in-memory ANRs that were acknowledged on disk.
+         */
+        fun acknowledgeInMemory(timestamps: Collection<Long>) {
+            if (timestamps.isEmpty()) {
+                return
+            }
+            val timestampSet = timestamps.toSet()
             synchronized(anrListLock) {
-                anrList.clear()
+                anrList.removeAll { json ->
+                    try {
+                        JSONObject(json).optLong("timestamp", 0L) in timestampSet
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
             }
         }
+
+        /**
+         * Optional callback invoked on the ANR tracker thread when an ANR is recorded.
+         * Used to push telemetry immediately instead of waiting for the JS poll interval.
+         */
+        @Volatile
+        var onAnrDetected: ((String) -> Unit)? = null
     }
     
     private val mainHandler = Handler(Looper.getMainLooper())
     private val mainThread = Looper.getMainLooper().thread
     private val isRunning = AtomicBoolean(true)
     private val taskExecuted = AtomicBoolean(false)
+    
+    /** True while the main thread is blocked and we already recorded one ANR for this period. */
+    private val anrInProgress = AtomicBoolean(false)
     
     private val checkTask = Runnable {
         // This task runs on the main thread
@@ -91,6 +120,11 @@ class ANRTracker : Thread("ANRTracker") {
                     break
                 }
                 
+                if (taskExecuted.get()) {
+                    // Main thread recovered — allow a future blocked period to be reported again.
+                    anrInProgress.set(false)
+                }
+
                 // If the task hasn't executed after the check interval, start monitoring for ANR
                 if (!taskExecuted.get()) {
                     Log.d(TAG, "Task not executed after initial check")
@@ -114,8 +148,14 @@ class ANRTracker : Thread("ANRTracker") {
                     // Check again if the task has executed
                     if (!taskExecuted.get()) {
                         Log.d(TAG, "Task is still not executed after ${timeout}ms")
-                        // The main thread is blocked - this is an ANR
-                        handleAnrDetected()
+                        // The main thread is blocked - record once per blocked period.
+                        if (!anrInProgress.get()) {
+                            anrInProgress.set(true)
+                            handleAnrDetected()
+                        }
+                    } else if (anrInProgress.get()) {
+                        // Main thread recovered during the extended wait — same cycle as line 123.
+                        anrInProgress.set(false)
                     }
                 }
                 
@@ -175,9 +215,12 @@ class ANRTracker : Thread("ANRTracker") {
             val stackTrace = mainThread.stackTrace
             
             // Build a readable stack trace
+            // Match Android Log.getStackTraceString / ApplicationExitInfo format so
+            // ingest R8 retrace and parseAndroidCrashTrace can consume the text.
             val stackTraceStr = StringBuilder()
             for (element in stackTrace) {
-                stackTraceStr.append(element.className)
+                stackTraceStr.append("    at ")
+                    .append(element.className)
                     .append(".")
                     .append(element.methodName)
                     .append("(")
@@ -193,12 +236,21 @@ class ANRTracker : Thread("ANRTracker") {
                 put("timestamp", System.currentTimeMillis())
                 put("stacktrace", stackTraceStr.toString())
                 put("duration", timeout)
+                put("source", "ANRTracker")
             }
             
-            // Store the ANR information
-            synchronized(anrListLock) {
-                anrList.add(anrInfo.toString())
+            val payload = anrInfo.toString()
+
+            // Persist first: survives process kill before JS/network can run.
+            applicationContext?.let { context ->
+                FaroAnrCache.savePendingAnr(context, payload)
             }
+
+            synchronized(anrListLock) {
+                anrList.add(payload)
+            }
+
+            onAnrDetected?.invoke(payload)
             
             Log.w(TAG, "ANR detected: $stackTraceStr")
         } catch (e: Exception) {

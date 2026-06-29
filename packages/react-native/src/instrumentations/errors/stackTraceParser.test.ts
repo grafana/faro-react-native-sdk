@@ -205,7 +205,7 @@ describe('Stack Trace Parser', () => {
 
     it('collapses Hermes absolute .app bundle path to basename so uploads match ingest keys', () => {
       const iosPath =
-        '/Users/ci/Library/Developer/CoreSimulator/Devices/ABC/Data/Containers/Bundle/Application/62A2/QuickPizza.app/main.jsbundle';
+        '/Users/ci/Library/Developer/CoreSimulator/Devices/ABC/Data/Containers/Bundle/Application/62A2/MyApp.app/main.jsbundle';
       const parsed = parseStackTraceLine(`  at reportHandledException (${iosPath}:1:1249030)`);
       expect(parsed).not.toBeNull();
       const faroFrames = toFaroStackFrames([parsed!], { releaseBundleFilename: 'main.jsbundle' });

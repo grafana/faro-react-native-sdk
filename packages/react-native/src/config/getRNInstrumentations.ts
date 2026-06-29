@@ -144,7 +144,11 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
 
   // Crash reporting
   if (enableCrashReporting) {
-    instrumentations.push(new CrashReportingInstrumentation());
+    instrumentations.push(
+      new CrashReportingInstrumentation({
+        releaseBundleFilename: config.releaseBundleFilename,
+      })
+    );
   }
 
   if (enableTracing) {

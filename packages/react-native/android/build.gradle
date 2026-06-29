@@ -7,11 +7,13 @@ buildscript {
     dependencies {
         classpath 'com.android.tools.build:gradle:7.4.2'
         classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0'
+        classpath 'com.google.protobuf:protobuf-gradle-plugin:0.9.4'
     }
 }
 
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+apply plugin: 'com.google.protobuf'
 
 android {
     namespace 'com.grafana.faro.reactnative'
@@ -20,16 +22,39 @@ android {
     defaultConfig {
         minSdkVersion 21
         targetSdkVersion 33
+        consumerProguardFiles 'consumer-proguard-rules.pro'
     }
 
     sourceSets {
         main {
             java.srcDirs = ['src/main/java']
+            proto {
+                srcDir 'src/main/proto'
+            }
         }
     }
 
     lintOptions {
         abortOnError false
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+protobuf {
+    protoc {
+        artifact = 'com.google.protobuf:protoc:3.25.1'
+    }
+    generateProtoTasks {
+        all().each { task ->
+            task.builtins {
+                java {
+                    option 'lite'
+                }
+            }
+        }
     }
 }
 
@@ -42,6 +67,11 @@ dependencies {
     //noinspection GradleDynamicVersion
     implementation 'com.facebook.react:react-native:+'
     implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.0'
+    implementation 'com.google.protobuf:protobuf-javalite:3.25.1'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.11.1'
+    testImplementation 'androidx.test:core:1.5.0'
 }
 
 /* ---------------------------------------------------------------------------
@@ -53,8 +83,9 @@ dependencies {
  *
  *   1. npm install @grafana/faro-react-native @grafana/faro-metro-plugin
  *   2. Wrap metro.config.js with `withFaroConfig(...)`
- *   3. Export FARO_BUNDLE_ID + FARO_SOURCEMAP_* before running
- *      `yarn android --mode=release`.
+ *   3. Export FARO_SOURCEMAP_* before running `yarn android --mode=release`.
+ *      Bundle id is read from `app/build/faro/bundle-id-release.txt` when the
+ *      `com.grafana.faro` Gradle plugin is applied (same id Metro uses).
  *
  * On any release-style command (assembleRelease, bundleRelease, installRelease,
  * `yarn android --mode=release`), release entry tasks depend on
@@ -62,21 +93,20 @@ dependencies {
  * the JS bundle task (`bundleReleaseJsAndAssets` or `createBundleReleaseJsAndAssets`)
  * so upload runs only after a successful bundle — never via a finalizer (which
  * can run even when bundling fails and could upload a stale map). The upload
- * task runs `faro-cli metro upload` via a small Node shim. Gradle reads every
- * required setting from env vars and passes them as **explicit CLI arguments** so the CLI never has to fall
- * back to its own env-var resolution from this entry point — making the
- * contract between Gradle and the CLI fully visible in the command line that
- * you'll see in `--info` build output.
+ * task runs `faro-cli metro upload` via a small Node shim. Bundle id comes from
+ * the Gradle plugin file; upload credentials from env or sourcemaps.config.json.
+ * Credentials are forwarded as **process environment variables** (not CLI flags)
+ * so secrets do not appear in `ps` or Gradle `--info` command lines.
  *
- * Required env at build time (Gradle forwards each as a CLI flag):
- *   FARO_BUNDLE_ID                — must match the id baked into the JS bundle
- *                                   preamble by @grafana/faro-metro-plugin so
- *                                   meta.app.bundleId on the device matches
- *                                   the uploaded map. Forwarded as --bundle-id.
- *   FARO_SOURCEMAP_ENDPOINT       — Forwarded as --endpoint.
- *   FARO_SOURCEMAP_APP_ID         — Forwarded as --app-id.
- *   FARO_SOURCEMAP_STACK_ID       — Forwarded as --stack-id.
- *   FARO_SOURCEMAP_API_KEY        — Forwarded as --api-key.
+ * Required at build time:
+ *   Bundle id — `app/build/faro/bundle-id-release.txt` from `com.grafana.faro`
+ *               (`faroWriteBundleIdRelease`). Same id Metro uses. Forwarded as --bundle-id.
+ *
+ * Required env (Gradle forwards to the Node child process):
+ *   FARO_SOURCEMAP_ENDPOINT
+ *   FARO_SOURCEMAP_APP_ID
+ *   FARO_SOURCEMAP_STACK_ID
+ *   FARO_SOURCEMAP_API_KEY
  *
  * Optional env at build time:
  *   FARO_SKIP_SOURCEMAP_UPLOAD=1  — skip the upload (e.g. offline iteration).
@@ -109,6 +139,45 @@ gradle.projectsEvaluated {
     def jsRoot = rootProject.projectDir.parentFile
     def cliPath = new File(jsRoot, "node_modules/@grafana/faro-metro-plugin/bin/faro-upload-source-map.js")
     def composedMap = new File(appProject.buildDir, "generated/sourcemaps/react/release/index.android.bundle.map")
+    def bundleIdFile = new File(appProject.buildDir, "faro/bundle-id-release.txt")
+
+    // Security: sourcemaps.config.json is a fallback for local dev only.
+    // In CI/production, prefer FARO_SOURCEMAP_* env vars to avoid committing credentials.
+    // Add sourcemaps.config.json to .gitignore if it contains apiKey.
+    def readSourcemapsConfigValue = { String key ->
+        def configFile = new File(jsRoot, "sourcemaps.config.json")
+        if (!configFile.exists()) {
+            return ""
+        }
+        try {
+            def parsed = new groovy.json.JsonSlurper().parse(configFile)
+            def val = parsed[key]
+            return val == null ? "" : val.toString().trim()
+        } catch (Exception e) {
+            logger.error("[Faro] Failed to parse ${configFile}: ${e.message}")
+            return ""
+        }
+    }
+
+    def envOrSourcemapsConfig = { String envName, String configKey ->
+        def fromEnv = (System.getenv(envName) ?: "").trim()
+        if (!fromEnv.isEmpty()) {
+            return fromEnv
+        }
+        return readSourcemapsConfigValue(configKey)
+    }
+
+    def resolveFaroBundleId = {
+        if (!bundleIdFile.exists()) {
+            return ""
+        }
+        def fromFile = bundleIdFile.getText("UTF-8").trim()
+        return fromFile.isEmpty() ? "" : fromFile
+    }
+
+    def isValidAndroidBundleId = { String id ->
+        id ==~ /^[^@]+@\d+@[^@]+$/
+    }
 
     def uploadTask = appProject.tasks.register("faroUploadComposedSourceMapAndroidRelease", Exec) {
         group = "react"
@@ -117,17 +186,16 @@ gradle.projectsEvaluated {
         workingDir = jsRoot
 
         def faroSkip = (System.getenv("FARO_SKIP_SOURCEMAP_UPLOAD") ?: "").trim().toLowerCase()
-        def faroBundleId = (System.getenv("FARO_BUNDLE_ID") ?: "").trim()
-        def faroEndpoint = (System.getenv("FARO_SOURCEMAP_ENDPOINT") ?: "").trim()
-        def faroAppId = (System.getenv("FARO_SOURCEMAP_APP_ID") ?: "").trim()
-        def faroStackId = (System.getenv("FARO_SOURCEMAP_STACK_ID") ?: "").trim()
-        def faroApiKey = (System.getenv("FARO_SOURCEMAP_API_KEY") ?: "").trim()
+        def faroEndpoint = envOrSourcemapsConfig("FARO_SOURCEMAP_ENDPOINT", "endpoint")
+        def faroAppId = envOrSourcemapsConfig("FARO_SOURCEMAP_APP_ID", "appId")
+        def faroStackId = envOrSourcemapsConfig("FARO_SOURCEMAP_STACK_ID", "stackId")
+        def faroApiKey = envOrSourcemapsConfig("FARO_SOURCEMAP_API_KEY", "apiKey")
 
         // Capture the inputs we use for caching / up-to-date checks. We
         // deliberately *don't* track FARO_SOURCEMAP_API_KEY in inputs to
         // avoid Gradle leaking it into a cache-key string.
         inputs.file(composedMap).withPropertyName("composedMap").optional()
-        inputs.property("faroBundleId", faroBundleId)
+        inputs.file(bundleIdFile).withPropertyName("bundleIdFile").optional()
         inputs.property("faroEndpoint", faroEndpoint)
         inputs.property("faroAppId", faroAppId)
         inputs.property("faroStackId", faroStackId)
@@ -139,40 +207,54 @@ gradle.projectsEvaluated {
                 return false
             }
             if (!cliPath.exists()) {
-                logger.warn("[Faro] Skipping composed source map upload — CLI shim not found at ${cliPath}. Install @grafana/faro-metro-plugin alongside @grafana/faro-react-native.")
+                logger.error("[Faro] Skipping composed source map upload — CLI shim not found at ${cliPath}. Install @grafana/faro-metro-plugin alongside @grafana/faro-react-native.")
                 return false
             }
             if (!composedMap.exists()) {
-                logger.warn("[Faro] Skipping composed source map upload — ${composedMap} does not exist. Did Hermes precompile run?")
+                logger.error("[Faro] Skipping composed source map upload — ${composedMap} does not exist. Did Hermes precompile run?")
                 return false
             }
+            def resolvedBundleId = resolveFaroBundleId()
             def missing = []
-            if (faroBundleId.isEmpty()) missing << "FARO_BUNDLE_ID"
+            if (resolvedBundleId.isEmpty()) {
+                missing << "bundle id file ${bundleIdFile} (apply com.grafana.faro and run faroWriteBundleIdRelease)"
+            } else if (!isValidAndroidBundleId(resolvedBundleId)) {
+                logger.error("[Faro] Skipping composed source map upload — invalid bundle id \"${resolvedBundleId}\" in ${bundleIdFile} (expected applicationId@versionCode@versionName).")
+                return false
+            }
             if (faroEndpoint.isEmpty()) missing << "FARO_SOURCEMAP_ENDPOINT"
             if (faroAppId.isEmpty()) missing << "FARO_SOURCEMAP_APP_ID"
             if (faroStackId.isEmpty()) missing << "FARO_SOURCEMAP_STACK_ID"
             if (faroApiKey.isEmpty()) missing << "FARO_SOURCEMAP_API_KEY"
             if (!missing.isEmpty()) {
-                logger.warn("[Faro] Skipping composed source map upload — missing required env vars: ${missing.join(", ")}. Export them before running `yarn android --mode=release`. FARO_BUNDLE_ID must match the id baked into the bundle preamble by @grafana/faro-metro-plugin.")
+                logger.error("[Faro] Skipping composed source map upload — missing: ${missing.join(", ")}. Set FARO_SOURCEMAP_* or fill sourcemaps.config.json (endpoint, appId, stackId, apiKey). Bundle id is read from ${bundleIdFile}.")
                 return false
             }
+            ext.resolvedBundleId = resolvedBundleId
             return true
         }
 
-        commandLine(
-            "node", cliPath.absolutePath,
-            "--verbose",
-            "--map", composedMap.absolutePath,
-            "--endpoint", faroEndpoint,
-            "--app-id", faroAppId,
-            "--stack-id", faroStackId,
-            "--api-key", faroApiKey,
-            "--bundle-id", faroBundleId,
-        )
+        doFirst {
+            def bundleId = ext.resolvedBundleId ?: resolveFaroBundleId()
+            environment 'FARO_SOURCEMAP_ENDPOINT', faroEndpoint
+            environment 'FARO_SOURCEMAP_APP_ID', faroAppId
+            environment 'FARO_SOURCEMAP_STACK_ID', faroStackId
+            environment 'FARO_SOURCEMAP_API_KEY', faroApiKey
+            commandLine(
+                "node", cliPath.absolutePath,
+                "--verbose",
+                "--map", composedMap.absolutePath,
+                "--bundle-id", bundleId,
+            )
+        }
     }
 
     def bundleTaskNames = ["bundleReleaseJsAndAssets", "createBundleReleaseJsAndAssets"]
     uploadTask.configure { task ->
+        def writeBundleIdTask = appProject.tasks.findByName("faroWriteBundleIdRelease")
+        if (writeBundleIdTask != null) {
+            task.dependsOn(writeBundleIdTask)
+        }
         bundleTaskNames.each { name ->
             def bundleTask = appProject.tasks.findByName(name)
             if (bundleTask != null) {

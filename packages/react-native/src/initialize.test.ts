@@ -171,4 +171,37 @@ describe('initializeFaro', () => {
 
     expect(faro.metas.value.app?.bundleId).toBe('release-bundle-from-metro');
   });
+
+  it('should keep config.app.bundleId when set explicitly (do not override with symbols id)', async () => {
+    const faro = await initializeFaro(
+      mockConfig({
+        url: 'http://localhost:12345/collect',
+        app: { bundleId: 'user-env-bundle-id' },
+        transports: [new MockTransport()],
+        instrumentations: [new SessionInstrumentation()],
+        sessionTracking: {
+          enabled: true,
+          persistent: false,
+        },
+      })
+    );
+
+    expect(faro.metas.value.app?.bundleId).toBe('user-env-bundle-id');
+  });
+
+  it('should set meta.app.bundleId (encoded build identity) from DeviceInfo when no Metro id', async () => {
+    const faro = await initializeFaro(
+      mockConfig({
+        url: 'http://localhost:12345/collect',
+        transports: [new MockTransport()],
+        instrumentations: [new SessionInstrumentation()],
+        sessionTracking: {
+          enabled: true,
+          persistent: false,
+        },
+      })
+    );
+
+    expect(faro.metas.value.app?.bundleId).toBe('com.example.myapp@42@1.0.0');
+  });
 });

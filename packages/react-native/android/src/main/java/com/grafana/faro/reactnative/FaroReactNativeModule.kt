@@ -3,10 +3,12 @@ package com.grafana.faro.reactnative
 import android.os.Build
 import android.os.Process
 import android.os.SystemClock
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
@@ -174,6 +176,14 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
         // Configure timeout
         val timeout = if (config.hasKey("timeout")) config.getDouble("timeout").toLong() else 5000L
         ANRTracker.timeout = timeout
+        ANRTracker.applicationContext = reactApplicationContext.applicationContext
+
+        ANRTracker.onAnrDetected = { payload ->
+            // Emit from the ANR tracker thread. runOnUiQueueThread would defer until the
+            // main looper runs — but during a debug ANR the UI thread is blocked, so the
+            // event would not reach JS until the freeze ends (and may be lost on app kill).
+            sendEvent("onANRDetected", payload)
+        }
         
         // Start new tracker
         anrTracker = ANRTracker()
@@ -185,8 +195,32 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun stopANRTracking() {
+        ANRTracker.onAnrDetected = null
+        ANRTracker.applicationContext = null
         anrTracker?.stopTracking()
         anrTracker = null
+    }
+
+    /**
+     * Returns unsent ANRs persisted on disk (peek; does not clear).
+     */
+    @ReactMethod
+    fun getPendingANRs(promise: Promise) {
+        promise.resolve(pendingAnrsWritableArray())
+    }
+
+    /**
+     * Removes ANRs from the pending cache after JS has reported them.
+     */
+    @ReactMethod
+    fun acknowledgeANRs(timestamps: ReadableArray, promise: Promise) {
+        val ackTimestamps = mutableListOf<Long>()
+        for (i in 0 until timestamps.size()) {
+            ackTimestamps.add(timestamps.getDouble(i).toLong())
+        }
+        FaroAnrCache.acknowledgeAnrs(reactApplicationContext, ackTimestamps)
+        ANRTracker.acknowledgeInMemory(ackTimestamps)
+        promise.resolve(null)
     }
 
     /**
@@ -196,13 +230,57 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun getANRStatus(promise: Promise) {
-        val anrList = ANRTracker.getANRStatus()
-        ANRTracker.resetANR()
-        
-        if (anrList != null) {
-            val writableArray = com.facebook.react.bridge.Arguments.createArray()
-            for (anr in anrList) {
-                writableArray.pushString(anr)
+        promise.resolve(pendingAnrsWritableArray())
+    }
+
+    private fun pendingAnrsWritableArray(): com.facebook.react.bridge.WritableArray? {
+        val diskPending = FaroAnrCache.getPendingAnrs(reactApplicationContext)
+        val memoryPending = ANRTracker.getANRStatus().orEmpty()
+        val merged = mergePendingAnrs(diskPending, memoryPending)
+
+        if (merged.isEmpty()) {
+            return null
+        }
+
+        val writableArray = Arguments.createArray()
+        for (anr in merged) {
+            writableArray.pushString(anr)
+        }
+        return writableArray
+    }
+
+    private fun mergePendingAnrs(diskPending: List<String>, memoryPending: List<String>): List<String> {
+        val merged = ArrayList<String>(diskPending.size + memoryPending.size)
+        val seenTimestamps = mutableSetOf<Long>()
+
+        for (payload in diskPending + memoryPending) {
+            val timestamp = try {
+                org.json.JSONObject(payload).optLong("timestamp", 0L)
+            } catch (_: Exception) {
+                0L
+            }
+            if (timestamp == 0L || timestamp in seenTimestamps) {
+                continue
+            }
+            seenTimestamps.add(timestamp)
+            merged.add(payload)
+        }
+
+        return merged
+    }
+
+    /**
+     * Historical ANRs from ApplicationExitInfo (Android 11+), Sentry AnrV2 style.
+     * Separate from [getCrashReport] so ANRs are not replayed as generic crashes.
+     */
+    @ReactMethod
+    fun getHistoricalAnrReports(promise: Promise) {
+        val anrReports = FaroAnrReporter.getAnrReports(reactApplicationContext)
+
+        if (anrReports != null) {
+            val writableArray = Arguments.createArray()
+            for (report in anrReports) {
+                writableArray.pushString(report)
             }
             promise.resolve(writableArray)
         } else {
@@ -214,7 +292,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
      * Get crash reports from previous app sessions
      *
      * Uses Android's ApplicationExitInfo API (Android 11+) to retrieve
-     * crash and ANR information from previous sessions.
+     * crash information from previous sessions (ANRs excluded).
      *
      * @param promise Promise to resolve with the crash reports list
      */
@@ -231,6 +309,19 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
         } else {
             promise.resolve(null)
         }
+    }
+
+    /**
+     * Required for NativeEventEmitter on modern React Native versions.
+     */
+    @ReactMethod
+    fun addListener(eventName: String) {
+        // Keep: required for RN event subscription bookkeeping.
+    }
+
+    @ReactMethod
+    fun removeListeners(count: Int) {
+        // Keep: required for RN event subscription bookkeeping.
     }
 
     /**

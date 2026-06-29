@@ -1,10 +1,11 @@
 import { defaultGlobalObjectKey, defaultUnpatchedConsole } from '@grafana/faro-core';
-import type { Config } from '@grafana/faro-core';
+import type { Config, MetaApp } from '@grafana/faro-core';
 
 import { getStackFramesFromError } from '../instrumentations/errors/stackTraceParser';
 import type { PreloadedMobileMeta } from '../instrumentations/session/sessionAttributes';
 import { defaultSessionTrackingConfig } from '../instrumentations/session/sessionManager/sessionConstants';
 import { InternalLoggerLevel, LogLevel } from '../internalLogger';
+import { getMetroInjectedBundleId } from '../metas/appBuildIdentity';
 import { getPageMeta } from '../metas/page';
 import { getScreenMeta } from '../metas/screen';
 import { getSdkMeta } from '../metas/sdk';
@@ -16,6 +17,28 @@ import { getRNInstrumentations } from './getRNInstrumentations';
 import type { ReactNativeConfig, ReactNativeFullConfig } from './types';
 
 const DEFAULT_OFFLINE_CACHE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+/**
+ * Resolves `meta.app.bundleId` when it is not already supplied by faro-core from
+ * the Metro preamble (`registerInitialMetas` / `__faroBundleId_<appName>`).
+ *
+ * Priority: explicit `config.app.bundleId` → Metro preamble (core) → DeviceInfo
+ * fallback (`applicationId@versionCode@versionName`, same shape Gradle/Metro use).
+ */
+function resolveAppBundleId(
+  configApp: MetaApp | undefined,
+  appName: string | undefined,
+  appSymbolsBundleId?: string
+): string | undefined {
+  if (configApp?.bundleId) {
+    return configApp.bundleId;
+  }
+  const metroId = getMetroInjectedBundleId(appName);
+  if (metroId) {
+    return metroId;
+  }
+  return appSymbolsBundleId;
+}
 
 /**
  * Builds transports. FetchTransport is always added when url is provided.
@@ -78,10 +101,12 @@ function createParseStacktrace(releaseBundleFilename: string | undefined): Confi
  * Client just enables what they need; makeRNConfig does the rest.
  *
  * @param preloadedMobileMeta Device/session fields and structured mobile meta (passed from async `initializeFaro`).
+ * @param appSymbolsBundleId Encoded `meta.app.bundleId` for server-side symbol retrace.
  */
 export function makeRNConfig(
   config: ReactNativeConfig,
-  preloadedMobileMeta?: PreloadedMobileMeta
+  preloadedMobileMeta?: PreloadedMobileMeta,
+  appSymbolsBundleId?: string
 ): ReactNativeFullConfig {
   const { app: preloadedAppMeta, ...structuredMobileMeta } = preloadedMobileMeta?.meta ?? {};
   const mobileMetas = Object.keys(structuredMobileMeta).length > 0 ? [structuredMobileMeta] : [];
@@ -92,6 +117,13 @@ export function makeRNConfig(
   const installationId = config.app.installationId ?? preloadedAppMeta?.installationId;
 
   const releaseBundleFilename = config.releaseBundleFilename;
+  // Merge bundleId (from config, Metro, or DeviceInfo) with preloaded app meta
+  const bundleIdValue = resolveAppBundleId(config.app, config.app?.name, appSymbolsBundleId);
+  const appMetasIfPresent =
+    preloadedAppMeta || bundleIdValue
+      ? [{ app: { ...preloadedAppMeta, ...(bundleIdValue && { bundleId: bundleIdValue }) } }]
+      : [];
+
   return {
     app: {
       ...config.app,
@@ -118,7 +150,7 @@ export function makeRNConfig(
       ...defaultSessionTrackingConfig,
       ...config.sessionTracking,
     },
-    metas: [...defaultMetas, ...customMetas],
+    metas: [...defaultMetas, ...customMetas, ...appMetasIfPresent],
     instrumentations,
     transports,
     ignoreUrls: config.ignoreUrls ?? [],

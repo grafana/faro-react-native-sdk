@@ -10,6 +10,7 @@ import com.facebook.react.uimanager.ViewManager
  */
 class FaroReactNativePackage : ReactPackage {
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
+        FaroUncaughtExceptionHandler.install(reactContext)
         return listOf(FaroReactNativeModule(reactContext))
     }
 
