@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.3.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.2.1...faro-react-native-v1.3.0) (2026-06-30)
+
+
+### Features
+
+* **react-native:** align structured mobile meta ([39ac76b](https://github.com/grafana/faro-react-native-sdk/commit/39ac76b5cceb4c87fe8a9f148a6b1762ebb33b68))
+* **react-native:** Android crash stack parsing, symbols bundle id, and Gradle bundle-id upload ([cbc52ea](https://github.com/grafana/faro-react-native-sdk/commit/cbc52ea3f36c397b80f4825c0af3686b47b69f3a))
+* **react-native:** Android crash/ANR symbolication, bundle id, and native stack delivery ([5c77c8e](https://github.com/grafana/faro-react-native-sdk/commit/5c77c8eb31ed957c0fc48c8da9ebe15e68b2fea3))
+* **react-native:** populate structured mobile meta fields ([271bcad](https://github.com/grafana/faro-react-native-sdk/commit/271bcad1aa341b5b1af0eeca396dfd8cf9f87246))
+* **react-native:** populate structured mobile meta fields ([88082e0](https://github.com/grafana/faro-react-native-sdk/commit/88082e00c91357fb658d400358f1ca90bf4da427))
+
+
+### Bug Fixes
+
+* **android:** add security warning for sourcemaps.config.json and gitignore entry ([44d66ca](https://github.com/grafana/faro-react-native-sdk/commit/44d66ca04b0e7e8bb7f092a117c48292ef696a64))
+* **android:** address PR review on ANR dedupe, secrets, and crash skip ([9be04c0](https://github.com/grafana/faro-react-native-sdk/commit/9be04c0dfcca444cd44d579d978e7ee6e2445223))
+* **android:** export NDK tombstone backtraces and native stack frames for CRASH_NATIVE ([37deaf6](https://github.com/grafana/faro-react-native-sdk/commit/37deaf65cd4ef6f6d249e2e4126f6d524bdabe86))
+* **anr,crash:** durable ANR delivery and cleaner Android crash replay ([05041a1](https://github.com/grafana/faro-react-native-sdk/commit/05041a1fc647bbb2eaa6eada3141fdb92a528b96))
+* **anr:** clear in-progress flag when main thread recovers during extended wait ([80f7e35](https://github.com/grafana/faro-react-native-sdk/commit/80f7e35e6ccbc1115aa09fc0351a2db5eceb8a6f))
+* **anr:** normalize main-thread stacks for R8 retrace and structured frames ([0424a31](https://github.com/grafana/faro-react-native-sdk/commit/0424a31b3637ced2574dcebb2c7075e6f27a315c))
+* **anr:** report historical ANRs from ApplicationExitInfo with deduped delive ([0496e62](https://github.com/grafana/faro-react-native-sdk/commit/0496e62f0115dd6a41426018adf3d30e4eb9ca69))
+* **crash:** clarify crash trace unavailable warning message ([7fe14c2](https://github.com/grafana/faro-react-native-sdk/commit/7fe14c21f581ad2ced8355bb978774d3206bde29))
+* **crash:** clear stale crash traces when timestamp delta exceeds threshold ([4f2e62f](https://github.com/grafana/faro-react-native-sdk/commit/4f2e62f3f14c5a5826bf5b27a4603387decd1926))
+* **crash:** improve exit-info titles and exclude duplicate ANR replay ([e641cae](https://github.com/grafana/faro-react-native-sdk/commit/e641caed1c36563fa5b5c1fdae905176a68bf3f7))
+* **crash:** improve exit-info titles and exclude duplicate ANR replay ([ecae37d](https://github.com/grafana/faro-react-native-sdk/commit/ecae37d65891fa1ab3587bb21ccc8b1546701f26))
+* **crash:** make FaroUncaughtExceptionHandler internal ([7ef7c2e](https://github.com/grafana/faro-react-native-sdk/commit/7ef7c2e84029e90a334a56b7789af56f282d2f30))
+* lint and test errors ([a975c46](https://github.com/grafana/faro-react-native-sdk/commit/a975c4650e8079547a3a0cc3b1acf3c647bf4f2d))
+* resolve lint failures in native tombstone crash reporting ([2d4e495](https://github.com/grafana/faro-react-native-sdk/commit/2d4e495c932fe62daf2f39686a53d6be0ceef1da))
+* resolve test failures after main merge ([b501b22](https://github.com/grafana/faro-react-native-sdk/commit/b501b22541e7b5b5ba8e081ecf4a060b0d435b17))
+
 ## [1.2.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.2.0...faro-react-native-v1.2.1) (2026-06-03)
 
 ### Bug Fixes
