@@ -85,7 +85,7 @@ dependencies {
  *   2. Wrap metro.config.js with `withFaroConfig(...)`
  *   3. Export FARO_SOURCEMAP_* before running `yarn android --mode=release`.
  *      Bundle id is read from `app/build/faro/bundle-id-release.txt` when the
- *      `com.grafana.faro` Gradle plugin is applied (same id Metro uses).
+ *      `com.grafana.faro.android-symbols` Gradle plugin is applied (same id Metro uses).
  *
  * On any release-style command (assembleRelease, bundleRelease, installRelease,
  * `yarn android --mode=release`), release entry tasks depend on
@@ -99,7 +99,7 @@ dependencies {
  * so secrets do not appear in `ps` or Gradle `--info` command lines.
  *
  * Required at build time:
- *   Bundle id — `app/build/faro/bundle-id-release.txt` from `com.grafana.faro`
+ *   Bundle id — `app/build/faro/bundle-id-release.txt` from `com.grafana.faro.android-symbols`
  *               (`faroWriteBundleIdRelease`). Same id Metro uses. Forwarded as --bundle-id.
  *
  * Required env (Gradle forwards to the Node child process):
@@ -217,7 +217,7 @@ gradle.projectsEvaluated {
             def resolvedBundleId = resolveFaroBundleId()
             def missing = []
             if (resolvedBundleId.isEmpty()) {
-                missing << "bundle id file ${bundleIdFile} (apply com.grafana.faro and run faroWriteBundleIdRelease)"
+                missing << "bundle id file ${bundleIdFile} (apply com.grafana.faro.android-symbols and run faroWriteBundleIdRelease)"
             } else if (!isValidAndroidBundleId(resolvedBundleId)) {
                 logger.error("[Faro] Skipping composed source map upload — invalid bundle id \"${resolvedBundleId}\" in ${bundleIdFile} (expected applicationId@versionCode@versionName).")
                 return false
