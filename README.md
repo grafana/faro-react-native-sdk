@@ -165,5 +165,6 @@ This project is licensed under the Apache License 2.0 - see the
 
 ## Related Projects
 
-- [Grafana Faro Web SDK](https://github.com/grafana/faro-web-sdk) - Web browser implementation
+- [Grafana Faro Web SDK](https://github.com/grafana/faro-web-sdk) -
+  Web browser implementation
 - [Grafana Faro](https://github.com/grafana/faro) - Backend collector service

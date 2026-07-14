@@ -15,6 +15,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@grafana/faro-core": "^2.7.0"
+    "@grafana/faro-core": "^2.8.2"
   }
 }
