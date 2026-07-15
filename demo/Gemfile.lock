@@ -116,7 +116,7 @@ DEPENDENCIES
   xcodeproj (< 1.27.1)
 
 RUBY VERSION
-   ruby 2.6.10p210
+   ruby 3.3.7p123
 
 BUNDLED WITH
    2.4.19
