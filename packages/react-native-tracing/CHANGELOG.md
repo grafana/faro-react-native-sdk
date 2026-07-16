@@ -2,17 +2,15 @@
 
 ## [1.3.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v1.3.0...faro-react-native-tracing-v1.3.1) (2026-07-15)
 
-
 ### Bug Fixes
 
-* **deps:** remediate dependency vulnerabilities ([#124](https://github.com/grafana/faro-react-native-sdk/issues/124)) ([bb81fdc](https://github.com/grafana/faro-react-native-sdk/commit/bb81fdc610349bdfd51b423a031023dc64983a2c))
-
+- **deps:** remediate dependency vulnerabilities ([#124](https://github.com/grafana/faro-react-native-sdk/issues/124)) ([bb81fdc](https://github.com/grafana/faro-react-native-sdk/commit/bb81fdc610349bdfd51b423a031023dc64983a2c))
 
 ### Dependencies
 
-* The following workspace dependencies were updated
-  * dependencies
-    * @grafana/faro-react-native bumped to 1.3.1
+- The following workspace dependencies were updated
+  - dependencies
+    - @grafana/faro-react-native bumped to 1.3.1
 
 ## [1.3.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v1.2.1...faro-react-native-tracing-v1.3.0) (2026-06-30)
 
