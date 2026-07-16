@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.3.0...faro-react-native-v1.3.1) (2026-07-15)
+
+### Bug Fixes
+
+- **deps:** remediate dependency vulnerabilities ([#124](https://github.com/grafana/faro-react-native-sdk/issues/124)) ([bb81fdc](https://github.com/grafana/faro-react-native-sdk/commit/bb81fdc610349bdfd51b423a031023dc64983a2c))
+
 ## [1.3.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.2.1...faro-react-native-v1.3.0) (2026-06-30)
 
 ### Features
