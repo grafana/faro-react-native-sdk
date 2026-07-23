@@ -34,6 +34,18 @@ object FaroCrashReporter {
     private const val PREFS_NAME = "com.grafana.faro.crash_reporter"
     private const val KEY_LAST_PROCESSED_TIMESTAMP = "last_processed_timestamp"
 
+    private data class ExitGroupKey(
+        val timestampMs: Long,
+        val pid: Int,
+        val processName: String,
+    )
+
+    private sealed interface ExportResult {
+        data class Report(val json: String) : ExportResult
+        data object Ignored : ExportResult
+        data object Failed : ExportResult
+    }
+
     /**
      * Persists a text tombstone backtrace for the next [REASON_CRASH_NATIVE] replay.
      *
@@ -50,13 +62,18 @@ object FaroCrashReporter {
      *
      * Returns a list of JSON strings, each representing a crash report.
      * The JSON format matches the iOS implementation for consistency.
-     * Only returns new crash reports since the last call.
+     * Retrieval is non-destructive. Reports remain pending until JavaScript
+     * acknowledges successful delivery or an intentional local filter.
      *
      * @param context Android context
      * @return List of crash report JSON strings, or null if no crashes or unsupported API
      */
+    @JvmOverloads
     @JvmStatic
-    fun getCrashReports(context: Context): List<String>? {
+    fun getCrashReports(
+        context: Context,
+        nowMs: Long = System.currentTimeMillis(),
+    ): List<String>? {
         FaroUncaughtExceptionHandler.install(context)
         // ApplicationExitInfo requires Android 11 (API 30)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -76,59 +93,126 @@ object FaroCrashReporter {
             return null
         }
 
-        // Get the last processed timestamp to avoid duplicate reports
+        // Preserve the old watermark as a one-way migration boundary. New reports
+        // use stable IDs and are acknowledged only after delivery.
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val lastProcessedTimestamp = prefs.getLong(KEY_LAST_PROCESSED_TIMESTAMP, 0)
+        val legacyLastProcessedTimestamp = prefs.getLong(KEY_LAST_PROCESSED_TIMESTAMP, 0)
 
         val pendingTrace = FaroCrashTraceCache.peekPendingCrashTrace(context)
-        var usedPendingTrace = false
 
         val crashReports = mutableListOf<String>()
-        var latestTimestamp = lastProcessedTimestamp
-        val reportedTimestamps = mutableSetOf<Long>()
 
         // Android can return multiple ApplicationExitInfo rows for one fatal exit
         // (e.g. REASON_CRASH plus a companion row with no trace). Collapse to one
-        // report per timestamp and share the UncaughtExceptionHandler cache.
+        // report per process/timestamp and share the UncaughtExceptionHandler cache.
         val candidates = exitInfoList
-            .filter { it.timestamp > lastProcessedTimestamp && isCrashReason(it.reason) }
-            .groupBy { it.timestamp }
+            .filter {
+                it.timestamp > legacyLastProcessedTimestamp &&
+                    isCrashReason(it.reason)
+            }
+            .groupBy {
+                ExitGroupKey(
+                    timestampMs = it.timestamp,
+                    pid = it.pid,
+                    processName = it.processName.orEmpty(),
+                )
+            }
             .mapValues { (_, exits) -> pickBestExitInfo(exits) }
-            .toSortedMap()
+            .entries
+            .sortedBy { it.key.timestampMs }
 
-        for ((timestamp, exitInfo) in candidates) {
-            if (reportedTimestamps.contains(timestamp)) {
+        for ((_, exitInfo) in candidates) {
+            val reportId = FaroCrashIds.reportId(
+                packageName = context.packageName,
+                timestampMs = exitInfo.timestamp,
+                pid = exitInfo.pid,
+                processName = exitInfo.processName.orEmpty(),
+            )
+            if (FaroCrashSessionStore.isReportAcknowledged(context, reportId, nowMs)) {
+                continue
+            }
+            if (!isWithinReplayWindow(exitInfo.timestamp, nowMs)) {
+                FaroCrashSessionStore.acknowledgeReports(
+                    context = context,
+                    reportIds = listOf(reportId),
+                    nowMs = nowMs,
+                )
                 continue
             }
 
-            if (exitInfo.timestamp > latestTimestamp) {
-                latestTimestamp = exitInfo.timestamp
-            }
+            val sessionContext = FaroCrashSessionStore.contextForPendingReport(context, reportId, nowMs)
+                ?: FaroCrashSessionStore.findMatchingContext(
+                    context = context,
+                    crashTimestampMs = exitInfo.timestamp,
+                    pid = exitInfo.pid,
+                    processName = exitInfo.processName.orEmpty(),
+                    nowMs = nowMs,
+                )
+            var usedPendingTrace = false
 
-            val jsonString = exportExitInfoAsJSON(context, exitInfo, pendingTrace) { consumed ->
+            val exportResult = exportExitInfoAsJSON(
+                context = context,
+                exitInfo = exitInfo,
+                reportId = reportId,
+                sessionContext = sessionContext,
+                pendingTrace = pendingTrace,
+            ) { consumed ->
                 if (consumed) {
                     usedPendingTrace = true
                 }
             }
 
-            if (jsonString != null) {
-                crashReports.add(jsonString)
-                reportedTimestamps.add(timestamp)
+            when (exportResult) {
+                is ExportResult.Report -> {
+                    FaroCrashSessionStore.rememberPendingReport(
+                        context = context,
+                        reportId = reportId,
+                        crashTimestampMs = exitInfo.timestamp,
+                        sessionContext = sessionContext,
+                        usesPendingTrace = usedPendingTrace,
+                        nowMs = nowMs,
+                    )
+                    crashReports.add(exportResult.json)
+                }
+                ExportResult.Ignored -> {
+                    // Prevent intentionally filtered companion or ANR rows from
+                    // being reconsidered on every subsequent app launch.
+                    FaroCrashSessionStore.acknowledgeReports(
+                        context = context,
+                        reportIds = listOf(reportId),
+                        nowMs = nowMs,
+                    )
+                }
+                ExportResult.Failed -> Unit
             }
         }
 
-        if (usedPendingTrace) {
+        return if (crashReports.isEmpty()) null else crashReports
+    }
+
+    @JvmStatic
+    fun acknowledgeCrashReports(
+        context: Context,
+        reportIds: Collection<String>,
+    ): Boolean {
+        val result = FaroCrashSessionStore.acknowledgeReports(context, reportIds)
+        if (!result.persisted) {
+            return false
+        }
+        if (result.clearPendingTrace) {
             FaroCrashTraceCache.clearPendingCrashTrace(context)
         }
+        return true
+    }
 
-        // Update the last processed timestamp
-        if (latestTimestamp > lastProcessedTimestamp) {
-            prefs.edit()
-                .putLong(KEY_LAST_PROCESSED_TIMESTAMP, latestTimestamp)
-                .apply()
+    internal fun isWithinReplayWindow(
+        crashTimestampMs: Long,
+        nowMs: Long,
+    ): Boolean {
+        if (crashTimestampMs <= 0L || crashTimestampMs > nowMs) {
+            return false
         }
-
-        return if (crashReports.isEmpty()) null else crashReports
+        return nowMs - crashTimestampMs <= FaroCrashSessionStore.MAX_CONTEXT_AGE_MS
     }
 
     /**
@@ -188,15 +272,19 @@ object FaroCrashReporter {
     private fun exportExitInfoAsJSON(
         context: Context,
         exitInfo: ApplicationExitInfo,
+        reportId: String,
+        sessionContext: FaroCrashSessionStore.SessionContext?,
         pendingTrace: FaroCrashTraceCache.PendingTrace?,
         onPendingTraceUsed: (Boolean) -> Unit,
-    ): String? {
+    ): ExportResult {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            return null
+            return ExportResult.Failed
         }
 
         return try {
             val json = JSONObject()
+
+            json.put("reportId", reportId)
 
             // Reason - maps to crash type
             json.put("reason", getReasonString(exitInfo.reason))
@@ -220,9 +308,17 @@ object FaroCrashReporter {
             // Importance (Android-specific)
             json.put("importance", exitInfo.importance)
 
+            if (sessionContext != null) {
+                json.put("sessionId", sessionContext.sessionId)
+                sessionContext.isSampled?.let { json.put("isSampled", it) }
+                sessionContext.appVersion?.let { json.put("appVersion", it) }
+                sessionContext.appRelease?.let { json.put("appRelease", it) }
+                sessionContext.appBundleId?.let { json.put("appBundleId", it) }
+            }
+
             if (isAnrTimeoutDescription(rawDescription)) {
                 // ANRInstrumentation reports these with type ANR.
-                return null
+                return ExportResult.Ignored
             }
 
             val parsedExitTrace = readExitTrace(exitInfo)
@@ -239,7 +335,7 @@ object FaroCrashReporter {
             ) {
                 // Suppress empty generic crash rows that duplicate a nearby ANR report.
                 // Real crashes with a trace still surface even when an ANR happened nearby.
-                return null
+                return ExportResult.Ignored
             }
 
             if (trace.isNotEmpty()) {
@@ -270,12 +366,12 @@ object FaroCrashReporter {
                         "[Faro crash native] Skipping CRASH_NATIVE without tombstone trace (traceInputStream was null and no cached native backtrace)",
                     )
                 }
-                return null
+                return ExportResult.Ignored
             }
 
-            json.toString()
-        } catch (e: Exception) {
-            null
+            ExportResult.Report(json.toString())
+        } catch (_: Exception) {
+            ExportResult.Failed
         }
     }
 

@@ -45,7 +45,6 @@ internal object FaroCrashTraceCache {
         }
         val delta = kotlin.math.abs(exitTimestampMs - pending.timestampMs)
         if (delta > MAX_TIMESTAMP_DELTA_MS) {
-            clearPendingCrashTrace(context)
             return ""
         }
         return pending.trace
