@@ -1,2 +1,7 @@
 export { FetchTransport } from './transport';
-export type { FetchTransportOptions, FetchTransportRequestOptions } from './types';
+export type {
+  FetchTransportOptions,
+  FetchTransportRequestOptions,
+  FetchTransportSendOutcome,
+  FetchTransportSendResult,
+} from './types';
