@@ -736,17 +736,20 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
 **Android:**
 
 - Uses **ApplicationExitInfo** API (Android 11+, API 30+)
-- Retrieves crash and ANR information from previous sessions
-- Returns list of exit reasons including crashes
+- Retrieves crash information from previous app processes; ANRs use the separate ANR instrumentation
+- Persists minimal session context so recovered crashes can keep their original session
+- Retries failed delivery for up to seven days and acknowledges reports individually
 
 **Crash Report Format** :
 
 ```json
 {
+  "reportId": "v1:...",
   "reason": "CRASH_NATIVE",
   "timestamp": 1678901234567,
   "description": "Native crash",
-  "trace": "Stack trace..."
+  "trace": "Stack trace...",
+  "sessionId": "abc-123-def-456"
 }
 ```
 
@@ -779,7 +782,6 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
         "trace": "Stack trace string...",
         "timestamp": "1678901234567",
         "description": "Attempted to dereference null pointer",
-        "crashedSessionId": "abc-123-def-456",
         "processName": "com.example.app",
         "pid": "12345",
         "importance": "100"
@@ -791,18 +793,21 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
       }
     }
   ],
-  "meta": { "session": {...}, "app": {...} }
+  "meta": {
+    "session": { "id": "abc-123-def-456" },
+    "app": {...}
+  }
 }
 ```
 
-**Sent via:** `faro.api.pushError()`
-
-- **`type`**: `"crash"` (from `pushError` options)
+- **`type`**: `"crash"`
 - **`value`**: Error message string (e.g. `"{reason}: {description}, status: {status}"`)
 - **`context`**: Crash report fields (trace, timestamp, description, processName, pid, importance); `signal` on iOS
 - **`stacktrace`**: Parsed frames if available from native report
 
-**Sent via:** `faro.api.pushError(error, { type: 'crash', context })`
+On iOS, the SDK uses `faro.api.pushError(error, { type: 'crash', context })`. On Android, recovered
+crashes are sent as individual requests after applying the configured `beforeSend` hooks. The request body
+and `X-Faro-Session-Id` header both use the session that was active when the process crashed.
 
 ##### **Flutter SDK**
 
@@ -857,15 +862,15 @@ Faro.initialize(
 
 #### Key Differences
 
-| Aspect                     | React Native                                              | Flutter                                               |
-| -------------------------- | --------------------------------------------------------- | ----------------------------------------------------- |
-| **Default Enabled**        | ❌ false                                                  | ❌ false                                              |
-| **iOS Implementation**     | PLCrashReporter                                           | PLCrashReporter (same)                                |
-| **Android Implementation** | ApplicationExitInfo                                       | ApplicationExitInfo (same)                            |
-| **iOS Requirement**        | PLCrashReporter pod                                       | PLCrashReporter pod                                   |
-| **Android Requirement**    | API 30+ (Android 11)                                      | API 30+ (Android 11)                                  |
-| **Pre-crash session id**   | ❌ Not in crash payload (`meta.session` is after restart) | ❌ Not in crash payload                               |
-| **Error Type**             | `crash` (native)                                          | `crash` (native), `flutter_error` (ANR, FlutterError) |
+| Aspect                     | React Native         | Flutter                                               |
+| -------------------------- | -------------------- | ----------------------------------------------------- |
+| **Default Enabled**        | ❌ false             | ❌ false                                              |
+| **iOS Implementation**     | PLCrashReporter      | PLCrashReporter (same)                                |
+| **Android Implementation** | ApplicationExitInfo  | ApplicationExitInfo (same)                            |
+| **iOS Requirement**        | PLCrashReporter pod  | PLCrashReporter pod                                   |
+| **Android Requirement**    | API 30+ (Android 11) | API 30+ (Android 11)                                  |
+| **Pre-crash session id**   | ✅ Android; ❌ iOS   | ❌ Not in crash payload                               |
+| **Error Type**             | `crash` (native)     | `crash` (native), `flutter_error` (ANR, FlutterError) |
 
 The **Error Type** in both SDKs is `crash` for native errors but in React native the value change depending of the type of crash:
 
@@ -879,7 +884,11 @@ The **Error Type** in both SDKs is `crash` for native errors but in React native
 
 #### Crash reports and session
 
-Native crashes are delivered on the next launch. The exception is sent with `meta.session` for that launch (the reporting session), not the session that was active when the process died. Neither React Native nor Flutter adds a separate field for the pre-crash session id on the crash payload.
+Native crashes are delivered on the next launch. On React Native Android, the SDK saves minimal session and
+process context, matches each `ApplicationExitInfo` report to that context, and sends the recovered crash in
+its own request with the original crash timestamp and session ID. The newly started session remains active
+for live telemetry. React Native iOS and Flutter still report recovered crashes with the session active after
+restart.
 
 ---
 
