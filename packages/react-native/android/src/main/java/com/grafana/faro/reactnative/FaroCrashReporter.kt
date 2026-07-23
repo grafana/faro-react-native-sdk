@@ -98,7 +98,7 @@ object FaroCrashReporter {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val legacyLastProcessedTimestamp = prefs.getLong(KEY_LAST_PROCESSED_TIMESTAMP, 0)
 
-        val pendingTrace = FaroCrashTraceCache.peekPendingCrashTrace(context)
+        val pendingTrace = FaroCrashTraceCache.peekPendingCrashTrace(context, nowMs)
 
         val crashReports = mutableListOf<String>()
 

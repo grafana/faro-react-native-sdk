@@ -10,6 +10,7 @@ import type { CrashReport } from '../types';
 import { resolveCrashErrorMessage, shouldSkipCrashReport } from './crashErrorMessage';
 import { parseAndroidCrashTrace, type ParsedAndroidCrashTrace } from './parseAndroidCrashTrace';
 
+// Keep aligned with FaroCrashSessionStore.MAX_CONTEXT_AGE_MS on Android.
 const MAX_REPLAY_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 type RecoveredCrashReport = CrashReport & {
@@ -189,11 +190,14 @@ export class AndroidCrashReportingInstrumentation extends BaseCrashReportingInst
       return 'retry';
     }
 
+    // Recovered crashes intentionally bypass transport fan-out. The native store
+    // handles retries, and only FetchTransport reports collector acceptance before ack.
     let item: TransportItem = this.buildRecoveredCrashItem(crash);
     try {
       for (const hook of this.transports.getBeforeSendHooks()) {
         const modifiedItem = hook(item);
-        if (modifiedItem === null) {
+        // Match faro-core's filter(Boolean) behavior for invalid hook results.
+        if (!modifiedItem) {
           return 'filtered';
         }
         item = modifiedItem;
@@ -211,6 +215,7 @@ export class AndroidCrashReportingInstrumentation extends BaseCrashReportingInst
     const { context, errorMessage, stackFrames } = this.buildCrashReportDetails(crash);
     const currentMeta = this.metas.value;
     const isSampledAttribute = crash.isSampled === undefined ? undefined : { isSampled: String(crash.isSampled) };
+    // Current user, view, and page metadata belong to the restarted session.
     const meta: Meta = {
       ...(currentMeta.sdk ? { sdk: { ...currentMeta.sdk } } : {}),
       app: {

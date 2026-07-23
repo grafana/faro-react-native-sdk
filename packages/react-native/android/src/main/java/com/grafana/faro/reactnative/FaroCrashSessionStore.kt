@@ -12,6 +12,7 @@ import org.json.JSONObject
  * ApplicationExitInfo crash with the Faro session that was active before process death.
  */
 internal object FaroCrashSessionStore {
+    // Keep aligned with AndroidCrashReportingInstrumentation.MAX_REPLAY_AGE_MS.
     internal const val MAX_CONTEXT_AGE_MS = 7L * 24L * 60L * 60L * 1000L
 
     private const val PREFS_NAME = "com.grafana.faro.crash_session_store"

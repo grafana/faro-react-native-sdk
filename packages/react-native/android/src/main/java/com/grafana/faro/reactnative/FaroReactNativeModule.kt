@@ -318,6 +318,8 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
 
         if (crashReports != null) {
             if (acknowledgeImmediately) {
+                // Preserve eager acknowledgement for older JavaScript bundles
+                // that use the legacy bridge and cannot acknowledge per report.
                 val reportIds = crashReports.mapNotNull { report ->
                     try {
                         org.json.JSONObject(report).optString("reportId").trim().takeIf(String::isNotEmpty)

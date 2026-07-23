@@ -105,12 +105,16 @@ describe('FetchTransport', () => {
     const transport = new FetchTransport({
       url: 'http://example.com/collect',
     });
+    const waitForSession = jest
+      .spyOn(transport as unknown as { waitForSession: () => Promise<void> }, 'waitForSession')
+      .mockResolvedValue();
 
     transport.metas.value = { session: { id: 'new-live-session' } };
     transport.internalLogger = mockInternalLogger;
 
     await transport.send([item]);
 
+    expect(waitForSession).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
       'http://example.com/collect',
       expect.objectContaining({
@@ -411,6 +415,9 @@ describe('FetchTransport', () => {
     const transport = new FetchTransport({
       url: 'http://example.com/collect',
     });
+    const waitForSession = jest
+      .spyOn(transport as unknown as { waitForSession: () => Promise<void> }, 'waitForSession')
+      .mockResolvedValue();
 
     transport.metas.value = {};
     transport.internalLogger = mockInternalLogger;
@@ -422,6 +429,7 @@ describe('FetchTransport', () => {
 
     await transport.send([itemWithoutSession]);
 
+    expect(waitForSession).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith(
       'http://example.com/collect',
       expect.objectContaining({

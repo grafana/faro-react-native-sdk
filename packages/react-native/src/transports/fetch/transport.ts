@@ -118,7 +118,7 @@ export class FetchTransport extends BaseTransport {
    * cannot inherit a newer live session from the transport.
    */
   async sendWithResult(items: TransportItem[]): Promise<FetchTransportSendResult> {
-    this.logDebug(`FetchTransport.send() called with ${items.length} items`);
+    this.logDebug(`FetchTransport.sendWithResult() called with ${items.length} items`);
 
     try {
       const now = new Date(this.getNow());

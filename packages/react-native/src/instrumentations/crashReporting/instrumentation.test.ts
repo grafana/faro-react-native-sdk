@@ -273,4 +273,15 @@ describe('CrashReportingInstrumentation', () => {
     expect(setup.sendSpy).not.toHaveBeenCalled();
     expect(setup.nativeModule.acknowledgeCrashReports).toHaveBeenCalledWith(['report-a']);
   });
+
+  it('treats an invalid undefined beforeSend result as filtered', async () => {
+    const beforeSend = jest.fn(() => undefined) as unknown as (item: TransportItem) => TransportItem | null;
+    const setup = setupAndroidReplay([createCrashReport()], beforeSend);
+    androidInstrumentations.push(setup.instrumentation);
+
+    await setup.testable.processCrashReports(setup.nativeModule);
+
+    expect(setup.sendSpy).not.toHaveBeenCalled();
+    expect(setup.nativeModule.acknowledgeCrashReports).toHaveBeenCalledWith(['report-a']);
+  });
 });
