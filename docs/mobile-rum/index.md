@@ -739,6 +739,7 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
 - Retrieves crash information from previous app processes; ANRs use the separate ANR instrumentation
 - Persists minimal session context so recovered crashes can keep their original session
 - Retries failed delivery for up to seven days and acknowledges reports individually
+- Skips a recovered crash when its original session context is unavailable instead of assigning the new session
 
 **Crash Report Format** :
 
@@ -887,8 +888,9 @@ The **Error Type** in both SDKs is `crash` for native errors but in React native
 Native crashes are delivered on the next launch. On React Native Android, the SDK saves minimal session and
 process context, matches each `ApplicationExitInfo` report to that context, and sends the recovered crash in
 its own request with the original crash timestamp and session ID. The newly started session remains active
-for live telemetry. React Native iOS and Flutter still report recovered crashes with the session active after
-restart.
+for live telemetry. If the original session context is unavailable, the recovered crash is skipped instead of
+being assigned to the newly started session. React Native iOS and Flutter still report recovered crashes with
+the session active after restart.
 
 ---
 

@@ -180,7 +180,8 @@ This package’s **`android/build.gradle`** registers **`faroUploadComposedSourc
 
 On Android 11 and newer, recovered crashes are reported on the next launch with the session ID and timestamp
 from the process that crashed. Failed deliveries remain pending for a later launch for up to seven days; the
-newly started session continues to identify live telemetry.
+newly started session continues to identify live telemetry. If the original session context is unavailable, the
+recovered crash is skipped rather than assigned to the newly started session.
 
 ### React Integration
 

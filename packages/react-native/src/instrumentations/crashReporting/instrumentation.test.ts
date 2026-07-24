@@ -216,14 +216,14 @@ describe('CrashReportingInstrumentation', () => {
     expect(setup.nativeModule.acknowledgeCrashReports).toHaveBeenCalledWith(['expired']);
   });
 
-  it('leaves a report pending when the original session context is missing', async () => {
+  it('acknowledges a report without sending it when the original session context is missing', async () => {
     const setup = setupAndroidReplay([createCrashReport({ sessionId: undefined })]);
     androidInstrumentations.push(setup.instrumentation);
 
     await setup.testable.processCrashReports(setup.nativeModule);
 
     expect(setup.sendSpy).not.toHaveBeenCalled();
-    expect(setup.nativeModule.acknowledgeCrashReports).not.toHaveBeenCalled();
+    expect(setup.nativeModule.acknowledgeCrashReports).toHaveBeenCalledWith(['report-a']);
     expect(setup.faro.metas.value.session?.id).toBe('session-b');
   });
 

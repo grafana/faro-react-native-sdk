@@ -123,7 +123,8 @@ export class AndroidCrashReportingInstrumentation extends BaseCrashReportingInst
 
         const sessionId = crash.sessionId?.trim();
         if (!sessionId) {
-          this.logWarn(`Recovered crash ${reportId} has no original session context; leaving it pending`);
+          this.logWarn(`Discarding recovered crash ${reportId} because its original session context is unavailable`);
+          await this.acknowledgeCrashReport(nativeModule, reportId);
           continue;
         }
 
