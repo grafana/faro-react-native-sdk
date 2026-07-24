@@ -163,6 +163,19 @@ describe('FetchTransport', () => {
     });
   });
 
+  it('skips empty batches without sending a request', async () => {
+    const transport = new FetchTransport({
+      url: 'http://example.com/collect',
+    });
+
+    transport.internalLogger = mockInternalLogger;
+
+    await expect(transport.sendWithResult([])).resolves.toEqual({
+      outcome: 'skipped',
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('will send event with API key if provided', async () => {
     const transport = new FetchTransport({
       url: 'http://example.com/collect',

@@ -120,6 +120,10 @@ export class FetchTransport extends BaseTransport {
   async sendWithResult(items: TransportItem[]): Promise<FetchTransportSendResult> {
     this.logDebug(`FetchTransport.sendWithResult() called with ${items.length} items`);
 
+    if (items.length === 0) {
+      return { outcome: 'skipped' };
+    }
+
     try {
       const now = new Date(this.getNow());
 

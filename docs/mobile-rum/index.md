@@ -873,7 +873,7 @@ Faro.initialize(
 | **Pre-crash session id**   | ✅ Android; ❌ iOS   | ❌ Not in crash payload                               |
 | **Error Type**             | `crash` (native)     | `crash` (native), `flutter_error` (ANR, FlutterError) |
 
-The **Error Type** in both SDKs is `crash` for native errors but in React native the value change depending of the type of crash:
+The **Error Type** in both SDKs is `crash` for native errors, but in React Native the value changes depending on the type of crash:
 
 - `ANR: Application Not Responding`,
 - `CRASH: Application crash (Java/Kotlin)`,
