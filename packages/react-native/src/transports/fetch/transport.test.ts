@@ -101,7 +101,7 @@ describe('FetchTransport', () => {
     );
   });
 
-  it('uses the payload session for both body metadata and request header', async () => {
+  it('uses the live session for the header while preserving the payload session', async () => {
     const transport = new FetchTransport({
       url: 'http://example.com/collect',
     });
@@ -114,14 +114,14 @@ describe('FetchTransport', () => {
 
     await transport.send([item]);
 
-    expect(waitForSession).not.toHaveBeenCalled();
+    expect(waitForSession).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith(
       'http://example.com/collect',
       expect.objectContaining({
         body: JSON.stringify(getTransportBody([item])),
         headers: {
           'Content-Type': 'application/json',
-          'x-faro-session-id': mockSessionId,
+          'x-faro-session-id': 'new-live-session',
         },
         method: 'POST',
       })

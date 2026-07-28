@@ -114,8 +114,9 @@ export class FetchTransport extends BaseTransport {
 
   /**
    * Sends a batch and reports whether the collector accepted it.
-   * The session header is derived from the batch metadata so replayed signals
-   * cannot inherit a newer live session from the transport.
+   * The request header uses the live session for collector accounting. Payload
+   * metadata remains independent so delayed signals can retain their original
+   * session.
    */
   async sendWithResult(items: TransportItem[]): Promise<FetchTransportSendResult> {
     this.logDebug(`FetchTransport.sendWithResult() called with ${items.length} items`);
@@ -133,12 +134,10 @@ export class FetchTransport extends BaseTransport {
         return { outcome: 'skipped' };
       }
 
-      const itemSessionId = items[0]?.meta.session?.id;
-      if (!itemSessionId) {
-        // Normal live telemetry may be created before session initialization.
-        await this.waitForSession();
-      }
-      const sessionId = itemSessionId ?? this.metas.value.session?.id;
+      // The collector uses the header for session validation and accounting,
+      // independently of the session carried by each payload.
+      await this.waitForSession();
+      const sessionId = this.metas.value.session?.id;
 
       const response = await this.promiseBuffer.add(() => {
         const transportBody = getTransportBody(items);

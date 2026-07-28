@@ -808,7 +808,8 @@ The SDK automatically tracks HTTP requests made with the `http` package and **di
 
 On iOS, the SDK uses `faro.api.pushError(error, { type: 'crash', context })`. On Android, recovered
 crashes are sent as individual requests after applying the configured `beforeSend` hooks. The request body
-and `X-Faro-Session-Id` header both use the session that was active when the process crashed.
+keeps the session that was active when the process crashed. The `X-Faro-Session-Id` header uses the current
+live session because the collector uses that header for session accounting independently of payload metadata.
 
 ##### **Flutter SDK**
 
