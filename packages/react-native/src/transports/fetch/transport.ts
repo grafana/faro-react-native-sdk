@@ -1,7 +1,7 @@
 import { BaseTransport, createPromiseBuffer, getTransportBody, VERSION } from '@grafana/faro-core';
 import type { Patterns, PromiseBuffer, TransportItem } from '@grafana/faro-core';
 
-import type { FetchTransportOptions } from './types';
+import type { FetchTransportOptions, FetchTransportSendResult } from './types';
 
 const DEFAULT_BUFFER_SIZE = 30;
 const DEFAULT_CONCURRENCY = 5;
@@ -10,8 +10,6 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 const FAILURE_BACKOFF_MS = 30000; // 30 seconds
 
 const TOO_MANY_REQUESTS = 429;
-const ACCEPTED = 202;
-
 export class FetchTransport extends BaseTransport {
   readonly name = '@grafana/faro-react-native:transport-fetch';
   readonly version = VERSION;
@@ -111,8 +109,21 @@ export class FetchTransport extends BaseTransport {
   }
 
   async send(items: TransportItem[]): Promise<void> {
-    // DEBUG: Log at the very start of send
-    this.logDebug(`FetchTransport.send() called with ${items.length} items`);
+    await this.sendWithResult(items);
+  }
+
+  /**
+   * Sends a batch and reports whether the collector accepted it.
+   * The request header uses the live session for collector accounting. Payload
+   * metadata remains independent so delayed signals can retain their original
+   * session.
+   */
+  async sendWithResult(items: TransportItem[]): Promise<FetchTransportSendResult> {
+    this.logDebug(`FetchTransport.sendWithResult() called with ${items.length} items`);
+
+    if (items.length === 0) {
+      return { outcome: 'skipped' };
+    }
 
     try {
       const now = new Date(this.getNow());
@@ -120,14 +131,15 @@ export class FetchTransport extends BaseTransport {
       // Check if we're in backoff period
       if (this.disabledUntil > now) {
         this.logDebug(`FetchTransport: in backoff period until ${this.disabledUntil}`);
-        return Promise.resolve();
+        return { outcome: 'skipped' };
       }
 
-      // Wait for session to be ready before sending
-      // This prevents 400 errors from missing X-Faro-Session-Id header
+      // The collector uses the header for session validation and accounting,
+      // independently of the session carried by each payload.
       await this.waitForSession();
+      const sessionId = this.metas.value.session?.id;
 
-      await this.promiseBuffer.add(() => {
+      const response = await this.promiseBuffer.add(() => {
         const transportBody = getTransportBody(items);
         const body = JSON.stringify(transportBody);
 
@@ -141,12 +153,6 @@ export class FetchTransport extends BaseTransport {
         const { url, requestOptions, apiKey } = this.options;
 
         const { headers, ...restOfRequestOptions } = requestOptions ?? {};
-
-        let sessionId;
-        const sessionMeta = this.metas.value.session;
-        if (sessionMeta != null) {
-          sessionId = sessionMeta.id;
-        }
 
         // DEBUG: Log fetch attempt
         this.logDebug(`FetchTransport: sending ${items.length} items to ${url}`);
@@ -186,7 +192,7 @@ export class FetchTransport extends BaseTransport {
             }
 
             // Log non-success responses for debugging
-            if (response.status !== ACCEPTED && response.status !== 200) {
+            if (response.status < 200 || response.status >= 300) {
               const text = await response.text().catch(() => '');
               this.logDebug(`FetchTransport: non-success response: ${response.status} ${text.slice(0, 200)}`);
             }
@@ -211,11 +217,27 @@ export class FetchTransport extends BaseTransport {
 
             // Do NOT log errors to console - this causes infinite loops in React Native
             // when the DevTools console override intercepts even unpatchedConsole calls
+            return undefined;
           });
       });
+
+      if (!response) {
+        return { outcome: 'failed' };
+      }
+      if (response.status >= 200 && response.status < 300) {
+        return {
+          outcome: 'accepted',
+          status: response.status,
+        };
+      }
+      return {
+        outcome: 'rejected',
+        status: response.status,
+      };
     } catch {
       // Buffer full error - Do NOT log to console as it creates infinite loops
       // The error is typically "Task buffer full" when the device is offline
+      return { outcome: 'failed' };
     }
   }
 

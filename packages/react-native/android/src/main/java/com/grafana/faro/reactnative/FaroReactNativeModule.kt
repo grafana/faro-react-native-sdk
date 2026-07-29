@@ -298,16 +298,98 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun getCrashReport(promise: Promise) {
+        resolveCrashReports(promise, acknowledgeImmediately = true)
+    }
+
+    /**
+     * Returns recovered crashes without marking them as processed. JavaScript
+     * must acknowledge each report after it has been handled.
+     */
+    @ReactMethod
+    fun getPendingCrashReports(promise: Promise) {
+        resolveCrashReports(promise, acknowledgeImmediately = false)
+    }
+
+    private fun resolveCrashReports(
+        promise: Promise,
+        acknowledgeImmediately: Boolean,
+    ) {
         val crashReports = FaroCrashReporter.getCrashReports(reactApplicationContext)
-        
+
         if (crashReports != null) {
-            val writableArray = com.facebook.react.bridge.Arguments.createArray()
+            if (acknowledgeImmediately) {
+                // Preserve eager acknowledgement for older JavaScript bundles
+                // that use the legacy bridge and cannot acknowledge per report.
+                val reportIds = crashReports.mapNotNull { report ->
+                    try {
+                        org.json.JSONObject(report).optString("reportId").trim().takeIf(String::isNotEmpty)
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                FaroCrashReporter.acknowledgeCrashReports(reactApplicationContext, reportIds)
+            }
+
+            val writableArray = Arguments.createArray()
             for (report in crashReports) {
                 writableArray.pushString(report)
             }
             promise.resolve(writableArray)
         } else {
             promise.resolve(null)
+        }
+    }
+
+    /**
+     * Persists the active Faro session independently of optional sticky-session storage.
+     * The synchronous write makes the context available even if the process crashes
+     * immediately after JavaScript observes a session change.
+     */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun recordCrashSessionContext(sessionContext: ReadableMap): Boolean {
+        return try {
+            val sessionId = sessionContext.getOptionalString("sessionId") ?: return false
+            val activatedAtMs = if (sessionContext.hasKey("activatedAt") && !sessionContext.isNull("activatedAt")) {
+                sessionContext.getDouble("activatedAt").toLong()
+            } else {
+                System.currentTimeMillis()
+            }
+            val isSampled = if (sessionContext.hasKey("isSampled") && !sessionContext.isNull("isSampled")) {
+                sessionContext.getBoolean("isSampled")
+            } else {
+                null
+            }
+
+            FaroUncaughtExceptionHandler.install(reactApplicationContext)
+            FaroCrashSessionStore.recordSessionContext(
+                context = reactApplicationContext,
+                sessionId = sessionId,
+                activatedAtMs = activatedAtMs,
+                isSampled = isSampled,
+                appVersion = sessionContext.getOptionalString("appVersion"),
+                appRelease = sessionContext.getOptionalString("appRelease"),
+                appBundleId = sessionContext.getOptionalString("appBundleId"),
+            )
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Acknowledges only reports that JavaScript has finished handling.
+     */
+    @ReactMethod
+    fun acknowledgeCrashReports(reportIds: ReadableArray, promise: Promise) {
+        val ids = mutableListOf<String>()
+        for (index in 0 until reportIds.size()) {
+            if (!reportIds.isNull(index)) {
+                reportIds.getString(index)?.trim()?.takeIf(String::isNotEmpty)?.let(ids::add)
+            }
+        }
+        if (FaroCrashReporter.acknowledgeCrashReports(reactApplicationContext, ids)) {
+            promise.resolve(null)
+        } else {
+            promise.reject("E_CRASH_ACK_FAILED", "Failed to persist recovered crash acknowledgement")
         }
     }
 
@@ -335,5 +417,12 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
         } catch (_: Exception) {
             // Ignore errors when sending events
         }
+    }
+
+    private fun ReadableMap.getOptionalString(key: String): String? {
+        if (!hasKey(key) || isNull(key)) {
+            return null
+        }
+        return getString(key)?.trim()?.takeIf(String::isNotEmpty)
     }
 }

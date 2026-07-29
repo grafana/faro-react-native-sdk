@@ -70,6 +70,7 @@ export { getSdkMeta } from './metas/sdk';
 
 // Export transports
 export { FetchTransport } from './transports/fetch';
+export type { FetchTransportSendOutcome, FetchTransportSendResult } from './transports/fetch';
 export { ConsoleTransport } from './transports/console';
 export type { ConsoleTransportOptions } from './transports/console';
 export { OfflineTransport } from './transports/offline';

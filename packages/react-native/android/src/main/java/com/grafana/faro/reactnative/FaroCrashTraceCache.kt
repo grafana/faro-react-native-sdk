@@ -27,12 +27,22 @@ internal object FaroCrashTraceCache {
      * Returns a cached trace without clearing it so multiple ApplicationExitInfo
      * rows for the same crash can share the UncaughtExceptionHandler stack.
      */
-    fun peekPendingCrashTrace(context: Context): PendingTrace? {
+    fun peekPendingCrashTrace(
+        context: Context,
+        nowMs: Long = System.currentTimeMillis(),
+    ): PendingTrace? {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val trace = prefs.getString(KEY_TRACE, null)?.trim().orEmpty()
         val cachedTimestamp = prefs.getLong(KEY_TIMESTAMP, 0L)
 
         if (trace.isEmpty() || cachedTimestamp == 0L) {
+            return null
+        }
+        if (
+            cachedTimestamp > nowMs ||
+            nowMs - cachedTimestamp > FaroCrashSessionStore.MAX_CONTEXT_AGE_MS
+        ) {
+            clearPendingCrashTrace(context)
             return null
         }
 
@@ -45,7 +55,6 @@ internal object FaroCrashTraceCache {
         }
         val delta = kotlin.math.abs(exitTimestampMs - pending.timestampMs)
         if (delta > MAX_TIMESTAMP_DELTA_MS) {
-            clearPendingCrashTrace(context)
             return ""
         }
         return pending.trace

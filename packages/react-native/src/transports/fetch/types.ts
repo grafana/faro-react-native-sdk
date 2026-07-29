@@ -23,3 +23,10 @@ export interface FetchTransportOptions {
 }
 
 export type ClockFn = () => number;
+
+export type FetchTransportSendOutcome = 'accepted' | 'rejected' | 'failed' | 'skipped';
+
+export interface FetchTransportSendResult {
+  outcome: FetchTransportSendOutcome;
+  status?: number;
+}

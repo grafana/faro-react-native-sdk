@@ -1,9 +1,16 @@
 import { NativeModules } from 'react-native';
 
 import { BaseInstrumentation } from '@grafana/faro-core';
+import type { ExceptionStackFrame } from '@grafana/faro-core';
 
 import { looksLikeNativeTombstoneTrace } from './android/nativeTombstoneTrace';
 import type { CrashReport, CrashReportingOptions } from './types';
+
+interface CrashReportDetails {
+  context: Record<string, string>;
+  errorMessage: string;
+  stackFrames: ExceptionStackFrame[];
+}
 
 /**
  * Abstract base class for platform-specific crash reporting implementations.
@@ -39,6 +46,7 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
     }
 
     this.logDebug('Initializing crash reporting instrumentation');
+    await this.prepareCrashReporting(nativeModule);
 
     // Wait for session attributes before sending crash reports
     await this.waitForSessionAttributes();
@@ -82,7 +90,11 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
    */
   protected abstract getTraceUnavailableWarning(): string;
 
-  private async waitForSessionAttributes(maxWaitMs = 10000): Promise<void> {
+  protected prepareCrashReporting(_nativeModule: typeof NativeModules.FaroReactNativeModule): void | Promise<void> {
+    // Optional platform-specific setup.
+  }
+
+  protected async waitForSessionAttributes(maxWaitMs = 10000): Promise<void> {
     const startTime = Date.now();
     const pollInterval = 200;
     let checkCount = 0;
@@ -134,7 +146,7 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
     );
   }
 
-  private getNativeModule(): typeof NativeModules.FaroReactNativeModule | null {
+  protected getNativeModule(): typeof NativeModules.FaroReactNativeModule | null {
     const { FaroReactNativeModule } = NativeModules;
 
     if (!FaroReactNativeModule) {
@@ -144,7 +156,7 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
     return FaroReactNativeModule;
   }
 
-  private async processCrashReports(nativeModule: typeof NativeModules.FaroReactNativeModule): Promise<void> {
+  protected async processCrashReports(nativeModule: typeof NativeModules.FaroReactNativeModule): Promise<void> {
     try {
       if (typeof nativeModule.getCrashReport !== 'function') {
         this.logDebug('getCrashReport method not available');
@@ -201,14 +213,10 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
     }
   }
 
-  private sendCrashReport(crash: CrashReport): void {
+  protected buildCrashReportDetails(crash: CrashReport): CrashReportDetails {
     // Platform-specific parsing
     const parsedTrace = crash.trace ? this.parseCrashTrace(crash.trace) : null;
     const errorMessage = this.resolveCrashErrorMessage(crash, parsedTrace).trim() || 'Application crash';
-
-    // Use a message-only Error so pushError does not capture the JS reporter stack
-    const error = new Error(errorMessage);
-    error.stack = undefined;
 
     // Build context from crash data
     const context: Record<string, string> = {
@@ -257,6 +265,18 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
         `[Faro crash native] Sending tombstone trace (${crash.trace.split('\n').length} lines) preview=${framePreview ?? 'n/a'}`
       );
     }
+
+    return {
+      context,
+      errorMessage,
+      stackFrames,
+    };
+  }
+
+  protected sendCrashReport(crash: CrashReport): void {
+    const { context, errorMessage, stackFrames } = this.buildCrashReportDetails(crash);
+    const error = new Error(errorMessage);
+    error.stack = undefined;
 
     this.api.pushError(error, {
       stackFrames,

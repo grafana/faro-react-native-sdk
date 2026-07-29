@@ -101,6 +101,81 @@ describe('FetchTransport', () => {
     );
   });
 
+  it('uses the live session for the header while preserving the payload session', async () => {
+    const transport = new FetchTransport({
+      url: 'http://example.com/collect',
+    });
+    const waitForSession = jest
+      .spyOn(transport as unknown as { waitForSession: () => Promise<void> }, 'waitForSession')
+      .mockResolvedValue();
+
+    transport.metas.value = { session: { id: 'new-live-session' } };
+    transport.internalLogger = mockInternalLogger;
+
+    await transport.send([item]);
+
+    expect(waitForSession).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith(
+      'http://example.com/collect',
+      expect.objectContaining({
+        body: JSON.stringify(getTransportBody([item])),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-faro-session-id': 'new-live-session',
+        },
+        method: 'POST',
+      })
+    );
+  });
+
+  it('returns whether the collector accepted the payload', async () => {
+    const transport = new FetchTransport({
+      url: 'http://example.com/collect',
+    });
+
+    transport.metas.value = { session: { id: mockSessionId } };
+    transport.internalLogger = mockInternalLogger;
+
+    await expect(transport.sendWithResult([item])).resolves.toEqual({
+      outcome: 'accepted',
+      status: 202,
+    });
+
+    fetch.mockImplementationOnce(() =>
+      Promise.resolve({
+        status: 500,
+        text: () => Promise.resolve('server error'),
+        headers: {
+          get: () => null,
+        },
+      })
+    );
+
+    await expect(transport.sendWithResult([item])).resolves.toEqual({
+      outcome: 'rejected',
+      status: 500,
+    });
+
+    fetch.mockImplementationOnce(() => Promise.reject(new Error('Network error')));
+
+    await expect(transport.sendWithResult([item])).resolves.toEqual({
+      outcome: 'failed',
+    });
+  });
+
+  it('skips empty batches without sending a request', async () => {
+    const transport = new FetchTransport({
+      url: 'http://example.com/collect',
+    });
+
+    transport.internalLogger = mockInternalLogger;
+
+    await expect(transport.sendWithResult([])).resolves.toEqual({
+      outcome: 'skipped',
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('will send event with API key if provided', async () => {
     const transport = new FetchTransport({
       url: 'http://example.com/collect',
@@ -353,16 +428,25 @@ describe('FetchTransport', () => {
     const transport = new FetchTransport({
       url: 'http://example.com/collect',
     });
+    const waitForSession = jest
+      .spyOn(transport as unknown as { waitForSession: () => Promise<void> }, 'waitForSession')
+      .mockResolvedValue();
 
     transport.metas.value = {};
     transport.internalLogger = mockInternalLogger;
 
-    await transport.send([item]);
+    const itemWithoutSession = {
+      ...item,
+      meta: {},
+    };
 
+    await transport.send([itemWithoutSession]);
+
+    expect(waitForSession).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith(
       'http://example.com/collect',
       expect.objectContaining({
-        body: JSON.stringify(getTransportBody([item])),
+        body: JSON.stringify(getTransportBody([itemWithoutSession])),
         headers: {
           'Content-Type': 'application/json',
         },
