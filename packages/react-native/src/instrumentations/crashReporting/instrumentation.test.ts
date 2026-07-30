@@ -42,19 +42,23 @@ function createCrashReport(overrides: Partial<CrashReport> = {}): CrashReport {
   };
 }
 
-function createNativeCrashModule(reports: Array<CrashReport | string>): NativeCrashModule {
+function createNativeCrashModule(
+  reports: Array<CrashReport | string>,
+  recordSessionContextResult: boolean | undefined = true
+): NativeCrashModule {
   return {
     acknowledgeCrashReports: jest.fn().mockResolvedValue(undefined),
     getPendingCrashReports: jest
       .fn()
       .mockResolvedValue(reports.map((report) => (typeof report === 'string' ? report : JSON.stringify(report)))),
-    recordCrashSessionContext: jest.fn().mockReturnValue(true),
+    recordCrashSessionContext: jest.fn().mockReturnValue(recordSessionContextResult),
   };
 }
 
 function setupAndroidReplay(
   reports: Array<CrashReport | string>,
-  beforeSend?: (item: TransportItem) => TransportItem | null
+  beforeSend?: (item: TransportItem) => TransportItem | null,
+  recordSessionContextResult: boolean | undefined = true
 ) {
   const transport = new FetchTransport({ url: 'http://example.com/collect' });
   const instrumentation = new AndroidCrashReportingInstrumentation({ enabled: false });
@@ -67,7 +71,7 @@ function setupAndroidReplay(
   );
   faro.api.setSession({ id: 'session-b' });
 
-  const nativeModule = createNativeCrashModule(reports);
+  const nativeModule = createNativeCrashModule(reports, recordSessionContextResult);
   const sendSpy = jest.spyOn(transport, 'sendWithResult').mockResolvedValue({
     outcome: 'accepted',
     status: 202,
@@ -278,6 +282,21 @@ describe('CrashReportingInstrumentation', () => {
     const sentItem = setup.sendSpy.mock.calls[0]?.[0]?.[0];
     expect(sentItem?.meta.session?.id).toBe('session-a');
     expect(setup.faro.metas.value.session?.id).toBe('session-c');
+  });
+
+  it('retries persisting session context until native storage confirms success', () => {
+    const setup = setupAndroidReplay([], undefined, false);
+    androidInstrumentations.push(setup.instrumentation);
+    setup.nativeModule.recordCrashSessionContext.mockReturnValue(undefined);
+
+    setup.testable.prepareCrashReporting(setup.nativeModule);
+    setup.testable.prepareCrashReporting(setup.nativeModule);
+
+    expect(setup.nativeModule.recordCrashSessionContext).toHaveBeenCalledTimes(3);
+    expect(setup.nativeModule.recordCrashSessionContext).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ sessionId: 'session-b' })
+    );
   });
 
   it.each(['failed', 'rejected', 'skipped'] as const)(

@@ -21,6 +21,7 @@ public class FaroCrashReporter: NSObject {
 
     private static var crashReporter: PLCrashReporter?
     private static var isEnabled = false
+    private static let stateLock = NSLock()
     private static let sessionContextKeys = [
         "sessionId",
         "activatedAt",
@@ -58,6 +59,12 @@ public class FaroCrashReporter: NSObject {
     ///
     /// - Returns: true if successfully enabled, false otherwise
     @objc public static func enable() -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return enableLocked()
+    }
+
+    private static func enableLocked() -> Bool {
         guard !isEnabled else {
             return true
         }
@@ -106,10 +113,6 @@ public class FaroCrashReporter: NSObject {
     /// - Parameter sessionContext: Sanitized session and app fields from JavaScript
     /// - Returns: true when the context was stored, false when it was invalid
     @objc public static func recordSessionContext(_ sessionContext: [String: Any]) -> Bool {
-        guard enable(), let reporter = crashReporter else {
-            return false
-        }
-
         let sanitizedContext = sanitizeSessionContext(sessionContext)
         guard sanitizedContext["sessionId"] != nil,
               JSONSerialization.isValidJSONObject(sanitizedContext) else {
@@ -117,7 +120,13 @@ public class FaroCrashReporter: NSObject {
         }
 
         do {
-            reporter.customData = try JSONSerialization.data(withJSONObject: sanitizedContext)
+            let data = try JSONSerialization.data(withJSONObject: sanitizedContext)
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            guard enableLocked(), let reporter = crashReporter else {
+                return false
+            }
+            reporter.customData = data
             return true
         } catch {
             print("[FaroCrashReporter] Failed to serialize crash session context: \(error)")
@@ -132,7 +141,7 @@ public class FaroCrashReporter: NSObject {
     ///
     /// - Returns: Array of crash report JSON strings, or nil if no crashes
     @objc public static func getPendingCrashReports() -> [String]? {
-        guard enable(), let reporter = crashReporter, reporter.hasPendingCrashReport() else {
+        guard let reporter = enabledReporter(), reporter.hasPendingCrashReport() else {
             return nil
         }
 
@@ -155,6 +164,7 @@ public class FaroCrashReporter: NSObject {
             return [malformedReportJSON(reportId: reportId)]
         } catch {
             print("[FaroCrashReporter] Failed to load pending crash report: \(error)")
+            _ = purgeUnreadablePendingReport(reporter)
             return nil
         }
     }
@@ -164,7 +174,7 @@ public class FaroCrashReporter: NSObject {
     /// - Parameter reportIds: Stable IDs handled by JavaScript
     /// - Returns: true when no matching report remains or the matching report was purged
     @objc public static func acknowledgeCrashReports(_ reportIds: [String]) -> Bool {
-        guard enable(), let reporter = crashReporter else {
+        guard let reporter = enabledReporter() else {
             return false
         }
         guard reporter.hasPendingCrashReport() else {
@@ -185,11 +195,10 @@ public class FaroCrashReporter: NSObject {
             guard acknowledgedIds.contains(reportIdentifier(for: data)) else {
                 return true
             }
-            reporter.purgePendingCrashReport()
-            return true
+            return reporter.purgePendingCrashReport()
         } catch {
             print("[FaroCrashReporter] Failed to acknowledge pending crash report: \(error)")
-            return false
+            return purgeUnreadablePendingReport(reporter)
         }
     }
 
@@ -212,6 +221,23 @@ public class FaroCrashReporter: NSObject {
     }
 
     // MARK: - Private Helpers
+
+    private static func enabledReporter() -> PLCrashReporter? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard enableLocked() else {
+            return nil
+        }
+        return crashReporter
+    }
+
+    private static func purgeUnreadablePendingReport(_ reporter: PLCrashReporter) -> Bool {
+        let purged = reporter.purgePendingCrashReport()
+        if !purged {
+            print("[FaroCrashReporter] Failed to purge unreadable pending crash report")
+        }
+        return purged
+    }
 
     /// Converts a FaroCrashReport to JSON string matching the Android format.
     private static func exportCrashReportAsJSON(_ crashReport: FaroCrashReport, reportId: String) -> String? {
@@ -280,6 +306,9 @@ public class FaroCrashReporter: NSObject {
         if let sessionId = nonEmptyString(context["sessionId"]) {
             sanitized["sessionId"] = sessionId
         }
+        // Android uses activatedAt to map a crash to persisted session history.
+        // iOS keeps it in the shared context shape, although PLCrashReporter
+        // already snapshots the one active context directly into the report.
         if let activatedAt = context["activatedAt"] as? NSNumber,
            activatedAt.doubleValue.isFinite,
            activatedAt.doubleValue > 0 {

@@ -8,6 +8,7 @@ import { FetchTransport } from '../../transports/fetch';
 import { BaseCrashReportingInstrumentation } from './BaseCrashReportingInstrumentation';
 import type { CrashReport } from './types';
 
+// Keep aligned with FaroCrashSessionStore.MAX_CONTEXT_AGE_MS on Android.
 const MAX_REPLAY_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 type RecoveredCrashReport = CrashReport & {
@@ -158,7 +159,7 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
 
     try {
       const stored = this.nativeModule.recordCrashSessionContext(sessionContext);
-      if (stored !== false) {
+      if (stored === true) {
         this.lastRecordedSessionSignature = signature;
       }
     } catch (error) {
