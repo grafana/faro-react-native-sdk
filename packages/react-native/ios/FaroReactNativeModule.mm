@@ -121,4 +121,47 @@ RCT_EXPORT_METHOD(getCrashReport:(RCTPromiseResolveBlock)resolve
   }
 }
 
+/// Store the active session synchronously so it is available if the process crashes.
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(recordCrashSessionContext:(NSDictionary *)sessionContext)
+{
+  return @([FaroReactNative recordCrashSessionContext:sessionContext]);
+}
+
+/// Get pending crash reports without deleting them.
+RCT_EXPORT_METHOD(getPendingCrashReports:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  NSArray<NSString *> *crashReports = [FaroReactNative getPendingCrashReports];
+  if (crashReports != nil && crashReports.count > 0) {
+    resolve(crashReports);
+  } else {
+    resolve([NSNull null]);
+  }
+}
+
+/// Delete only crash reports that JavaScript has finished handling.
+RCT_EXPORT_METHOD(acknowledgeCrashReports:(NSArray *)reportIds
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  NSMutableArray<NSString *> *sanitizedReportIds = [NSMutableArray array];
+  for (id reportId in reportIds) {
+    if (![reportId isKindOfClass:[NSString class]]) {
+      continue;
+    }
+
+    NSString *trimmedReportId = [(NSString *)reportId stringByTrimmingCharactersInSet:
+                                 [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmedReportId.length > 0) {
+      [sanitizedReportIds addObject:trimmedReportId];
+    }
+  }
+
+  if ([FaroReactNative acknowledgeCrashReports:sanitizedReportIds]) {
+    resolve([NSNull null]);
+  } else {
+    reject(@"E_CRASH_ACK_FAILED", @"Failed to acknowledge recovered crash report", nil);
+  }
+}
+
 @end

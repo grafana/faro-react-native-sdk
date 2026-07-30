@@ -5,6 +5,7 @@ import { FetchTransport } from '../../transports/fetch';
 
 import { AndroidCrashReportingInstrumentation } from './android/AndroidCrashReportingInstrumentation';
 import { CrashReportingInstrumentation } from './index';
+import { IosCrashReportingInstrumentation } from './ios/IosCrashReportingInstrumentation';
 import type { CrashReport } from './types';
 
 const CRASH_TRACE = [
@@ -15,11 +16,17 @@ const CRASH_TRACE = [
 
 type NativeCrashModule = {
   acknowledgeCrashReports: ReturnType<typeof jest.fn>;
+  getCrashReport?: ReturnType<typeof jest.fn>;
   getPendingCrashReports: ReturnType<typeof jest.fn>;
   recordCrashSessionContext: ReturnType<typeof jest.fn>;
 };
 
 type TestableAndroidCrashInstrumentation = {
+  prepareCrashReporting: (nativeModule: NativeCrashModule) => void;
+  processCrashReports: (nativeModule: NativeCrashModule) => Promise<void>;
+};
+
+type TestableIosCrashInstrumentation = {
   prepareCrashReporting: (nativeModule: NativeCrashModule) => void;
   processCrashReports: (nativeModule: NativeCrashModule) => Promise<void>;
 };
@@ -71,8 +78,31 @@ function setupAndroidReplay(
   return { faro, instrumentation, nativeModule, sendSpy, testable };
 }
 
+function setupIosReplay(reports: Array<CrashReport | string>) {
+  const transport = new FetchTransport({ url: 'http://example.com/collect' });
+  const instrumentation = new IosCrashReportingInstrumentation({ enabled: false });
+  const faro = initializeFaro(
+    mockConfig({
+      transports: [transport],
+      instrumentations: [instrumentation],
+    })
+  );
+  faro.api.setSession({ id: 'session-b' });
+
+  const nativeModule = createNativeCrashModule(reports);
+  const sendSpy = jest.spyOn(transport, 'sendWithResult').mockResolvedValue({
+    outcome: 'accepted',
+    status: 202,
+  });
+  const testable = instrumentation as unknown as TestableIosCrashInstrumentation;
+  testable.prepareCrashReporting(nativeModule);
+
+  return { faro, instrumentation, nativeModule, sendSpy, testable };
+}
+
 describe('CrashReportingInstrumentation', () => {
   const androidInstrumentations: AndroidCrashReportingInstrumentation[] = [];
+  const iosInstrumentations: IosCrashReportingInstrumentation[] = [];
 
   beforeEach(() => {
     jest.restoreAllMocks();
@@ -81,6 +111,7 @@ describe('CrashReportingInstrumentation', () => {
 
   afterEach(() => {
     androidInstrumentations.splice(0).forEach((instrumentation) => instrumentation.unpatch());
+    iosInstrumentations.splice(0).forEach((instrumentation) => instrumentation.unpatch());
     delete (global as any).faro;
   });
 
@@ -140,6 +171,97 @@ describe('CrashReportingInstrumentation', () => {
     expect(setup.nativeModule.recordCrashSessionContext).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 'session-b' })
     );
+  });
+
+  it('replays an iOS crash with its original session and acknowledges it after delivery', async () => {
+    const crashTimestamp = Date.now() - 1000;
+    const setup = setupIosReplay([
+      createCrashReport({
+        reason: 'SIGSEGV',
+        reportId: 'ios-report-a',
+        sessionId: 'session-a',
+        timestamp: crashTimestamp,
+      }),
+    ]);
+    iosInstrumentations.push(setup.instrumentation);
+
+    await setup.testable.processCrashReports(setup.nativeModule);
+
+    expect(setup.sendSpy).toHaveBeenCalledTimes(1);
+    const item = setup.sendSpy.mock.calls[0]?.[0]?.[0] as TransportItem<ExceptionEvent>;
+    expect(item.meta.session?.id).toBe('session-a');
+    expect(item.payload.timestamp).toBe(new Date(crashTimestamp).toISOString());
+    expect(setup.faro.metas.value.session?.id).toBe('session-b');
+    expect(setup.nativeModule.acknowledgeCrashReports).toHaveBeenCalledWith(['ios-report-a']);
+  });
+
+  it('uses legacy iOS crash replay when the native module does not support acknowledgements', async () => {
+    const transport = new MockTransport();
+    const instrumentation = new IosCrashReportingInstrumentation({ enabled: false });
+    const faro = initializeFaro(
+      mockConfig({
+        transports: [transport],
+        instrumentations: [instrumentation],
+      })
+    );
+    faro.api.setSession({ id: 'session-b' });
+    iosInstrumentations.push(instrumentation);
+
+    const nativeModule = {
+      getCrashReport: jest.fn().mockResolvedValue([JSON.stringify(createCrashReport())]),
+    } as unknown as NativeCrashModule;
+    const testable = instrumentation as unknown as TestableIosCrashInstrumentation;
+    testable.prepareCrashReporting(nativeModule);
+
+    await testable.processCrashReports(nativeModule);
+
+    expect(nativeModule.getCrashReport).toHaveBeenCalledTimes(1);
+    expect(transport.items).toHaveLength(1);
+    expect(transport.items[0]?.meta.session?.id).toBe('session-b');
+  });
+
+  it('leaves an iOS crash pending when delivery fails', async () => {
+    const setup = setupIosReplay([createCrashReport({ reportId: 'ios-report-a' })]);
+    iosInstrumentations.push(setup.instrumentation);
+    setup.sendSpy.mockResolvedValue({ outcome: 'failed' });
+
+    await setup.testable.processCrashReports(setup.nativeModule);
+
+    expect(setup.sendSpy).toHaveBeenCalledTimes(1);
+    expect(setup.nativeModule.acknowledgeCrashReports).not.toHaveBeenCalled();
+  });
+
+  it('discards an iOS crash without assigning the current session when its original session is unavailable', async () => {
+    const setup = setupIosReplay([
+      createCrashReport({
+        reportId: 'ios-report-a',
+        sessionId: undefined,
+      }),
+    ]);
+    iosInstrumentations.push(setup.instrumentation);
+
+    await setup.testable.processCrashReports(setup.nativeModule);
+
+    expect(setup.sendSpy).not.toHaveBeenCalled();
+    expect(setup.faro.metas.value.session?.id).toBe('session-b');
+    expect(setup.nativeModule.acknowledgeCrashReports).toHaveBeenCalledWith(['ios-report-a']);
+  });
+
+  it('discards an iOS crash older than the replay window', async () => {
+    const now = 1_800_000_000_000;
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+    const setup = setupIosReplay([
+      createCrashReport({
+        reportId: 'ios-report-a',
+        timestamp: now - 7 * 24 * 60 * 60 * 1000 - 1,
+      }),
+    ]);
+    iosInstrumentations.push(setup.instrumentation);
+
+    await setup.testable.processCrashReports(setup.nativeModule);
+
+    expect(setup.sendSpy).not.toHaveBeenCalled();
+    expect(setup.nativeModule.acknowledgeCrashReports).toHaveBeenCalledWith(['ios-report-a']);
   });
 
   it('persists later live-session changes without mutating a recovered crash', async () => {

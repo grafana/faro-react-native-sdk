@@ -172,4 +172,19 @@ public class FaroReactNative: NSObject {
     @objc public static func getCrashReports() -> [String]? {
         return FaroCrashReporter.getCrashReports()
     }
+
+    /// Records the active Faro session in PLCrashReporter's custom crash data.
+    @objc public static func recordCrashSessionContext(_ sessionContext: [String: Any]) -> Bool {
+        return FaroCrashReporter.recordSessionContext(sessionContext)
+    }
+
+    /// Gets pending crash reports without deleting them.
+    @objc public static func getPendingCrashReports() -> [String]? {
+        return FaroCrashReporter.getPendingCrashReports()
+    }
+
+    /// Purges only the pending report whose stable ID was acknowledged.
+    @objc public static func acknowledgeCrashReports(_ reportIds: [String]) -> Bool {
+        return FaroCrashReporter.acknowledgeCrashReports(reportIds)
+    }
 }

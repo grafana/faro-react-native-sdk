@@ -21,6 +21,14 @@ public class FaroCrashReporter: NSObject {
 
     private static var crashReporter: PLCrashReporter?
     private static var isEnabled = false
+    private static let sessionContextKeys = [
+        "sessionId",
+        "activatedAt",
+        "isSampled",
+        "appVersion",
+        "appRelease",
+        "appBundleId"
+    ]
 
     /// Signal descriptions for human-readable crash messages.
     private static let signalDescriptions: [String: String] = [
@@ -90,53 +98,125 @@ public class FaroCrashReporter: NSObject {
         }
     }
 
+    /// Records the active Faro session in PLCrashReporter's crash-safe custom data.
+    ///
+    /// PLCrashReporter copies this data into the report at crash time, allowing a
+    /// recovered crash to retain its original session after the app restarts.
+    ///
+    /// - Parameter sessionContext: Sanitized session and app fields from JavaScript
+    /// - Returns: true when the context was stored, false when it was invalid
+    @objc public static func recordSessionContext(_ sessionContext: [String: Any]) -> Bool {
+        guard enable(), let reporter = crashReporter else {
+            return false
+        }
+
+        let sanitizedContext = sanitizeSessionContext(sessionContext)
+        guard sanitizedContext["sessionId"] != nil,
+              JSONSerialization.isValidJSONObject(sanitizedContext) else {
+            return false
+        }
+
+        do {
+            reporter.customData = try JSONSerialization.data(withJSONObject: sanitizedContext)
+            return true
+        } catch {
+            print("[FaroCrashReporter] Failed to serialize crash session context: \(error)")
+            return false
+        }
+    }
+
+    /// Gets crash reports from previous sessions without deleting them.
+    ///
+    /// JavaScript acknowledges a report only after successful delivery or an
+    /// intentional local discard.
+    ///
+    /// - Returns: Array of crash report JSON strings, or nil if no crashes
+    @objc public static func getPendingCrashReports() -> [String]? {
+        guard enable(), let reporter = crashReporter, reporter.hasPendingCrashReport() else {
+            return nil
+        }
+
+        do {
+            let data = try reporter.loadPendingCrashReportDataAndReturnError()
+            let reportId = reportIdentifier(for: data)
+
+            do {
+                let plcrReport = try PLCrashReport(data: data)
+                let crashReport = try FaroCrashReport(from: plcrReport)
+                if let json = exportCrashReportAsJSON(crashReport, reportId: reportId) {
+                    return [json]
+                }
+            } catch {
+                print("[FaroCrashReporter] Failed to parse pending crash report: \(error)")
+            }
+
+            // Return a stable marker so JavaScript can acknowledge an unreadable
+            // report rather than assigning it to the new session or retrying forever.
+            return [malformedReportJSON(reportId: reportId)]
+        } catch {
+            print("[FaroCrashReporter] Failed to load pending crash report: \(error)")
+            return nil
+        }
+    }
+
+    /// Purges the pending report only when its stable ID was acknowledged.
+    ///
+    /// - Parameter reportIds: Stable IDs handled by JavaScript
+    /// - Returns: true when no matching report remains or the matching report was purged
+    @objc public static func acknowledgeCrashReports(_ reportIds: [String]) -> Bool {
+        guard enable(), let reporter = crashReporter else {
+            return false
+        }
+        guard reporter.hasPendingCrashReport() else {
+            return true
+        }
+
+        let acknowledgedIds = Set(
+            reportIds
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        )
+        guard !acknowledgedIds.isEmpty else {
+            return true
+        }
+
+        do {
+            let data = try reporter.loadPendingCrashReportDataAndReturnError()
+            guard acknowledgedIds.contains(reportIdentifier(for: data)) else {
+                return true
+            }
+            reporter.purgePendingCrashReport()
+            return true
+        } catch {
+            print("[FaroCrashReporter] Failed to acknowledge pending crash report: \(error)")
+            return false
+        }
+    }
+
     /// Gets crash reports from previous sessions as JSON strings.
     ///
     /// Returns an array of JSON strings, each representing a crash report.
     /// The JSON format matches the Android implementation for consistency.
-    /// After calling this method, pending crash reports are purged.
+    /// This legacy API eagerly purges returned reports for older JavaScript bundles
+    /// that cannot acknowledge delivery.
     ///
     /// - Returns: Array of crash report JSON strings, or nil if no crashes
     @objc public static func getCrashReports() -> [String]? {
-        // Ensure crash reporter is enabled
-        guard enable() else {
+        guard let crashReports = getPendingCrashReports() else {
             return nil
         }
 
-        guard let reporter = crashReporter else {
-            return nil
-        }
-
-        guard reporter.hasPendingCrashReport() else {
-            return nil
-        }
-
-        var crashReports: [String] = []
-
-        do {
-            let data = try reporter.loadPendingCrashReportDataAndReturnError()
-            let plcrReport = try PLCrashReport(data: data)
-            let crashReport = try FaroCrashReport(from: plcrReport)
-
-            // Convert to JSON matching Android format
-            if let jsonString = exportCrashReportAsJSON(crashReport) {
-                crashReports.append(jsonString)
-            }
-        } catch {
-            print("[FaroCrashReporter] Failed to load crash report: \(error)")
-        }
-
-        // Purge the crash report after loading
-        reporter.purgePendingCrashReport()
-
-        return crashReports.isEmpty ? nil : crashReports
+        let reportIds = crashReports.compactMap(reportIdentifier(from:))
+        _ = acknowledgeCrashReports(reportIds)
+        return crashReports
     }
 
     // MARK: - Private Helpers
 
     /// Converts a FaroCrashReport to JSON string matching the Android format.
-    private static func exportCrashReportAsJSON(_ crashReport: FaroCrashReport) -> String? {
+    private static func exportCrashReportAsJSON(_ crashReport: FaroCrashReport, reportId: String) -> String? {
         var json: [String: Any] = [:]
+        json["reportId"] = reportId
 
         // Reason - matches Android's "reason" field
         // For iOS, we use the signal name as the reason
@@ -176,6 +256,14 @@ public class FaroCrashReporter: NSObject {
             json["incidentId"] = incidentId
         }
 
+        if let sessionContext = decodeSessionContext(crashReport.contextData) {
+            for key in sessionContextKeys {
+                if let value = sessionContext[key] {
+                    json[key] = value
+                }
+            }
+        }
+
         // Convert to JSON string
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: json, options: [])
@@ -184,6 +272,79 @@ public class FaroCrashReporter: NSObject {
             print("[FaroCrashReporter] Failed to serialize crash report: \(error)")
             return nil
         }
+    }
+
+    private static func sanitizeSessionContext(_ context: [String: Any]) -> [String: Any] {
+        var sanitized: [String: Any] = [:]
+
+        if let sessionId = nonEmptyString(context["sessionId"]) {
+            sanitized["sessionId"] = sessionId
+        }
+        if let activatedAt = context["activatedAt"] as? NSNumber,
+           activatedAt.doubleValue.isFinite,
+           activatedAt.doubleValue > 0 {
+            sanitized["activatedAt"] = activatedAt
+        }
+        if let isSampled = context["isSampled"] as? NSNumber {
+            sanitized["isSampled"] = isSampled.boolValue
+        }
+        for key in ["appVersion", "appRelease", "appBundleId"] {
+            if let value = nonEmptyString(context[key]) {
+                sanitized[key] = value
+            }
+        }
+
+        return sanitized
+    }
+
+    private static func decodeSessionContext(_ data: Data?) -> [String: Any]? {
+        guard let data else {
+            return nil
+        }
+        do {
+            guard let context = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  nonEmptyString(context["sessionId"]) != nil else {
+                return nil
+            }
+            return sanitizeSessionContext(context)
+        } catch {
+            print("[FaroCrashReporter] Failed to decode crash session context: \(error)")
+            return nil
+        }
+    }
+
+    private static func nonEmptyString(_ value: Any?) -> String? {
+        guard let string = value as? String else {
+            return nil
+        }
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func malformedReportJSON(reportId: String) -> String {
+        let data = try? JSONSerialization.data(withJSONObject: ["reportId": reportId])
+        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "{\"reportId\":\"\(reportId)\"}"
+    }
+
+    private static func reportIdentifier(from crashReportJSON: String) -> String? {
+        guard let data = crashReportJSON.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return nonEmptyString(json["reportId"])
+    }
+
+    private static func reportIdentifier(for data: Data) -> String {
+        // PLCrashReporter stores a single immutable report. A deterministic hash
+        // gives both retrieval and acknowledgement the same stable opaque ID,
+        // including when the report itself cannot be parsed.
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in data {
+            hash ^= UInt64(byte)
+            hash = hash &* 1_099_511_628_211
+        }
+        let hex = String(hash, radix: 16)
+        return "ios-\(String(repeating: "0", count: max(0, 16 - hex.count)))\(hex)"
     }
 
     /// Creates a human-readable description of the crash.
