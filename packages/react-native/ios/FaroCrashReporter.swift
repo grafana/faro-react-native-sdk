@@ -22,6 +22,8 @@ public class FaroCrashReporter: NSObject {
     private static var crashReporter: PLCrashReporter?
     private static var isEnabled = false
     private static let stateLock = NSLock()
+    // activatedAt keeps the persisted context aligned with Android. iOS does not
+    // use it to match a pending PLCrashReporter report.
     private static let sessionContextKeys = [
         "sessionId",
         "activatedAt",
@@ -109,6 +111,7 @@ public class FaroCrashReporter: NSObject {
     ///
     /// PLCrashReporter copies this data into the report at crash time, allowing a
     /// recovered crash to retain its original session after the app restarts.
+    /// Keep this payload minimal because it is embedded in every crash report.
     ///
     /// - Parameter sessionContext: Sanitized session and app fields from JavaScript
     /// - Returns: true when the context was stored, false when it was invalid
