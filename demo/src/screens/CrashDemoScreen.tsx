@@ -16,7 +16,7 @@ import {
  * Demonstrates crash reporting and performance monitoring features:
  * - Native crashes (Java/Kotlin exceptions on Android, fatal errors on iOS)
  * - ANR simulation (blocking main thread on Android)
- * - UI freeze detection (frozen frames >100ms)
+ * - UI freeze detection (frozen frames >700ms)
  * - Slow frame detection (frames <60 FPS)
  * - Heavy load simulation (combined performance issues)
  *
@@ -81,7 +81,7 @@ export function CrashDemoScreen() {
     const platformDetails =
       Platform.OS === 'ios'
         ? 'This blocks the main thread for 2 seconds.\n\n' +
-          'When frame callbacks resume, they detect the time gap as a frozen frame (>100ms).\n\n' +
+          'When frame callbacks resume, they detect the time gap as a frozen frame (>700ms).\n\n' +
           'After ~5 seconds, FrameMonitoringInstrumentation will poll and log `app_frozen_frame` measurements.\n\n' +
           'Use "Check Frame Metrics" button to see frozen frame count immediately.'
         : 'The system will detect the unresponsive app and force-kill it. This records as REASON_ANR in ApplicationExitInfo.\n\n' +

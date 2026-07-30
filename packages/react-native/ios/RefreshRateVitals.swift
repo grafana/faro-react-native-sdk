@@ -20,7 +20,7 @@ import UIKit
     private var targetFps: Double = 60.0
     
     /// Threshold in seconds for frozen frame detection
-    private var frozenFrameThreshold: Double = 0.100
+    private var frozenFrameThreshold: Double = 0.700
     
     /// Last calculated refresh rate
     @objc public private(set) var lastRefreshRate: Double = 0.0
@@ -60,7 +60,7 @@ import UIKit
     /// Configure monitoring parameters
     /// - Parameters:
     ///   - targetFps: Target FPS for slow frame detection (default 60)
-    ///   - frozenFrameThresholdMs: Threshold in ms for frozen frames (default 100)
+    ///   - frozenFrameThresholdMs: Threshold in ms for frozen frames (default 700)
     ///   - normalizedRefreshRate: Normalized rate for ProMotion displays (default 60)
     @objc public func configure(
         targetFps: Double,

@@ -97,7 +97,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun startFrameMonitoring(config: ReadableMap) {
         val targetFps = if (config.hasKey("targetFps")) config.getDouble("targetFps") else 60.0
-        val frozenFrameThresholdMs = if (config.hasKey("frozenFrameThresholdMs")) config.getDouble("frozenFrameThresholdMs") else 100.0
+        val frozenFrameThresholdMs = if (config.hasKey("frozenFrameThresholdMs")) config.getDouble("frozenFrameThresholdMs") else 700.0
         val normalizedRefreshRate = if (config.hasKey("normalizedRefreshRate")) config.getDouble("normalizedRefreshRate") else 60.0
 
         FrameMonitor.configure(
@@ -106,17 +106,8 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
             normalizedRefreshRate = normalizedRefreshRate
         )
 
-        // Set up event callbacks to emit events to JavaScript
+        // Refresh rate events only; slow/frozen frames are read via getFrameMetrics polling
         FrameMonitor.setCallbacks(
-            onSlowFrames = { count -> sendEvent("onSlowFrames", count) },
-            onFrozenFrame = { count, durationMs -> 
-                // Send frozen frame event with count and duration
-                val data = WritableNativeMap().apply {
-                    putInt("count", count)
-                    putDouble("durationMs", durationMs)
-                }
-                sendEvent("onFrozenFrame", data)
-            },
             onRefreshRate = { rate -> sendEvent("onRefreshRate", rate) }
         )
 

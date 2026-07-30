@@ -248,7 +248,7 @@ Faro.initialize(
   - Minimum duration: 50ms (~3 frames at 60fps) to be counted
   - Filters out noise and reports user-perceptible jank
 - **Frozen Frame Detection**: Individual frames exceeding threshold
-  - Default: 100ms
+  - Default: 700ms
   - Tracks count and total duration
 
 ##### **Flutter SDK**
@@ -265,8 +265,8 @@ Faro.initialize(
 - Uses `Choreographer` (same API as React Native)
 - Event callback to Dart layer via method channel
 - Dual collection: Polling + events
-- ✅ Slow frame detection: counts frames where fps < 60, sends `onSlowFrames` → `app_frames_rate`
-- ✅ Frozen frame detection: counts frames > 100ms, sends `onFrozenFrame` → `app_frozen_frame`
+- ✅ Slow frame detection: counts frames where fps < 60, polled every 30s → `app_frames_rate`
+- ✅ Frozen frame detection: counts frames > 700ms, polled every 30s → `app_frozen_frame`
 
 **Implementation difference vs React Native:**
 
@@ -374,7 +374,7 @@ initializeFaro({
   // Advanced frame monitoring options
   frameMonitoringOptions: {
     targetFps: 60, // default: 60
-    frozenFrameThresholdMs: 100, // default: 100ms
+    frozenFrameThresholdMs: 700, // default: 700ms
     refreshRatePollingInterval: 30000, // default: 30000 (30s)
     normalizedRefreshRate: 60, // default: 60 (ProMotion)
   },

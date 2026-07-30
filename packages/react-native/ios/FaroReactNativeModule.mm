@@ -35,7 +35,7 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCpuUsage)
 RCT_EXPORT_METHOD(startFrameMonitoring:(NSDictionary *)config)
 {
   double targetFps = [[config objectForKey:@"targetFps"] doubleValue] ?: 60.0;
-  double frozenFrameThresholdMs = [[config objectForKey:@"frozenFrameThresholdMs"] doubleValue] ?: 100.0;
+  double frozenFrameThresholdMs = [[config objectForKey:@"frozenFrameThresholdMs"] doubleValue] ?: 700.0;
   double normalizedRefreshRate = [[config objectForKey:@"normalizedRefreshRate"] doubleValue] ?: 60.0;
   
   dispatch_async(dispatch_get_main_queue(), ^{

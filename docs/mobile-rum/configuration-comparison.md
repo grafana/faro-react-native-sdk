@@ -38,7 +38,7 @@ initializeFaro({
   // Frame Monitoring (advanced)
   frameMonitoringOptions: {
     targetFps: 60,
-    frozenFrameThresholdMs: 100,
+    frozenFrameThresholdMs: 700,
     refreshRatePollingInterval: 30000,
     normalizedRefreshRate: 60,
   },

@@ -26,7 +26,7 @@ object FrameMonitor {
 
     // Configuration
     private var targetFps: Double = 60.0
-    private var frozenFrameThresholdNs: Long = 100 * NANOSECONDS_IN_MILLISECOND
+    private var frozenFrameThresholdNs: Long = 700 * NANOSECONDS_IN_MILLISECOND
     private var normalizedRefreshRate: Double = 60.0
 
     // State
@@ -54,12 +54,12 @@ object FrameMonitor {
      * Configure monitoring parameters.
      *
      * @param targetFps Target FPS for slow frame detection (default 60)
-     * @param frozenFrameThresholdMs Threshold in ms for frozen frames (default 100)
+     * @param frozenFrameThresholdMs Threshold in ms for frozen frames (default 700)
      * @param normalizedRefreshRate Normalized rate for high-refresh displays (default 60)
      */
     fun configure(
         targetFps: Double = 60.0,
-        frozenFrameThresholdMs: Double = 100.0,
+        frozenFrameThresholdMs: Double = 700.0,
         normalizedRefreshRate: Double = 60.0
     ) {
         this.targetFps = targetFps
