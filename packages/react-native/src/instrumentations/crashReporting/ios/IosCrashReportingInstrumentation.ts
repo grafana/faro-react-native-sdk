@@ -1,6 +1,6 @@
 import { VERSION } from '@grafana/faro-core';
 
-import { BaseCrashReportingInstrumentation } from '../BaseCrashReportingInstrumentation';
+import { RecoveredCrashReportingInstrumentation } from '../RecoveredCrashReportingInstrumentation';
 import type { CrashReport } from '../types';
 
 import { resolveCrashErrorMessage, shouldSkipCrashReport } from './crashErrorMessage';
@@ -20,7 +20,7 @@ import { type ParsedIosCrashTrace, parseIosCrashTrace } from './parseIosCrashTra
  *
  * Stack frames are symbolicated on the native side before being surfaced.
  */
-export class IosCrashReportingInstrumentation extends BaseCrashReportingInstrumentation {
+export class IosCrashReportingInstrumentation extends RecoveredCrashReportingInstrumentation {
   readonly name = '@grafana/faro-react-native:instrumentation-crash-ios';
   readonly version = VERSION;
 

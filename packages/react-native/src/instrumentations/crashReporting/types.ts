@@ -13,7 +13,7 @@ export interface CrashReport {
   // iOS-specific fields
   reason?: string; // Signal name (e.g., 'SIGSEGV')
   status?: number; // Exit status code
-  // Android recovered-crash session context
+  // Recovered-crash session context
   sessionId?: string;
   isSampled?: boolean;
   appVersion?: string;
