@@ -138,8 +138,10 @@ Each package builds to multiple formats:
 - [Tracing Documentation](./packages/react-native-tracing/README.md)
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Changelog](./CHANGELOG.md)
+- Cross-SDK mobile RUM docs (including frozen/slow frame monitoring when
+  that epic lands): [Frontend Observability Knowledge Workbench][fe-o11y-wb]
 
-Cross-SDK mobile RUM documentation (including frozen/slow frame monitoring once that epic lands) lives in the [Frontend Observability Knowledge Workbench](https://github.com/grafana/frontend-o11y-knowledge-workbench).
+[fe-o11y-wb]: https://github.com/grafana/frontend-o11y-knowledge-workbench
 
 ## Contributing
 
