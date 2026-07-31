@@ -139,6 +139,8 @@ Each package builds to multiple formats:
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Changelog](./CHANGELOG.md)
 
+Cross-SDK mobile RUM documentation (including frozen/slow frame monitoring once that epic lands) lives in the [Frontend Observability Knowledge Workbench](https://github.com/grafana/frontend-o11y-knowledge-workbench).
+
 ## Contributing
 
 We welcome contributions! Please see our

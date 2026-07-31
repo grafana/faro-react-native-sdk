@@ -394,6 +394,10 @@ There is no supported manual release path in this repo. Version bumps, changelog
 
 Package-specific documentation lives in each package README. Cross-SDK mobile RUM comparisons are maintained outside this repository.
 
+When the frozen/slow frames epic is complete, frame monitoring documentation (thresholds, polling behavior, metric formats) will be added to the [Frontend Observability Knowledge Workbench](https://github.com/grafana/frontend-o11y-knowledge-workbench).
+
+When the frozen/slow frames epic is complete, frame monitoring documentation (thresholds, polling behavior, metric formats) will be added to the [Frontend Observability Knowledge Workbench](https://github.com/grafana/frontend-o11y-knowledge-workbench).
+
 ## Feature Parity Notes
 
 This SDK aims for feature parity with:
