@@ -96,6 +96,9 @@
   succeeds.
 - iOS upload script loads `ios/.xcode.env` / `.xcode.env.local` before
   checking `FARO_*` env vars so Xcode-local configuration is picked up.
+- Recovered iOS native crashes retain their crash-time Faro session and remain
+  pending until delivery succeeds. Reports without usable crash-time session
+  context are discarded instead of being assigned to the restarted session.
 
 ### Security
 
