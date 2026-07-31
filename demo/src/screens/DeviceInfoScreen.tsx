@@ -143,8 +143,7 @@ export default function DeviceInfoScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>💡 Usage in Grafana Cloud</Text>
           <Text style={styles.instructions}>
-            All metadata is sent as session attributes (device_* prefix)
-            matching Flutter SDK convention.
+            All metadata is sent as session attributes (device_* prefix).
             {'\n\n'}
             Query examples in Grafana:
             {'\n\n'}

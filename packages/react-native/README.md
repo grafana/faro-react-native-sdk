@@ -841,7 +841,7 @@ The SDK emits `session_start` when a new session is created (including when sess
 
 ### Default Session Attributes
 
-Every telemetry event automatically includes default session attributes with device and SDK information. These attributes match the [Grafana Faro Flutter SDK](https://github.com/grafana/faro-flutter-sdk) format for cross-platform compatibility.
+Every telemetry event automatically includes default session attributes with device and SDK information.
 
 **Automatically Collected Attributes:**
 
@@ -1168,13 +1168,13 @@ The SDK collects the following device information synchronously:
 
 ## Device Information
 
-The SDK automatically collects device information and sends it as **session attributes** with every telemetry event. This matches the Faro Flutter SDK convention and provides comprehensive device context for mobile observability.
+The SDK automatically collects device information and sends it as **session attributes** with every telemetry event.
 
 ### Session Attributes
 
-All device information is sent as session attributes (not browser meta) to match Flutter SDK:
+All device information is sent as session attributes (not browser meta):
 
-**Core Attributes (matching Flutter SDK):**
+**Core Attributes:**
 
 - `faro_sdk_version` - SDK version (e.g., "1.0.0")
 - `react_native_version` - React Native version (e.g., "0.75.1")
@@ -1249,7 +1249,7 @@ These attributes are automatically collected during Faro initialization and incl
 - Session attributes are included with every telemetry event
 - All fields are optional and gracefully handle permission errors
 - The React Native SDK sends an empty `page` meta field to override faro-core's default web-specific page meta
-- Screen tracking is handled via `view` meta instead of `page` meta (matching Flutter SDK)
+- Screen tracking is handled via `view` meta instead of `page` meta
 - Battery, carrier, and low power mode info may not be available on all devices/OS versions
 
 ## TypeScript

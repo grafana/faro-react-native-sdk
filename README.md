@@ -136,7 +136,6 @@ Each package builds to multiple formats:
 
 - [Core SDK Documentation](./packages/react-native/README.md)
 - [Tracing Documentation](./packages/react-native-tracing/README.md)
-- [Feature Parity Matrix](./docs/mobile-rum/feature-parity-matrix.md)
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Changelog](./CHANGELOG.md)
 

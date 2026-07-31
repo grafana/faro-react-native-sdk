@@ -392,27 +392,15 @@ There is no supported manual release path in this repo. Version bumps, changelog
 
 ## Documentation
 
-### docs/mobile-rum/
-
-The Mobile RUM comparison docs (`docs/mobile-rum/index.md` and related files) are read by both technical and non-technical people (product, support, stakeholders). When writing or updating it:
-
-- **Audience**: Assume readers include people unfamiliar with implementation details.
-- **"How Data is Collected"**: Keep the list structure (bullets, iOS/Android breakdown) but use plain language. Avoid file paths, class names, internal APIs. It's fine to name libraries (e.g. axios, dio) when relevant.
-- **Prefer**: "The SDK automatically tracks..." over "Patches `global.fetch` via `HttpInstrumentation`".
-- **Avoid**: `task_threads()`, `phys_footprint`, `/proc/[pid]/stat`, `markEventEnd`, `startSpanManual`, etc., unless the technical distinction matters for the comparison.
-- **Flutter SDK values**: Never use "Check Flutter docs" as a placeholder. If `faro-flutter-sdk` is in the workspace, go to `faro-flutter-sdk/lib/` and look up the implementation (config option, event name, default value, etc.)—do not search the web. Only search the web if `faro-flutter-sdk` is not cloned in the workspace.
+Package-specific documentation lives in each package README. Cross-SDK mobile RUM comparisons are maintained outside this repository.
 
 ## Feature Parity Notes
 
 This SDK aims for feature parity with:
 
 1. Faro Web SDK (where applicable to React Native)
-2. Faro Flutter SDK (for mobile-specific features like startup tracking, performance monitoring)
 
-When implementing new features, check:
-
-- `docs/mobile-rum/feature-parity-matrix.md` - Detailed feature comparison between React Native and Flutter SDKs
-- Faro Flutter SDK: If `faro-flutter-sdk` is in the workspace, go to `faro-flutter-sdk/lib/` and inspect for implementation details and patterns. Only search the web if the repo is not in the workspace.
+When implementing new features, check the Faro Web SDK and Grafana mobile RUM conventions for alignment.
 
 ## Performance Monitoring
 
@@ -421,4 +409,4 @@ Native OS-level APIs are used for accurate metrics:
 - **iOS:** `host_statistics()` for CPU, `task_info()` for memory
 - **Android:** `/proc/[pid]/stat` for CPU, `/proc/[pid]/status` for memory
 
-These implementations match the Flutter SDK for cross-platform consistency.
+These implementations use native OS-level APIs for accurate mobile metrics.

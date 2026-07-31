@@ -34,9 +34,9 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCpuUsage)
 /// @param config Dictionary with targetFps, frozenFrameThresholdMs, normalizedRefreshRate
 RCT_EXPORT_METHOD(startFrameMonitoring:(NSDictionary *)config)
 {
-  double targetFps = [[config objectForKey:@"targetFps"] doubleValue] ?: 60.0;
-  double frozenFrameThresholdMs = [[config objectForKey:@"frozenFrameThresholdMs"] doubleValue] ?: 700.0;
-  double normalizedRefreshRate = [[config objectForKey:@"normalizedRefreshRate"] doubleValue] ?: 60.0;
+  double targetFps = [[config objectForKey:@"targetFps"] doubleValue] ?: RefreshRateVitals.defaultTargetFps;
+  double frozenFrameThresholdMs = [[config objectForKey:@"frozenFrameThresholdMs"] doubleValue] ?: RefreshRateVitals.defaultFrozenFrameThresholdMs;
+  double normalizedRefreshRate = [[config objectForKey:@"normalizedRefreshRate"] doubleValue] ?: RefreshRateVitals.defaultNormalizedRefreshRate;
   
   dispatch_async(dispatch_get_main_queue(), ^{
     [[RefreshRateVitals shared] configureWithTargetFps:targetFps
@@ -79,12 +79,13 @@ RCT_EXPORT_METHOD(getFrameMetrics:(RCTPromiseResolveBlock)resolve
 {
   dispatch_async(dispatch_get_main_queue(), ^{
     RefreshRateVitals *vitals = [RefreshRateVitals shared];
-    
+    NSDictionary *frozenMetrics = [vitals getAndResetFrozenMetrics];
+
     NSDictionary *metrics = @{
       @"refreshRate": @([vitals getRefreshRate]),
       @"slowFrames": @([vitals getAndResetSlowFrames]),
-      @"frozenFrames": @([vitals getAndResetFrozenFrames]),
-      @"frozenDurationMs": @([vitals getAndResetFrozenDuration])
+      @"frozenFrames": frozenMetrics[@"count"],
+      @"frozenDurationMs": frozenMetrics[@"durationMs"]
     };
     
     resolve(metrics);

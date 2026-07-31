@@ -8,7 +8,7 @@ import type { FrameMetrics, FrameMonitoringOptions } from './types';
 
 /**
  * Default configuration values. Frozen frame threshold aligns with Android Vitals
- * and OpenTelemetry Android (700ms). Other defaults match Flutter SDK values.
+ * and OpenTelemetry Android slow rendering instrumentation (700ms).
  */
 const DEFAULT_TARGET_FPS = 60;
 const DEFAULT_FROZEN_FRAME_THRESHOLD_MS = 700;
@@ -211,14 +211,7 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private handleFrozenFrame(count: number, durationMs: number): void {
-    // Only send frozen frame events if duration is greater than 0
-    // This filters out any erroneous 0ms frozen frames
     if (durationMs > 0) {
-      // 🔍 TEMP DEBUG LOG - Remove after analysis
-      console.log(
-        `[Faro DEBUG ${Platform.OS.toUpperCase()}] 🧊 SENDING frozen frame: count=${count}, duration=${durationMs}ms`
-      );
-
       this.api.pushMeasurement(
         {
           type: 'app_frozen_frame',

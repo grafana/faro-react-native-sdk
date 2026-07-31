@@ -13,8 +13,6 @@ const { FaroReactNativeModule } = NativeModules;
  * - iOS: task_info() for memory, host_statistics() for CPU
  * - Android: /proc/[pid]/status for memory, /proc/[pid]/stat for CPU
  *
- * Implementation ported from Faro Flutter SDK with feature parity.
- *
  * **Key Features**:
  * - ✅ NO manual setup required - OS tracks metrics automatically!
  * - ✅ Periodic collection (default: every 30 seconds)
@@ -143,16 +141,14 @@ export class PerformanceInstrumentation extends BaseInstrumentation {
       const cpuUsage = FaroReactNativeModule.getCpuUsage();
       this.logDebug(`CPU: raw value = ${cpuUsage}`);
 
-      // Validate CPU usage (Flutter SDK filters 0-100 range, but allows >100)
-      // Skip null, negative, or exactly 0 (baseline reading)
+      // Validate CPU usage. Skip null, negative, or exactly 0 (baseline reading).
       if (cpuUsage == null || cpuUsage <= 0) {
         this.logDebug('CPU: skipping - value is null or <= 0');
         return;
       }
 
       this.logDebug(`CPU: pushing measurement with cpu_usage = ${cpuUsage}`);
-      // Flutter SDK also filters values >= 100, but we allow them as they can be valid
-      // in multi-core scenarios where one core is maxed out
+      // Values >= 100 can be valid in multi-core scenarios where one core is maxed out.
       this.api.pushMeasurement({
         type: 'app_cpu_usage',
         values: { cpu_usage: cpuUsage },

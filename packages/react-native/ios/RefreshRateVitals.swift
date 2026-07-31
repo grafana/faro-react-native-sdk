@@ -9,18 +9,22 @@ import UIKit
 /// Uses CADisplayLink to measure actual frame durations and calculate FPS.
 /// Handles ProMotion displays (120Hz) by normalizing to 60 FPS baseline.
 @objc public class RefreshRateVitals: NSObject {
+    @objc public static let defaultTargetFps: Double = 60.0
+    @objc public static let defaultFrozenFrameThresholdMs: Double = 700.0
+    @objc public static let defaultNormalizedRefreshRate: Double = 60.0
+
     private var displayLink: CADisplayLink?
     private var lastFrameTimestamp: CFTimeInterval?
     private var nextFrameDuration: CFTimeInterval?
     
     /// Normalized refresh rate for backend compatibility (default 60 FPS)
-    private var normalizedRefreshRate: Double = 60.0
+    private var normalizedRefreshRate: Double = RefreshRateVitals.defaultNormalizedRefreshRate
     
     /// Target FPS for slow frame detection
-    private var targetFps: Double = 60.0
+    private var targetFps: Double = RefreshRateVitals.defaultTargetFps
     
     /// Threshold in seconds for frozen frame detection
-    private var frozenFrameThreshold: Double = 0.700
+    private var frozenFrameThreshold: Double = RefreshRateVitals.defaultFrozenFrameThresholdMs / 1000.0
     
     /// Last calculated refresh rate
     @objc public private(set) var lastRefreshRate: Double = 0.0
@@ -111,18 +115,16 @@ import UIKit
         return count
     }
     
-    /// Get and reset frozen frame count
-    @objc public func getAndResetFrozenFrames() -> Int {
+    /// Get and reset frozen frame count and duration atomically.
+    @objc public func getAndResetFrozenMetrics() -> [String: NSNumber] {
         let count = frozenFrameCount
-        frozenFrameCount = 0
-        return count
-    }
-    
-    /// Get and reset frozen frame duration in milliseconds
-    @objc public func getAndResetFrozenDuration() -> Double {
         let duration = frozenFrameDurationMs
+        frozenFrameCount = 0
         frozenFrameDurationMs = 0
-        return duration
+        return [
+            "count": NSNumber(value: count),
+            "durationMs": NSNumber(value: duration),
+        ]
     }
     
     // MARK: - Private Methods
@@ -133,12 +135,7 @@ import UIKit
             let frameDuration = link.timestamp - lastTimestamp
             if frameDuration > frozenFrameThreshold {
                 frozenFrameCount += 1
-                
-                // Track duration in milliseconds
-                let durationMs = frameDuration * 1000
-                frozenFrameDurationMs += durationMs
-                
-                NSLog("[Faro] Frozen frame detected! Duration: %.0fms (threshold: %.0fms)", durationMs, frozenFrameThreshold * 1000)
+                frozenFrameDurationMs += frameDuration * 1000
             }
         }
         
@@ -150,12 +147,7 @@ import UIKit
         // A slow frame "event" is a period of consecutive frames below target FPS
         // This groups consecutive slow frames to report meaningful jank, not microsecond variations
         let isSlow = fps < targetFps
-        
-        // 🔍 TEMP DEBUG LOG - Remove after analysis
-        if isSlow {
-            NSLog("[Faro DEBUG IOS] 🐌 Slow frame detected: %.1f FPS (target: %.1f)", fps, targetFps)
-        }
-        
+
         if isSlow {
             if !inSlowFrameEvent {
                 // Start new slow frame event
@@ -166,17 +158,11 @@ import UIKit
             // Frame is good - check if we should end the current slow frame event
             if inSlowFrameEvent {
                 let eventDuration = link.timestamp - slowFrameEventStartTime
-                let eventDurationMs = eventDuration * 1000
-                
+
                 // Only count as a slow frame event if it lasted long enough to be user-perceptible
                 // This filters out single-frame dips that don't affect user experience
                 if eventDuration >= slowFrameEventMinDuration {
                     slowFrameEventCount += 1
-                    // 🔍 TEMP DEBUG LOG - Remove after analysis
-                    NSLog("[Faro DEBUG IOS] ✅ COUNTED as event (%.0fms)! Total events now: %d", eventDurationMs, slowFrameEventCount)
-                } else {
-                    // 🔍 TEMP DEBUG LOG - Remove after analysis
-                    NSLog("[Faro DEBUG IOS] ❌ NOT counted (%.0fms is too short). Total events still: %d", eventDurationMs, slowFrameEventCount)
                 }
                 
                 inSlowFrameEvent = false

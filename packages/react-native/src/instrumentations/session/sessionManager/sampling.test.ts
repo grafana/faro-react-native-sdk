@@ -21,7 +21,7 @@ describe('Sampling', () => {
     expect(isSampled()).toBe(true);
   });
 
-  describe('Sampling interface (Flutter-style)', () => {
+  describe('Sampling interface', () => {
     it('SamplingRate(1) samples all sessions', () => {
       const config = mockConfig({
         sessionTracking: {

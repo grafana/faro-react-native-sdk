@@ -96,9 +96,9 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun startFrameMonitoring(config: ReadableMap) {
-        val targetFps = if (config.hasKey("targetFps")) config.getDouble("targetFps") else 60.0
-        val frozenFrameThresholdMs = if (config.hasKey("frozenFrameThresholdMs")) config.getDouble("frozenFrameThresholdMs") else 700.0
-        val normalizedRefreshRate = if (config.hasKey("normalizedRefreshRate")) config.getDouble("normalizedRefreshRate") else 60.0
+        val targetFps = if (config.hasKey("targetFps")) config.getDouble("targetFps") else FrameMonitor.DEFAULT_TARGET_FPS
+        val frozenFrameThresholdMs = if (config.hasKey("frozenFrameThresholdMs")) config.getDouble("frozenFrameThresholdMs") else FrameMonitor.DEFAULT_FROZEN_FRAME_THRESHOLD_MS
+        val normalizedRefreshRate = if (config.hasKey("normalizedRefreshRate")) config.getDouble("normalizedRefreshRate") else FrameMonitor.DEFAULT_NORMALIZED_REFRESH_RATE
 
         FrameMonitor.configure(
             targetFps = targetFps,
@@ -145,11 +145,12 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun getFrameMetrics(promise: Promise) {
+        val frozenMetrics = FrameMonitor.getAndResetFrozenMetrics()
         val metrics = WritableNativeMap().apply {
             putDouble("refreshRate", FrameMonitor.getRefreshRate())
             putInt("slowFrames", FrameMonitor.getAndResetSlowFrames())
-            putInt("frozenFrames", FrameMonitor.getAndResetFrozenFrames())
-            putDouble("frozenDurationMs", FrameMonitor.getAndResetFrozenDuration())
+            putInt("frozenFrames", frozenMetrics.count)
+            putDouble("frozenDurationMs", frozenMetrics.durationMs)
         }
         promise.resolve(metrics)
     }

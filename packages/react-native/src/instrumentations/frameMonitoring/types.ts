@@ -1,8 +1,7 @@
 /**
  * Configuration options for Frame Monitoring instrumentation.
  *
- * These are React Native-specific advanced options. Most defaults align with the Flutter SDK;
- * frozen frame threshold follows Android Vitals / OpenTelemetry Android (700ms).
+ * Frozen frame threshold (700ms).
  *
  * Note: To enable frame monitoring, set `refreshRateVitals: true` in ReactNativeConfig.
  */
@@ -10,7 +9,7 @@ export interface FrameMonitoringOptions {
   /**
    * Target frames per second for slow frame detection.
    * Frames rendering below this threshold are considered "slow".
-   * Default: 60 (Flutter SDK hardcoded value)
+   * Default: 60
    */
   targetFps?: number;
 
@@ -30,7 +29,7 @@ export interface FrameMonitoringOptions {
   /**
    * Normalized refresh rate for ProMotion displays (120Hz, etc.).
    * Used to normalize frame rates for high-refresh-rate displays to a standard baseline.
-   * Default: 60 (Flutter SDK's backendSupportedFrameRate)
+   * Default: 60
    */
   normalizedRefreshRate?: number;
 }

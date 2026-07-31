@@ -7,9 +7,6 @@ import type { Meta } from '@grafana/faro-core';
  * allowing sampling decisions based on session attributes, user info, app
  * environment, and other metadata.
  *
- * This aligns with the Faro Flutter SDK's `SamplingContext` which provides
- * `meta` to the sampler.
- *
  * @example
  * ```ts
  * sampling: SamplingFunction((context) => {
