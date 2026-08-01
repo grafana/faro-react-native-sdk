@@ -32,11 +32,11 @@ import UIKit
     /// Count of slow frame events since last reset (not individual frames)
     @objc public private(set) var slowFrameEventCount: Int = 0
     
-    /// Count of frozen frames since last reset
-    @objc public private(set) var frozenFrameCount: Int = 0
-    
-    /// Total duration of frozen frames in milliseconds
-    @objc public private(set) var frozenFrameDurationMs: Double = 0
+    /// Lock for frozen frame count and duration (writer and poll snapshot).
+    private let frozenMetricsLock = NSLock()
+
+    private var frozenFrameCount: Int = 0
+    private var frozenFrameDurationMs: Double = 0
     
     /// Whether monitoring is active
     @objc public private(set) var isMonitoring: Bool = false
@@ -86,8 +86,10 @@ import UIKit
         
         // Reset counters
         slowFrameEventCount = 0
+        frozenMetricsLock.lock()
         frozenFrameCount = 0
         frozenFrameDurationMs = 0
+        frozenMetricsLock.unlock()
         lastFrameTimestamp = nil
         nextFrameDuration = nil
         inSlowFrameEvent = false
@@ -117,14 +119,23 @@ import UIKit
     
     /// Get and reset frozen frame count and duration atomically.
     @objc public func getAndResetFrozenMetrics() -> [String: NSNumber] {
+        frozenMetricsLock.lock()
         let count = frozenFrameCount
         let duration = frozenFrameDurationMs
         frozenFrameCount = 0
         frozenFrameDurationMs = 0
+        frozenMetricsLock.unlock()
         return [
             "count": NSNumber(value: count),
             "durationMs": NSNumber(value: duration),
         ]
+    }
+
+    private func recordFrozenFrame(durationMs: Double) {
+        frozenMetricsLock.lock()
+        frozenFrameCount += 1
+        frozenFrameDurationMs += durationMs
+        frozenMetricsLock.unlock()
     }
     
     // MARK: - Private Methods
@@ -134,8 +145,7 @@ import UIKit
         if let lastTimestamp = lastFrameTimestamp {
             let frameDuration = link.timestamp - lastTimestamp
             if frameDuration > frozenFrameThreshold {
-                frozenFrameCount += 1
-                frozenFrameDurationMs += frameDuration * 1000
+                recordFrozenFrame(durationMs: frameDuration * 1000)
             }
         }
         

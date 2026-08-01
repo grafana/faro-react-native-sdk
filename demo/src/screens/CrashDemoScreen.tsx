@@ -163,7 +163,7 @@ export function CrashDemoScreen() {
   const triggerHeavyLoad = () => {
     Alert.alert(
       '⚠️ Warning',
-      'This will cause severe performance issues for 10 seconds!\n\nCombines continuous slow frames with periodic freezes to simulate worst-case performance scenarios.\n\nBoth slow frames and frozen frames will be detected and logged.\n\nContinue?',
+      'This will cause severe performance issues for 10 seconds!\n\nCombines continuous slow frames (~20ms) with periodic 750ms freezes (above the 700ms frozen-frame threshold).\n\nBoth slow frames and frozen frames will be detected and logged.\n\nContinue?',
       [
         { text: 'Cancel', style: 'cancel' },
         {

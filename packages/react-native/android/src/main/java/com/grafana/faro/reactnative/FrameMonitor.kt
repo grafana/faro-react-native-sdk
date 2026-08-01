@@ -41,7 +41,7 @@ object FrameMonitor {
     private var lastRefreshRate: Double = 0.0
     private var lastRefreshRateEmitTimeMs: Long = 0
     private val slowFrameEventCount = AtomicInteger(0)
-    private val frozenFrameCount = AtomicInteger(0)
+    private var frozenFrameCount: Int = 0
     private var frozenFrameDurationMs: Double = 0.0
     private val isMonitoring = AtomicBoolean(false)
 
@@ -98,7 +98,7 @@ object FrameMonitor {
             lastFrameTimeNanos = 0
             lastRefreshRateEmitTimeMs = 0
             slowFrameEventCount.set(0)
-            frozenFrameCount.set(0)
+            frozenFrameCount = 0
             frozenFrameDurationMs = 0.0
             inSlowFrameEvent = false
             slowFrameEventStartTimeNanos = 0
@@ -138,7 +138,7 @@ object FrameMonitor {
         // Reset state
         lastFrameTimeNanos = 0
         slowFrameEventCount.set(0)
-        frozenFrameCount.set(0)
+        frozenFrameCount = 0
         frozenFrameDurationMs = 0.0
     }
 
@@ -162,10 +162,18 @@ object FrameMonitor {
      */
     @Synchronized
     fun getAndResetFrozenMetrics(): FrozenFrameMetrics {
-        val count = frozenFrameCount.getAndSet(0)
+        val count = frozenFrameCount
         val duration = frozenFrameDurationMs
+        frozenFrameCount = 0
         frozenFrameDurationMs = 0.0
         return FrozenFrameMetrics(count, duration)
+    }
+
+    @Synchronized
+    private fun recordFrozenFrame(durationMs: Double) {
+        frozenFrameCount += 1
+        frozenFrameDurationMs += durationMs
+        onFrozenFrame?.invoke(frozenFrameCount, durationMs)
     }
 
     /**
@@ -228,15 +236,8 @@ object FrameMonitor {
 
         // Check for frozen frames (frame duration exceeds threshold)
         if (frameDuration > frozenFrameThresholdNs) {
-            val count = frozenFrameCount.incrementAndGet()
             val durationMs = frameDuration.toDouble() / NANOSECONDS_IN_MILLISECOND
-            
-            // Track duration (synchronized to avoid race conditions)
-            synchronized(this) {
-                frozenFrameDurationMs += durationMs
-            }
-            
-            onFrozenFrame?.invoke(count, durationMs)
+            recordFrozenFrame(durationMs)
         }
 
         lastFrameTimeNanos = frameTimeNanos
