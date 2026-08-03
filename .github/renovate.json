@@ -1,0 +1,54 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 5am on Monday", "before 5am on Wednesday", "before 5am on Friday"],
+  "semanticCommits": "enabled",
+  "separateMajorMinor": true,
+  "separateMultipleMajor": true,
+  "prHourlyLimit": 2,
+  "prConcurrentLimit": 10,
+  "internalChecksFilter": "strict",
+  "postUpdateOptions": ["yarnDedupeHighest"],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  },
+  "packageRules": [
+    {
+      "description": "Group GitHub Actions bumps into a single PR.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "description": "Group dev tooling across the workspace root and packages/* into one PR. These do not reach consumers of the published SDK, so per-package PRs are churn.",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "dev-dependencies"
+    },
+    {
+      "description": "Group everything in the demo app into one PR. The demo is not published; it is a reference wiring sample.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["demo/**"],
+      "groupName": "demo-app"
+    },
+    {
+      "description": "Keep runtime dependencies of the published packages ungrouped. These land in consumers' dependency trees, so each deserves individual review and individual revertability.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["packages/**"],
+      "matchDepTypes": ["dependencies", "peerDependencies"],
+      "groupName": null
+    },
+    {
+      "description": "Keep the OpenTelemetry packages moving in lockstep. They pin each other at exact versions internally, so a partial bump leaves two full OTel trees in the lockfile (a split that yarn dedupe cannot collapse).",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@opentelemetry/**"],
+      "groupName": "opentelemetry"
+    },
+    {
+      "description": "Enforce the org-default 3-day release-age cooldown on ALL npm depTypes (incl @grafana/*, which the injected Grafana org preset exempts) to match yarn's npmMinimalAgeGate in .yarnrc.yml. Placed last so it overrides that preset. Keep this value in sync with that .yarnrc.yml, otherwise Renovate proposes versions yarn refuses to lock and the renovate/artifacts check fails.",
+      "matchDatasources": ["npm"],
+      "minimumReleaseAge": "3 days"
+    }
+  ]
+}
