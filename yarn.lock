@@ -1752,7 +1752,7 @@ __metadata:
     "@react-navigation/native": "npm:^6.1.18"
     "@react-navigation/native-stack": "npm:^6.11.0"
     "@types/jest": "npm:29.5.14"
-    "@types/react": "npm:19.2.15"
+    "@types/react": "npm:19.2.18"
     "@types/react-test-renderer": "npm:19.1.0"
     eslint: "npm:8.57.1"
     jest: "npm:29.7.0"
@@ -1811,7 +1811,7 @@ __metadata:
     "@grafana/faro-core": "npm:^2.8.2"
     "@react-native-async-storage/async-storage": "npm:^1.21.0"
     "@types/node": "npm:24.12.4"
-    "@types/react": "npm:19.2.15"
+    "@types/react": "npm:19.2.18"
     "@types/react-native": "npm:0.73.0"
     react-native-device-info: "npm:^11.1.0"
     react-native-mmkv: "npm:4.3.1"
@@ -4658,12 +4658,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/react@npm:*, @types/react@npm:19.2.15":
-  version: 19.2.15
-  resolution: "@types/react@npm:19.2.15"
+"@types/react@npm:*, @types/react@npm:19.2.18":
+  version: 19.2.18
+  resolution: "@types/react@npm:19.2.18"
   dependencies:
     csstype: "npm:^3.2.2"
-  checksum: 10c0/b554eab715bb14e581f0ae60e5cefe91e1a5e06c31022b543a9806cf224aa056f21e4fb46208e46eb934d86ca0b247ebc82377192a0dead303cb28b8764c6e67
+  checksum: 10c0/d04216172b4b4362b310017c210dfbe019fb4f4e7dffd0313e70b3acb3051d5c3e76e7e84e3cf4c6a3c824993ffadfe3949e589a6398a09d4200e7670e2962de
   languageName: node
   linkType: hard
 
