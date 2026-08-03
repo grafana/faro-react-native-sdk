@@ -1761,7 +1761,7 @@ __metadata:
     react-native: "npm:0.85.3"
     react-native-device-info: "npm:^11.1.0"
     react-native-dotenv: "npm:3.4.11"
-    react-native-nitro-modules: "npm:0.36.1"
+    react-native-nitro-modules: "npm:0.36.5"
     react-native-safe-area-context: "npm:^5.5.2"
     react-native-screens: "npm:^4.19.0"
     react-test-renderer: "npm:19.2.3"
@@ -1815,7 +1815,7 @@ __metadata:
     "@types/react-native": "npm:0.73.0"
     react-native-device-info: "npm:^11.1.0"
     react-native-mmkv: "npm:4.3.2"
-    react-native-nitro-modules: "npm:0.36.1"
+    react-native-nitro-modules: "npm:0.36.5"
   peerDependencies:
     "@react-navigation/native": ">=6.0.0"
     react: ">=18.0.0"
@@ -14333,13 +14333,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-native-nitro-modules@npm:0.36.1":
-  version: 0.36.1
-  resolution: "react-native-nitro-modules@npm:0.36.1"
+"react-native-nitro-modules@npm:0.36.5":
+  version: 0.36.5
+  resolution: "react-native-nitro-modules@npm:0.36.5"
   peerDependencies:
     react: "*"
     react-native: "*"
-  checksum: 10c0/8f0a56371d2de36531208794f81c457bbd00f00ae8f9c914fb752606585297607cbc1ad38681a1efb7d8cf4322537f300e0a822954a4b15c8d8c8f2c9d61cd12
+  checksum: 10c0/c7b2133f924967b68c0f0f678b5a5dce1a784a7e22f57ebf203ef5803a5c9c745b6d4dda8c9bcedd13f7c5ca53a8707784e98572a2ca8a864fe0b905163a34b5
   languageName: node
   linkType: hard
 
