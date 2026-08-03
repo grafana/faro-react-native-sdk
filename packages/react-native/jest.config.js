@@ -2,7 +2,7 @@ const { jestBaseConfig } = require('../../jest.config.base.js');
 
 module.exports = {
   ...jestBaseConfig,
-  preset: 'react-native',
+  preset: '@react-native/jest-preset',
   displayName: 'react-native',
   testEnvironment: 'node', // Override jsdom from base config - react-native preset handles environment
   testMatch: ['<rootDir>/packages/react-native/src/**/*.test.ts'],
