@@ -27,7 +27,8 @@
       "groupName": "npm-dependencies"
     },
     {
-      "description": "Collect patch-only bumps from every manager into a single low-risk PR, matching faro-web-sdk. Placed after the manager groups so it overrides them. Fires only when a dependency's sole pending update is a patch.",
+      "description": "Collect patch-only bumps from the grouped managers into one low-risk PR, matching faro-web-sdk. Scoped to those two: nothing in CI builds the native projects, so gradle/bundler patches stay individual rather than inheriting a green check that didn't cover them.",
+      "matchManagers": ["github-actions", "npm"],
       "matchUpdateTypes": ["patch"],
       "groupName": "patch updates"
     },
