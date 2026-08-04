@@ -12,14 +12,18 @@ const SESSION_MMKV_CONFIG = { id: 'grafana-faro-react-native-session' };
 type SessionsManagerModule = typeof import('./MmkvPersistentSessionsManager');
 
 const loadWithMmkvMock = (mmkvExports: Record<string, unknown>): SessionsManagerModule => {
-  let mod: SessionsManagerModule;
+  let mod: SessionsManagerModule | undefined;
 
   jest.isolateModules(() => {
     jest.doMock('react-native-mmkv', () => mmkvExports);
     mod = require('./MmkvPersistentSessionsManager');
   });
 
-  return mod!;
+  if (!mod) {
+    throw new Error('jest.isolateModules did not load MmkvPersistentSessionsManager');
+  }
+
+  return mod;
 };
 
 describe('MmkvPersistentSessionsManager - react-native-mmkv version compatibility', () => {
