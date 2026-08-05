@@ -456,5 +456,72 @@ describe('sessionManagerUtils', () => {
         previousServiceName: 'my-app',
       });
     });
+
+    it('settles after applying its own update and still accepts later external changes', async () => {
+      const faro = initializeFaro(mockConfig({}));
+
+      jest.spyOn(samplingModule, 'isSampled').mockReturnValue(true);
+
+      // Storage that returns what was last written, but with a device value that
+      // changes on every read - mirroring the volatile device attributes on React
+      // Native. The stored snapshot therefore never compares equal to the incoming
+      // meta, so nothing but the guard can stop the handler from re-entering
+      // itself after its own `setSession()` call.
+      let storedSession: FaroUserSession | null = null;
+      let deviceMemoryReads = 0;
+      const mockStoreUserSession = jest.fn(async (session: FaroUserSession) => {
+        storedSession = session;
+      });
+      const mockFetchUserSession = jest.fn(async () =>
+        storedSession == null
+          ? null
+          : {
+              ...storedSession,
+              sessionMeta: {
+                ...storedSession.sessionMeta,
+                id: storedSession.sessionId,
+                attributes: {
+                  ...storedSession.sessionMeta?.attributes,
+                  device_memory_used: `${++deviceMemoryReads}`,
+                },
+              },
+            }
+      );
+
+      // Stop propagating session updates past a sane number of calls. Without the
+      // guard the handler re-enters itself forever, which would exhaust the heap
+      // instead of failing on the assertions below.
+      const MAX_SET_SESSION_CALLS = 10;
+      const setSession = faro.api.setSession.bind(faro.api);
+      const setSessionSpy = jest.spyOn(faro.api, 'setSession').mockImplementation((...args) => {
+        if (setSessionSpy.mock.calls.length <= MAX_SET_SESSION_CALLS) {
+          setSession(...args);
+        }
+      });
+
+      const handler = getSessionMetaUpdateHandler({
+        fetchUserSession: mockFetchUserSession,
+        storeUserSession: mockStoreUserSession,
+      });
+      faro.metas.addListener(handler);
+
+      // The handler applies the change once; the `setSession()` it performs itself
+      // must not be picked up as another external change.
+      await handler({ session: { id: mockSessionId, attributes: { isSampled: 'true' } } });
+      await Promise.resolve();
+
+      expect(mockStoreUserSession).toHaveBeenCalledTimes(1);
+
+      // A genuinely external change afterwards is still synced, so the guard did
+      // not leave the handler permanently disabled.
+      const writesBeforeExternalChange = mockStoreUserSession.mock.calls.length;
+      const nextSessionId = 'next-session-id';
+
+      faro.api.setSession({ id: nextSessionId });
+      await Promise.resolve();
+
+      expect(mockStoreUserSession.mock.calls.length).toBeGreaterThan(writesBeforeExternalChange);
+      expect(mockStoreUserSession).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: nextSessionId }));
+    });
   });
 });

@@ -131,7 +131,18 @@ export function getSessionMetaUpdateHandler({
   fetchUserSession,
   storeUserSession,
 }: GetUserSessionMetaUpdateHandlerParams) {
+  // Set only while this handler applies its own session update. `setSession()`
+  // notifies meta listeners synchronously, so without this the handler would
+  // observe its own write as an external change and re-enter itself endlessly.
+  let isApplyingOwnUpdate = false;
+
   return async function syncSessionIfChangedExternally(meta: Meta) {
+    // Checked before the first `await` so the synchronous re-entry triggered by
+    // `setSession()` below is rejected while the flag is still set.
+    if (isApplyingOwnUpdate) {
+      return;
+    }
+
     const session = meta.session;
     const sessionFromSessionStorage = await fetchUserSession();
 
@@ -154,7 +165,13 @@ export function getSessionMetaUpdateHandler({
 
       await storeUserSession(userSession);
       sendOverrideEvent(hasSessionOverridesChanged, sessionOverrides, storedSessionMetaOverrides);
-      faro.api.setSession(userSession.sessionMeta);
+
+      isApplyingOwnUpdate = true;
+      try {
+        faro.api.setSession(userSession.sessionMeta);
+      } finally {
+        isApplyingOwnUpdate = false;
+      }
     }
   };
 }
