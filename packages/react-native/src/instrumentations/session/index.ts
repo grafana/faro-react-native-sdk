@@ -129,8 +129,8 @@ export class SessionInstrumentation extends BaseInstrumentation {
     return { initialSession, emitSessionStartOnInit };
   }
 
-  private registerBeforeSendHook(SessionManagerClass: SessionManager) {
-    const { updateSession } = new SessionManagerClass();
+  private registerBeforeSendHook(sessionManager: InstanceType<SessionManager>) {
+    const { updateSession } = sessionManager;
 
     this.transports?.addBeforeSendHooks((item: TransportItem) => {
       updateSession();
@@ -174,7 +174,12 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
     const SessionManagerClass = getSessionManagerByConfig(sessionTrackingConfig);
 
-    this.registerBeforeSendHook(SessionManagerClass);
+    // Constructing a manager registers an AppState subscription and a metas
+    // listener, so exactly one instance is created and reused. It is also the
+    // instance `unpatch()` cleans up.
+    this.sessionManagerInstance = new SessionManagerClass();
+
+    this.registerBeforeSendHook(this.sessionManagerInstance);
 
     const { initialSession, emitSessionStartOnInit } = this.createInitialSession(
       SessionManagerClass,
@@ -185,8 +190,6 @@ export class SessionInstrumentation extends BaseInstrumentation {
     const initialSessionMeta = initialSession.sessionMeta;
     this.notifiedSession = initialSessionMeta;
     this.api.setSession(initialSessionMeta);
-
-    this.sessionManagerInstance = new SessionManagerClass();
 
     if (emitSessionStartOnInit) {
       this.api.pushEvent(EVENT_SESSION_START, {}, undefined, { skipDedupe: true });
