@@ -1,0 +1,41 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 5am on Monday", "before 5am on Wednesday", "before 5am on Friday"],
+  "semanticCommits": "enabled",
+  "separateMajorMinor": true,
+  "separateMultipleMajor": true,
+  "prHourlyLimit": 2,
+  "prConcurrentLimit": 10,
+  "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
+  "postUpdateOptions": ["yarnDedupeHighest"],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  },
+  "packageRules": [
+    {
+      "description": "Group GitHub Actions bumps into a single PR.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "description": "Group all npm bumps into a single PR, matching faro-web-sdk. Grouping by manager rather than by workspace or depType matters here: packageRules are evaluated per dependency per file, so a location-scoped split would put the root and demo copies of react, react-test-renderer and react-native-nitro-modules into different PRs and let them drift apart.",
+      "matchManagers": ["npm"],
+      "groupName": "npm-dependencies"
+    },
+    {
+      "description": "Collect patch-only bumps from the grouped managers into one low-risk PR, matching faro-web-sdk. Scoped to those two: nothing in CI builds the native projects, so gradle/bundler patches stay individual rather than inheriting a green check that didn't cover them.",
+      "matchManagers": ["github-actions", "npm"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "patch updates"
+    },
+    {
+      "description": "Enforce the org-default 3-day release-age cooldown on ALL npm depTypes (incl @grafana/*, which the injected Grafana org preset exempts) to match yarn's npmMinimalAgeGate in .yarnrc.yml. Placed last so it overrides that preset. Keep this value in sync with that .yarnrc.yml, otherwise Renovate proposes versions yarn refuses to lock and the renovate/artifacts check fails.",
+      "matchDatasources": ["npm"],
+      "minimumReleaseAge": "3 days"
+    }
+  ]
+}
