@@ -23,7 +23,7 @@ const DEFAULT_CHECK_INTERVAL_MS = 30000;
  * Uses @react-native-community/netinfo when available, otherwise falls back
  * to basic fetch-based connectivity detection.
  *
- * Implementation follows Flutter SDK's InternetConnectivityService pattern.
+ * Monitors network connectivity for offline transport flush behavior.
  */
 export class DefaultConnectivityService implements ConnectivityService {
   private _isOnline: boolean = true;

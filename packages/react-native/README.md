@@ -842,7 +842,7 @@ The SDK emits `session_start` when a new session is created (including when sess
 
 ### Default Session Attributes
 
-Every telemetry event automatically includes default session attributes with device and SDK information. These attributes match the [Grafana Faro Flutter SDK](https://github.com/grafana/faro-flutter-sdk) format for cross-platform compatibility.
+Every telemetry event automatically includes default session attributes with device and SDK information.
 
 **Automatically Collected Attributes:**
 
@@ -1073,6 +1073,43 @@ The SDK automatically tracks app startup time from process start to Faro initial
 | avg
 ```
 
+#### Frame Monitoring (Refresh Rate, Slow & Frozen Frames)
+
+Enable with `refreshRateVitals: true`. Uses native frame callbacks
+(`CADisplayLink` on iOS, `Choreographer` on Android).
+
+**Defaults** (override via `frameMonitoringOptions`):
+
+- **Frozen frame threshold**: 700ms (aligned with Android Vitals)
+- **Slow frame target**: 60 FPS (event-based grouping; events ≥50ms count)
+- **Poll interval**: 30s (`refreshRatePollingInterval`)
+
+Slow and frozen frames are **polled** on both platforms (no duplicate
+Android event stream). Refresh rate may also emit on Android between polls
+when `refreshRateVitals` is enabled.
+
+**Metrics:**
+
+| Type               | Values                             | Notes                                                 |
+| ------------------ | ---------------------------------- | ----------------------------------------------------- |
+| `app_refresh_rate` | `refresh_rate`                     | Current FPS                                           |
+| `app_frames_rate`  | `slow_frames`                      | Count of slow frame **events**, not individual frames |
+| `app_frozen_frame` | `frozen_frames`, `frozen_duration` | Frames above threshold; duration in ms                |
+
+**Configuration example:**
+
+```tsx
+initializeFaro({
+  url: 'https://your-faro-collector-url',
+  app: { name: 'my-app', version: '1.0.0' },
+  refreshRateVitals: true,
+  frameMonitoringOptions: {
+    frozenFrameThresholdMs: 700,
+    refreshRatePollingInterval: 30000,
+  },
+});
+```
+
 #### Performance Best Practices
 
 **For Production:**
@@ -1169,13 +1206,13 @@ The SDK collects the following device information synchronously:
 
 ## Device Information
 
-The SDK automatically collects device information and sends it as **session attributes** with every telemetry event. This matches the Faro Flutter SDK convention and provides comprehensive device context for mobile observability.
+The SDK automatically collects device information and sends it as **session attributes** with every telemetry event.
 
 ### Session Attributes
 
-All device information is sent as session attributes (not browser meta) to match Flutter SDK:
+All device information is sent as session attributes (not browser meta):
 
-**Core Attributes (matching Flutter SDK):**
+**Core Attributes:**
 
 - `faro_sdk_version` - SDK version (e.g., "1.0.0")
 - `react_native_version` - React Native version (e.g., "0.75.1")
@@ -1250,7 +1287,7 @@ These attributes are automatically collected during Faro initialization and incl
 - Session attributes are included with every telemetry event
 - All fields are optional and gracefully handle permission errors
 - The React Native SDK sends an empty `page` meta field to override faro-core's default web-specific page meta
-- Screen tracking is handled via `view` meta instead of `page` meta (matching Flutter SDK)
+- Screen tracking is handled via `view` meta instead of `page` meta
 - Battery, carrier, and low power mode info may not be available on all devices/OS versions
 
 ## TypeScript

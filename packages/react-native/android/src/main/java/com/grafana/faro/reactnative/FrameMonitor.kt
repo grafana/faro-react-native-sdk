@@ -21,20 +21,27 @@ object FrameMonitor {
     private const val NANOSECONDS_IN_MILLISECOND = 1_000_000L
 
     // Throttle refresh rate emits to avoid flooding the JS bridge (was ~60/sec).
-    // Aligns with refreshRatePollingInterval (30s) on iOS and Flutter SDK.
+    // Aligns with refreshRatePollingInterval (30s) on iOS.
     private const val REFRESH_RATE_EMIT_INTERVAL_MS = 30_000L
 
+    const val DEFAULT_TARGET_FPS = 60.0
+    const val DEFAULT_FROZEN_FRAME_THRESHOLD_MS = 700.0
+    const val DEFAULT_NORMALIZED_REFRESH_RATE = 60.0
+
+    data class FrozenFrameMetrics(val count: Int, val durationMs: Double)
+
     // Configuration
-    private var targetFps: Double = 60.0
-    private var frozenFrameThresholdNs: Long = 100 * NANOSECONDS_IN_MILLISECOND
-    private var normalizedRefreshRate: Double = 60.0
+    private var targetFps: Double = DEFAULT_TARGET_FPS
+    private var frozenFrameThresholdNs: Long =
+        (DEFAULT_FROZEN_FRAME_THRESHOLD_MS * NANOSECONDS_IN_MILLISECOND).toLong()
+    private var normalizedRefreshRate: Double = DEFAULT_NORMALIZED_REFRESH_RATE
 
     // State
     private var lastFrameTimeNanos: Long = 0
     private var lastRefreshRate: Double = 0.0
     private var lastRefreshRateEmitTimeMs: Long = 0
     private val slowFrameEventCount = AtomicInteger(0)
-    private val frozenFrameCount = AtomicInteger(0)
+    private var frozenFrameCount: Int = 0
     private var frozenFrameDurationMs: Double = 0.0
     private val isMonitoring = AtomicBoolean(false)
 
@@ -54,13 +61,13 @@ object FrameMonitor {
      * Configure monitoring parameters.
      *
      * @param targetFps Target FPS for slow frame detection (default 60)
-     * @param frozenFrameThresholdMs Threshold in ms for frozen frames (default 100)
+     * @param frozenFrameThresholdMs Threshold in ms for frozen frames (default 700)
      * @param normalizedRefreshRate Normalized rate for high-refresh displays (default 60)
      */
     fun configure(
-        targetFps: Double = 60.0,
-        frozenFrameThresholdMs: Double = 100.0,
-        normalizedRefreshRate: Double = 60.0
+        targetFps: Double = DEFAULT_TARGET_FPS,
+        frozenFrameThresholdMs: Double = DEFAULT_FROZEN_FRAME_THRESHOLD_MS,
+        normalizedRefreshRate: Double = DEFAULT_NORMALIZED_REFRESH_RATE
     ) {
         this.targetFps = targetFps
         this.frozenFrameThresholdNs = (frozenFrameThresholdMs * NANOSECONDS_IN_MILLISECOND).toLong()
@@ -91,7 +98,7 @@ object FrameMonitor {
             lastFrameTimeNanos = 0
             lastRefreshRateEmitTimeMs = 0
             slowFrameEventCount.set(0)
-            frozenFrameCount.set(0)
+            frozenFrameCount = 0
             frozenFrameDurationMs = 0.0
             inSlowFrameEvent = false
             slowFrameEventStartTimeNanos = 0
@@ -131,7 +138,7 @@ object FrameMonitor {
         // Reset state
         lastFrameTimeNanos = 0
         slowFrameEventCount.set(0)
-        frozenFrameCount.set(0)
+        frozenFrameCount = 0
         frozenFrameDurationMs = 0.0
     }
 
@@ -151,20 +158,22 @@ object FrameMonitor {
     }
 
     /**
-     * Get and reset frozen frame count.
-     */
-    fun getAndResetFrozenFrames(): Int {
-        return frozenFrameCount.getAndSet(0)
-    }
-
-    /**
-     * Get and reset frozen frame duration in milliseconds.
+     * Get and reset frozen frame count and duration atomically.
      */
     @Synchronized
-    fun getAndResetFrozenDuration(): Double {
+    fun getAndResetFrozenMetrics(): FrozenFrameMetrics {
+        val count = frozenFrameCount
         val duration = frozenFrameDurationMs
+        frozenFrameCount = 0
         frozenFrameDurationMs = 0.0
-        return duration
+        return FrozenFrameMetrics(count, duration)
+    }
+
+    @Synchronized
+    private fun recordFrozenFrame(durationMs: Double) {
+        frozenFrameCount += 1
+        frozenFrameDurationMs += durationMs
+        onFrozenFrame?.invoke(frozenFrameCount, durationMs)
     }
 
     /**
@@ -202,10 +211,7 @@ object FrameMonitor {
         // A slow frame "event" is a period of consecutive frames below target FPS
         // This groups consecutive slow frames to report meaningful jank, not microsecond variations
         val isSlow = fps < targetFps
-        if (isSlow) {
-            android.util.Log.d(TAG, "[Faro DEBUG ANDROID] 🐌 Slow frame detected: %.1f FPS (target: %.1f)".format(fps, targetFps))
-        }
-        
+
         if (isSlow) {
             if (!inSlowFrameEvent) {
                 // Start new slow frame event
@@ -216,18 +222,11 @@ object FrameMonitor {
             // Frame is good - check if we should end the current slow frame event
             if (inSlowFrameEvent) {
                 val eventDurationNs = frameTimeNanos - slowFrameEventStartTimeNanos
-                val eventDurationMs = eventDurationNs / NANOSECONDS_IN_MILLISECOND
-                val thresholdMs = slowFrameEventMinDurationNs / NANOSECONDS_IN_MILLISECOND
-                
+
                 // Only count as a slow frame event if it lasted long enough to be user-perceptible
                 // This filters out single-frame dips that don't affect user experience
                 if (eventDurationNs >= slowFrameEventMinDurationNs) {
-                    val newCount = slowFrameEventCount.incrementAndGet()
-                    // 🔍 TEMP DEBUG LOG - Remove after analysis
-                    android.util.Log.d(TAG, "[Faro DEBUG ANDROID] ✅ COUNTED as event (${eventDurationMs}ms)! Total events now: $newCount")
-                } else {
-                    // 🔍 TEMP DEBUG LOG - Remove after analysis
-                    android.util.Log.d(TAG, "[Faro DEBUG ANDROID] ❌ NOT counted (${eventDurationMs}ms is too short). Total events still: ${slowFrameEventCount.get()}")
+                    slowFrameEventCount.incrementAndGet()
                 }
                 
                 inSlowFrameEvent = false
@@ -237,15 +236,8 @@ object FrameMonitor {
 
         // Check for frozen frames (frame duration exceeds threshold)
         if (frameDuration > frozenFrameThresholdNs) {
-            val count = frozenFrameCount.incrementAndGet()
             val durationMs = frameDuration.toDouble() / NANOSECONDS_IN_MILLISECOND
-            
-            // Track duration (synchronized to avoid race conditions)
-            synchronized(this) {
-                frozenFrameDurationMs += durationMs
-            }
-            
-            onFrozenFrame?.invoke(count, durationMs)
+            recordFrozenFrame(durationMs)
         }
 
         lastFrameTimeNanos = frameTimeNanos

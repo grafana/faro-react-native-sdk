@@ -9,8 +9,8 @@ import { getInstallationId } from './installationId';
  * Session attributes for React Native
  * These attributes are automatically included with every telemetry event
  *
- * Core attributes match Flutter SDK format, with additional mobile-specific
- * monitoring fields (memory, device type, battery, etc.)
+ * Core mobile session attributes, with additional monitoring fields
+ * (memory, device type, battery, etc.)
  *
  * SDK name, core version, and npm adapter are on Faro meta `sdk` (`getSdkMeta` in `metas/sdk.ts`).
  *
@@ -138,7 +138,7 @@ function getMobileDeviceType(isTablet: boolean): 'mobile' | 'tablet' | undefined
 }
 
 /**
- * Get OS detail string matching Flutter SDK format
+ * Get OS detail string for session attributes.
  * iOS: "iOS 17.0"
  * Android: "Android 15 (SDK 35)"
  */
@@ -183,7 +183,7 @@ export function minimalSessionDeviceAttributes(): SessionAttributes {
  * Get all session attributes
  * These attributes are automatically included with every telemetry event
  *
- * Core attributes matching Flutter SDK:
+ * Core session attributes:
  * - react_native_version (RN framework in the host app)
  * - device_os, device_os_version, device_os_detail
  * - device_manufacturer, device_model, device_model_name

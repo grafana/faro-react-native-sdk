@@ -17,8 +17,7 @@ const DEFAULT_MAX_CACHE_DURATION_MS = 3 * 24 * 60 * 60 * 1000;
  * When the device is offline, telemetry is cached to AsyncStorage.
  * When connectivity is restored, cached telemetry is replayed through the wrapped transports.
  *
- * Implementation follows Flutter SDK's OfflineTransport pattern:
- * - Uses AsyncStorage for persistent caching (matching Flutter's SharedPreferences)
+ * Uses AsyncStorage for persistent offline telemetry caching.
  * - Respects maxCacheDuration to skip expired entries
  * - Uses mutex pattern for thread-safe cache access
  * - Excludes itself when replaying to prevent infinite loops
@@ -157,7 +156,7 @@ export class OfflineTransport extends BaseTransport {
 
   /**
    * Replay cached payloads through other transports.
-   * Follows Flutter SDK's _readFromFile pattern.
+   * Reads cached telemetry from AsyncStorage.
    */
   private async replayCachedPayloads(): Promise<void> {
     if (this.isReplaying) {
@@ -207,7 +206,7 @@ export class OfflineTransport extends BaseTransport {
 
   /**
    * Send items to all other registered transports.
-   * Follows Flutter SDK's _sendCachedData pattern.
+   * Sends cached telemetry when connectivity is restored.
    */
   private async sendToOtherTransports(items: TransportItem[]): Promise<boolean> {
     if (this.otherTransports.length === 0) {

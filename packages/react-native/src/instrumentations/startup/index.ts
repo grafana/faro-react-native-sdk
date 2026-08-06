@@ -13,15 +13,12 @@ const { FaroReactNativeModule } = NativeModules;
  * - iOS: sysctl() to query kernel for process start time
  * - Android: Process.getStartElapsedRealtime() from Android OS (API 24+)
  *
- * Implementation aligned with Faro Flutter SDK:
- * https://github.com/grafana/faro-flutter-sdk
- *
  * **Key Features**:
  * - ✅ NO AppDelegate/MainActivity setup required - OS tracks process start automatically!
  * - ✅ Cold start: appStartDuration from native, coldStart: 1
  * - ✅ Warm start: appStartDuration (time to first frame after resume), coldStart: 0
  *
- * **Metrics Captured** (matches Flutter SDK format):
+ * **Metrics Captured**:
  * - Cold start: `appStartDuration`, `coldStart: 1`
  * - Warm start: `appStartDuration`, `coldStart: 0`
  *
@@ -63,7 +60,7 @@ export class StartupInstrumentation extends BaseInstrumentation {
 
   /**
    * Captures cold start duration from native (process start to Faro init).
-   * Matches Flutter SDK: appStartDuration + coldStart: 1
+   * Sends appStartDuration with coldStart: 1.
    */
   private captureColdStartMetrics(): void {
     try {
@@ -102,7 +99,6 @@ export class StartupInstrumentation extends BaseInstrumentation {
 
   /**
    * Tracks warm start: when app resumes from background, measures time to first frame.
-   * Matches Flutter SDK: setWarmStart on resume, getWarmStart after postFrameCallback.
    */
   private setupWarmStartTracking(): void {
     this.appStateSubscription = AppState.addEventListener('change', (nextAppState) => {

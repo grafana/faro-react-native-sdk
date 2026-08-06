@@ -8,7 +8,7 @@ export { faro } from '@grafana/faro-core';
 // Export types
 export type { EnableTransportsConfig, ReactNativeConfig, ReactNativeSessionTrackingConfig } from './config/types';
 
-// Export sampling (Flutter-style interface)
+// Export sampling
 export { SamplingFunction, SamplingRate, type Sampling, type SamplingContext } from './config/sampling';
 
 // Export instrumentation helpers
