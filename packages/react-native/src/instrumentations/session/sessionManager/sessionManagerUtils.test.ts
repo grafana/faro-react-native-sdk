@@ -1,5 +1,6 @@
 import * as faroCore from '@grafana/faro-core';
-import { initializeFaro } from '@grafana/faro-core';
+import { initializeFaro, stringifyExternalJson } from '@grafana/faro-core';
+import type { Faro, MetaAttributes } from '@grafana/faro-core';
 import { mockConfig } from '@grafana/faro-test-utils';
 
 import * as samplingModule from './sampling';
@@ -457,71 +458,151 @@ describe('sessionManagerUtils', () => {
       });
     });
 
-    it('settles after applying its own update and still accepts later external changes', async () => {
-      const faro = initializeFaro(mockConfig({}));
+    // The handlers are async and timers are faked, so they settle on the
+    // microtask queue alone. A generous number of turns outlasts every
+    // echo-notification chain before the assertions run.
+    async function flushMicrotasks(turns = 20): Promise<void> {
+      for (let i = 0; i < turns; i++) {
+        await Promise.resolve();
+      }
+    }
 
-      jest.spyOn(samplingModule, 'isSampled').mockReturnValue(true);
+    // Round-trips sessions through the same lossy serialization persistent
+    // storage uses: `stringifyExternalJson` drops keys whose value is
+    // `undefined`.
+    function createJsonBackedSessionStorage() {
+      let stored: string | null = null;
 
-      // Storage that returns what was last written, but with a device value that
-      // changes on every read - mirroring the volatile device attributes on React
-      // Native. The stored snapshot therefore never compares equal to the incoming
-      // meta, so nothing but the guard can stop the handler from re-entering
-      // itself after its own `setSession()` call.
-      let storedSession: FaroUserSession | null = null;
-      let deviceMemoryReads = 0;
-      const mockStoreUserSession = jest.fn(async (session: FaroUserSession) => {
-        storedSession = session;
+      return {
+        storeUserSession: jest.fn(async (session: FaroUserSession) => {
+          stored = stringifyExternalJson(session);
+        }),
+        fetchUserSession: jest.fn(
+          async (): Promise<FaroUserSession | null> => (stored == null ? null : JSON.parse(stored))
+        ),
+      };
+    }
+
+    describe('settling', () => {
+      let faro: Faro;
+      let storage: ReturnType<typeof createJsonBackedSessionStorage>;
+      let handlers: Array<ReturnType<typeof getSessionMetaUpdateHandler>>;
+
+      function attachHandler(): void {
+        const handler = getSessionMetaUpdateHandler(storage);
+        faro.metas.addListener(handler);
+        handlers.push(handler);
+      }
+
+      beforeEach(() => {
+        faro = initializeFaro(mockConfig({}));
+        jest.spyOn(samplingModule, 'isSampled').mockReturnValue(true);
+        storage = createJsonBackedSessionStorage();
+        handlers = [];
+
+        // Stop propagating session updates past a sane number of calls, so a
+        // regression that reintroduces the sync loop fails on the write-count
+        // assertions below instead of exhausting the heap.
+        const setSession = faro.api.setSession.bind(faro.api);
+        const setSessionSpy = jest.spyOn(faro.api, 'setSession').mockImplementation((...args) => {
+          if (setSessionSpy.mock.calls.length <= 10) {
+            setSession(...args);
+          }
+        });
       });
-      const mockFetchUserSession = jest.fn(async () =>
-        storedSession == null
-          ? null
-          : {
-              ...storedSession,
-              sessionMeta: {
-                ...storedSession.sessionMeta,
-                id: storedSession.sessionId,
-                attributes: {
-                  ...storedSession.sessionMeta?.attributes,
-                  device_memory_used: `${++deviceMemoryReads}`,
-                },
-              },
-            }
-      );
 
-      // Stop propagating session updates past a sane number of calls. Without the
-      // guard the handler re-enters itself forever, which would exhaust the heap
-      // instead of failing on the assertions below.
-      const MAX_SET_SESSION_CALLS = 10;
-      const setSession = faro.api.setSession.bind(faro.api);
-      const setSessionSpy = jest.spyOn(faro.api, 'setSession').mockImplementation((...args) => {
-        if (setSessionSpy.mock.calls.length <= MAX_SET_SESSION_CALLS) {
-          setSession(...args);
-        }
+      afterEach(() => {
+        handlers.forEach((handler) => faro.metas.removeListener(handler));
       });
 
-      const handler = getSessionMetaUpdateHandler({
-        fetchUserSession: mockFetchUserSession,
-        storeUserSession: mockStoreUserSession,
+      it('settles after applying its own update and still accepts later external changes', async () => {
+        attachHandler();
+
+        // The handler applies the external change once; the `setSession()` it
+        // performs itself must not be picked up as another external change.
+        faro.api.setSession({ id: mockSessionId });
+        await flushMicrotasks();
+
+        expect(storage.storeUserSession).toHaveBeenCalledTimes(1);
+
+        // A genuinely external change afterwards is still synced, so the guard
+        // did not leave the handler permanently disabled.
+        faro.api.setSession({ id: 'next-session-id' });
+        await flushMicrotasks();
+
+        expect(storage.storeUserSession).toHaveBeenCalledTimes(2);
+        expect(storage.storeUserSession).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sessionId: 'next-session-id' })
+        );
       });
-      faro.metas.addListener(handler);
 
-      // The handler applies the change once; the `setSession()` it performs itself
-      // must not be picked up as another external change.
-      await handler({ session: { id: mockSessionId, attributes: { isSampled: 'true' } } });
-      await Promise.resolve();
+      it('does not write the session again when an unrelated meta changes', async () => {
+        attachHandler();
 
-      expect(mockStoreUserSession).toHaveBeenCalledTimes(1);
+        // An attribute whose value is `undefined` mirrors the optional device
+        // attributes (battery level, carrier, ...). Storage drops the key on
+        // write; the in-memory meta must converge to the same shape.
+        faro.api.setSession({
+          id: mockSessionId,
+          attributes: { device_battery_level: undefined } as unknown as MetaAttributes,
+        });
+        await flushMicrotasks();
 
-      // A genuinely external change afterwards is still synced, so the guard did
-      // not leave the handler permanently disabled.
-      const writesBeforeExternalChange = mockStoreUserSession.mock.calls.length;
-      const nextSessionId = 'next-session-id';
+        expect(storage.storeUserSession).toHaveBeenCalledTimes(1);
 
-      faro.api.setSession({ id: nextSessionId });
-      await Promise.resolve();
+        // Unrelated meta updates notify the handler with an unchanged session;
+        // none of them may write the session again.
+        faro.api.setView({ name: 'first-view' });
+        await flushMicrotasks();
+        faro.api.setUser({ id: 'user-1' });
+        await flushMicrotasks();
 
-      expect(mockStoreUserSession.mock.calls.length).toBeGreaterThan(writesBeforeExternalChange);
-      expect(mockStoreUserSession).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: nextSessionId }));
+        expect(storage.storeUserSession).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not rewrite the session when overrides carry an undefined value', async () => {
+        attachHandler();
+
+        // Overrides diverge from their own stored copy exactly like attributes
+        // do: the `undefined`-valued key survives in memory but not in storage.
+        faro.api.setSession({
+          id: mockSessionId,
+          overrides: { serviceName: 'my-service', geoLocationTrackingEnabled: undefined },
+        });
+        await flushMicrotasks();
+
+        expect(storage.storeUserSession).toHaveBeenCalledTimes(1);
+
+        faro.api.setView({ name: 'first-view' });
+        await flushMicrotasks();
+
+        expect(storage.storeUserSession).toHaveBeenCalledTimes(1);
+      });
+
+      it('settles when more than one handler is registered', async () => {
+        // More than one handler can be registered over the same storage. They
+        // must not re-trigger one another through the echo notifications of
+        // their own writes.
+        attachHandler();
+        attachHandler();
+
+        faro.api.setSession({
+          id: mockSessionId,
+          attributes: { device_battery_level: undefined } as unknown as MetaAttributes,
+        });
+        await flushMicrotasks();
+
+        // Both handlers may process the original notification, but the writes
+        // must settle instead of ping-ponging.
+        const writesAfterSettling = storage.storeUserSession.mock.calls.length;
+        expect(writesAfterSettling).toBeLessThanOrEqual(2);
+
+        // ...and a later unrelated meta change must not start writing again.
+        faro.api.setView({ name: 'first-view' });
+        await flushMicrotasks();
+
+        expect(storage.storeUserSession.mock.calls.length).toBe(writesAfterSettling);
+      });
     });
   });
 });

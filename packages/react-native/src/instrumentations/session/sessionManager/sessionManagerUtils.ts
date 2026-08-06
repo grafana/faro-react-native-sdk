@@ -1,5 +1,13 @@
-import { dateNow, deepEqual, EVENT_OVERRIDES_SERVICE_NAME, faro, genShortID, isEmpty } from '@grafana/faro-core';
-import type { Meta, MetaOverrides } from '@grafana/faro-core';
+import {
+  dateNow,
+  deepEqual,
+  EVENT_OVERRIDES_SERVICE_NAME,
+  faro,
+  genShortID,
+  isEmpty,
+  stringifyExternalJson,
+} from '@grafana/faro-core';
+import type { Meta, MetaOverrides, MetaSession } from '@grafana/faro-core';
 
 import { isSampled } from './sampling';
 import { MAX_SESSION_PERSISTENCE_TIME } from './sessionConstants';
@@ -96,6 +104,17 @@ export function getUserSessionUpdater({
   };
 }
 
+/**
+ * Persistent storage serializes sessions with `stringifyExternalJson`, which
+ * drops keys whose value is `undefined`. A session meta carrying such a key
+ * never compares `deepEqual` to its own stored copy, so the sync handler would
+ * rewrite the session on every meta notification. Applying the same round-trip
+ * in memory keeps the two sides comparable, for attributes and overrides alike.
+ */
+function toStorableSessionMeta(sessionMeta: MetaSession): MetaSession {
+  return JSON.parse(stringifyExternalJson(sessionMeta)) as MetaSession;
+}
+
 export function addSessionMetadataToNextSession(newSession: FaroUserSession, previousSession: FaroUserSession | null) {
   const sessionWithMeta: Required<FaroUserSession> = {
     ...newSession,
@@ -119,6 +138,10 @@ export function addSessionMetadataToNextSession(newSession: FaroUserSession, pre
     sessionWithMeta.sessionMeta.attributes!['previousSession'] = previousSessionId;
   }
 
+  // Normalize to what storage can hold, so the meta this session propagates
+  // stays comparable to its own stored copy.
+  sessionWithMeta.sessionMeta = toStorableSessionMeta(sessionWithMeta.sessionMeta);
+
   return sessionWithMeta;
 }
 
@@ -127,15 +150,24 @@ type GetUserSessionMetaUpdateHandlerParams = {
   fetchUserSession: () => FaroUserSession | null | Promise<FaroUserSession | null>;
 };
 
+/**
+ * Set only while a handler applies its own session update.
+ *
+ * `setSession()` notifies meta listeners synchronously, so a handler is
+ * re-entered by its own write. This flag rejects that re-entry, and bounds any
+ * future divergence between the in-memory and the stored session to a single
+ * redundant write instead of an unbounded loop.
+ *
+ * Module scoped rather than per handler: more than one handler can be
+ * registered over the same storage, and per-handler flags would let them
+ * re-trigger one another through the echo notifications of their own writes.
+ */
+let isApplyingOwnUpdate = false;
+
 export function getSessionMetaUpdateHandler({
   fetchUserSession,
   storeUserSession,
 }: GetUserSessionMetaUpdateHandlerParams) {
-  // Set only while this handler applies its own session update. `setSession()`
-  // notifies meta listeners synchronously, so without this the handler would
-  // observe its own write as an external change and re-enter itself endlessly.
-  let isApplyingOwnUpdate = false;
-
   return async function syncSessionIfChangedExternally(meta: Meta) {
     // Checked before the first `await` so the synchronous re-entry triggered by
     // `setSession()` below is rejected while the flag is still set.
@@ -143,7 +175,9 @@ export function getSessionMetaUpdateHandler({
       return;
     }
 
-    const session = meta.session;
+    // Compare in storable form, so keys that storage cannot hold do not read
+    // as a perpetual external change.
+    const session = meta.session && toStorableSessionMeta(meta.session);
     const sessionFromSessionStorage = await fetchUserSession();
 
     let sessionId = session?.id;
