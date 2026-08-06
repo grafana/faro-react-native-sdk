@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.4.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.3.1...faro-react-native-v1.4.0) (2026-08-06)
+
+
+### Features
+
+* **android:** persist recovered crash session context ([e7efd33](https://github.com/grafana/faro-react-native-sdk/commit/e7efd33d76e3b04df583d9797c1347ae631bbaa3))
+
+
+### Bug Fixes
+
+* **crash-reporting:** harden iOS crash replay ([e39b345](https://github.com/grafana/faro-react-native-sdk/commit/e39b34526efb3dfa74769e165ff317a9ebc0d0b0))
+* **crash-reporting:** harden recovered crash replay ([22a3d81](https://github.com/grafana/faro-react-native-sdk/commit/22a3d8154ade4721baad54d774e7119acb643164))
+* **crash-reporting:** preserve iOS crash sessions ([56a3d14](https://github.com/grafana/faro-react-native-sdk/commit/56a3d14ef326a1a9ef68add64e909be217bdcb16))
+* **crash-reporting:** preserve original Android crash sessions ([330ed41](https://github.com/grafana/faro-react-native-sdk/commit/330ed41ca62d96247348050fb61017b931a16b8e))
+* **crash-reporting:** preserve original iOS crash sessions ([726ffac](https://github.com/grafana/faro-react-native-sdk/commit/726ffac2152631a3b99ac87575a50257c77b5aae))
+* **crash-reporting:** replay crashes with original sessions ([62a8fd6](https://github.com/grafana/faro-react-native-sdk/commit/62a8fd65ce172ffc16de7eb0d192a5a57c6e6174))
+* **crash-reporting:** separate replay and accounting sessions ([01c29b4](https://github.com/grafana/faro-react-native-sdk/commit/01c29b4355298b378977ab00af8546bf05dbb8c9))
+* **crash-reporting:** skip uncorrelated recovered crashes ([43191f9](https://github.com/grafana/faro-react-native-sdk/commit/43191f99befce2b7d9bf37ba800071f0d0634d75))
+* **deps:** update protobuf monorepo to v3.25.9 ([#131](https://github.com/grafana/faro-react-native-sdk/issues/131)) ([beca920](https://github.com/grafana/faro-react-native-sdk/commit/beca9201d1a46ce4ac9d0feb86424994fc9ccaa5))
+* **react-native:** construct the session manager once ([eb5ee70](https://github.com/grafana/faro-react-native-sdk/commit/eb5ee70550b1fef28f51ae30e5efc1f7388a94c7))
+* **react-native:** construct the session manager once ([c93cbbd](https://github.com/grafana/faro-react-native-sdk/commit/c93cbbdd7433f16a8c8f6eb56c11080e26d12a43)), closes [#160](https://github.com/grafana/faro-react-native-sdk/issues/160)
+* **react-native:** normalize session meta so the persistence sync converges ([84ad3e3](https://github.com/grafana/faro-react-native-sdk/commit/84ad3e33f128c993cb0f8a9f12300dc2a61516f9))
+* **react-native:** stop session meta sync from re-entering itself ([326c7d5](https://github.com/grafana/faro-react-native-sdk/commit/326c7d5cabce07f8b610b0b9c4228e99a61138bb))
+* **react-native:** stop session meta sync from re-entering itself ([d0fb4a7](https://github.com/grafana/faro-react-native-sdk/commit/d0fb4a759b40571df05c8eacfcdb3d33f8633fe6)), closes [#139](https://github.com/grafana/faro-react-native-sdk/issues/139)
+* **react-native:** support react-native-mmkv v4 (createMMKV) for persistent sessions ([72a549b](https://github.com/grafana/faro-react-native-sdk/commit/72a549b012bc1acb50a2c84fa78a5e330485fc0a))
+* **react-native:** support react-native-mmkv v4 (createMMKV) for persistent sessions ([bd24e8b](https://github.com/grafana/faro-react-native-sdk/commit/bd24e8b781682757aa73d11c9981d3de8d50537b)), closes [#138](https://github.com/grafana/faro-react-native-sdk/issues/138)
+* **transport:** skip empty batches ([d5cf530](https://github.com/grafana/faro-react-native-sdk/commit/d5cf5309a904fb6417a4e8a6ccd8b7e59f8abf6c))
+
 ## [1.3.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.3.0...faro-react-native-v1.3.1) (2026-07-15)
 
 ### Bug Fixes
