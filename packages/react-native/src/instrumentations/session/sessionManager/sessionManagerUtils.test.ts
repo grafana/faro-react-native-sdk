@@ -378,16 +378,17 @@ describe('sessionManagerUtils', () => {
 
     it('updates attributes without creating new session', async () => {
       const faro = initializeFaro(mockConfig({}));
+      const samplingSpy = jest.spyOn(samplingModule, 'isSampled');
 
       const storedSession: FaroUserSession = {
         sessionId: mockSessionId,
-        isSampled: true,
-        lastActivity: fakeSystemTime,
-        started: fakeSystemTime,
+        isSampled: false,
+        lastActivity: fakeSystemTime - 500,
+        started: fakeSystemTime - 1000,
         sessionMeta: {
           id: mockSessionId,
           attributes: {
-            isSampled: 'true',
+            isSampled: 'false',
           },
         },
       };
@@ -413,13 +414,18 @@ describe('sessionManagerUtils', () => {
       expect(mockStoreUserSession).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: mockSessionId,
+          isSampled: false,
+          started: fakeSystemTime - 1000,
+          lastActivity: fakeSystemTime - 500,
           sessionMeta: expect.objectContaining({
             attributes: expect.objectContaining({
               foo: 'bar',
+              isSampled: 'false',
             }),
           }),
         })
       );
+      expect(samplingSpy).not.toHaveBeenCalled();
     });
 
     it('sends service name override event when service name changes', async () => {

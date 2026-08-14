@@ -9,6 +9,6 @@ export const MAX_SESSION_PERSISTENCE_TIME = DEFAULT_SESSION_PERSISTENCE_MS;
 /** React Native session defaults */
 export const defaultSessionTrackingConfig: ReactNativeSessionTrackingConfig = {
   enabled: true,
-  persistent: false,
+  persistent: true,
   maxSessionPersistenceTime: MAX_SESSION_PERSISTENCE_TIME,
 };

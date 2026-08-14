@@ -62,7 +62,7 @@ initializeFaro({
   // Session - optional
   sessionTracking: {
     enabled: true,
-    persistent: false,
+    persistent: true,
     inactivityTimeout: 15 * 60 * 1000,
     sessionExpirationTime: 4 * 60 * 60 * 1000,
     maxSessionPersistenceTime: 15 * 60 * 1000,
@@ -783,7 +783,15 @@ initializeFaro({
 
 ### Session Configuration
 
-The SDK supports both persistent and volatile session tracking with configurable expiration and inactivity timeouts:
+The SDK persists minimal session state by default so a cold start can link to the previous session. Install MMKV before using the default:
+
+```bash
+yarn add react-native-mmkv
+```
+
+Rebuild the native projects after installation. Set `persistent: false` to opt out and use in-memory sessions without MMKV.
+
+Session tracking supports configurable expiration and inactivity timeouts:
 
 ```tsx
 import { initializeFaro, SamplingFunction, SamplingRate } from '@grafana/faro-react-native';
@@ -796,7 +804,7 @@ initializeFaro({
   },
   sessionTracking: {
     enabled: true, // default: true
-    persistent: true, // default: false (volatile)
+    persistent: true, // default: true
     // Configurable timeouts (all in ms):
     inactivityTimeout: 15 * 60 * 1000, // default: 15 min
     sessionExpirationTime: 4 * 60 * 60 * 1000, // default: 4 h
@@ -828,17 +836,21 @@ initializeFaro({
 
 **Session Types:**
 
-- **Persistent Sessions** (`persistent: true`): Stored in AsyncStorage and survive app restarts. Sessions expire after `sessionExpirationTime` (default 4 h) or `inactivityTimeout` (default 15 min).
+- **Persistent Sessions** (`persistent: true`, default): A versioned record is stored in MMKV. Every process start creates a new session and links the previous ID when the record is valid. The live session is never resumed across a process start.
 
-- **Volatile Sessions** (`persistent: false`, default): Stored in memory only. Each app launch creates a new session.
+- **Volatile Sessions** (`persistent: false`): Stored in memory only. Each app launch creates a new session.
+
+The persisted record contains only the current and previous session IDs, start and last-activity timestamps, the sampling decision, and a schema version. Session attributes, device state, and overrides remain in memory. Records older than `maxSessionPersistenceTime` are discarded. Unversioned records from earlier SDK versions, corrupt records, and unsupported schema versions are removed and start an unlinked session.
+
+Persistent storage currently supports one React Native runtime writing the MMKV record. Apps that initialize Faro from multiple native processes or independently launched runtimes should set `persistent: false` until process ownership is implemented in [#166](https://github.com/grafana/faro-react-native-sdk/issues/166).
 
 **Sampling:** Set `sessionTracking.sampling` to a `SamplingRate` (fixed 0–1) or `SamplingFunction` (dynamic, receives `context.meta`). Omit `sampling` to record all sessions. The decision is made once per session.
 
-**Defaults:** `persistent=false`, `inactivityTimeout=15min`, `sessionExpirationTime=4h`, `maxSessionPersistenceTime=15min`
+**Defaults:** `persistent=true`, `inactivityTimeout=15min`, `sessionExpirationTime=4h`, `maxSessionPersistenceTime=15min`
 
 **Session events:**
 
-The SDK emits `session_start` when a new session is created (including when session metadata changes to a new session id). Resuming a valid persisted session does not emit additional lifecycle events.
+The SDK emits `session_start` when a new session is created, including each cold start and when session metadata changes to a new session ID.
 
 ### Default Session Attributes
 

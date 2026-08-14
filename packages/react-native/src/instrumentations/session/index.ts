@@ -1,4 +1,4 @@
-import { BaseInstrumentation, dateNow, EVENT_SESSION_START, genShortID, VERSION } from '@grafana/faro-core';
+import { BaseInstrumentation, dateNow, EVENT_SESSION_START, VERSION } from '@grafana/faro-core';
 import type { Config, Meta, MetaSession, TransportItem } from '@grafana/faro-core';
 
 import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
@@ -55,7 +55,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
     if (sessionsConfig.persistent && storedUserSession) {
       const now = dateNow();
-      const shouldClearPersistentSession = storedUserSession.lastActivity < now - maxPersistenceMs;
+      const shouldClearPersistentSession = storedUserSession.lastActivity <= now - maxPersistenceMs;
 
       if (shouldClearPersistentSession) {
         SessionManagerClass.removeUserSession();
@@ -68,7 +68,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     let emitSessionStartOnInit: boolean;
     let initialSession: FaroUserSession;
 
-    if (isUserSessionValid(storedUserSession)) {
+    if (!sessionsConfig.persistent && isUserSessionValid(storedUserSession)) {
       const sessionId = storedUserSession?.sessionId;
 
       initialSession = createUserSessionObject({
@@ -101,23 +101,24 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
       emitSessionStartOnInit = false;
     } else {
-      const sessionId = sessionsConfig.session?.id ?? genShortID();
-
       initialSession = createUserSessionObject({
-        sessionId,
+        sessionId: sessionsConfig.session?.id,
         isSampled: isSampled(),
       });
 
+      const sessionId = initialSession.sessionId;
+      const previousSessionId = storedUserSession?.sessionId;
       const overrides = sessionsConfig.session?.overrides;
 
       initialSession.sessionMeta = {
         id: sessionId,
         attributes: {
-          isSampled: initialSession.isSampled.toString(),
           // Start with custom attributes from config
           ...sessionsConfig.session?.attributes,
           // Default attributes take precedence
           ...defaultAttributes,
+          isSampled: initialSession.isSampled.toString(),
+          ...(previousSessionId == null ? {} : { previousSession: previousSessionId }),
         },
         // new session we don't care about previous overrides
         ...(overrides ? { overrides } : {}),

@@ -64,3 +64,84 @@ describe('MmkvPersistentSessionsManager - react-native-mmkv version compatibilit
     expect(MMKV).not.toHaveBeenCalled();
   });
 });
+
+describe('MmkvPersistentSessionsManager - session persistence', () => {
+  afterEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+  });
+
+  it('returns null when no session has been stored', () => {
+    const store = { getString: jest.fn().mockReturnValue(undefined) };
+    const { MmkvPersistentSessionsManager } = loadWithMmkvMock({
+      createMMKV: jest.fn().mockReturnValue(store),
+    });
+
+    expect(MmkvPersistentSessionsManager.fetchUserSession()).toBeNull();
+  });
+
+  it.each([
+    ['empty', ''],
+    ['corrupt', '{not-json'],
+    [
+      'unsupported',
+      JSON.stringify({
+        schemaVersion: 99,
+        currentSessionId: 'old-session',
+        previousSessionId: null,
+        startedAt: 100,
+        lastActivityAt: 200,
+        isSampled: true,
+      }),
+    ],
+  ])('removes %s stored state', (_name, serialized) => {
+    const store = {
+      getString: jest.fn().mockReturnValue(serialized),
+      remove: jest.fn(),
+    };
+    const { MmkvPersistentSessionsManager } = loadWithMmkvMock({
+      createMMKV: jest.fn().mockReturnValue(store),
+    });
+
+    expect(MmkvPersistentSessionsManager.fetchUserSession()).toBeNull();
+    expect(store.remove).toHaveBeenCalledWith('com.grafana.faro.session');
+  });
+
+  it('stores a minimal record while retaining full runtime metadata in memory', () => {
+    const store = {
+      getString: jest.fn().mockReturnValue(undefined),
+      set: jest.fn(),
+    };
+    const { MmkvPersistentSessionsManager } = loadWithMmkvMock({
+      createMMKV: jest.fn().mockReturnValue(store),
+    });
+    const session = {
+      sessionId: 'current-session',
+      started: 100,
+      lastActivity: 200,
+      isSampled: true,
+      sessionMeta: {
+        id: 'current-session',
+        attributes: {
+          previousSession: 'previous-session',
+          custom: 'runtime-only',
+        },
+        overrides: {
+          serviceName: 'runtime-only',
+        },
+      },
+    };
+
+    MmkvPersistentSessionsManager.storeUserSession(session);
+
+    expect(MmkvPersistentSessionsManager.fetchUserSession()).toBe(session);
+    expect(JSON.parse(store.set.mock.calls[0][1])).toStrictEqual({
+      schemaVersion: 1,
+      currentSessionId: 'current-session',
+      previousSessionId: 'previous-session',
+      startedAt: 100,
+      lastActivityAt: 200,
+      isSampled: true,
+    });
+  });
+});

@@ -1,10 +1,11 @@
 import { AppState, type AppStateStatus } from 'react-native';
 import type { MMKV } from 'react-native-mmkv';
 
-import { faro, stringifyExternalJson } from '@grafana/faro-core';
+import { faro } from '@grafana/faro-core';
 
 import { throttle } from '../../../utils/throttle';
 
+import { parsePersistentSession, serializePersistentSession } from './persistentSessionRecord';
 import { STORAGE_KEY, STORAGE_UPDATE_DELAY } from './sessionConstants';
 import { getSessionMetaUpdateHandler, getUserSessionUpdater } from './sessionManagerUtils';
 import type { FaroUserSession } from './types';
@@ -27,6 +28,7 @@ function createMmkvInstance(): MMKV {
 }
 
 let mmkvSingleton: MMKV | undefined;
+let runtimeSession: FaroUserSession | null | undefined;
 
 function getMmkv(): MMKV {
   if (mmkvSingleton == null) {
@@ -38,6 +40,7 @@ function getMmkv(): MMKV {
 /** @internal */
 export function resetMmkvSingletonForTests(): void {
   mmkvSingleton = undefined;
+  runtimeSession = undefined;
 }
 
 /**
@@ -59,6 +62,7 @@ export class MmkvPersistentSessionsManager {
   }
 
   static removeUserSession(): void {
+    runtimeSession = null;
     try {
       getMmkv().remove(STORAGE_KEY);
     } catch (error) {
@@ -67,21 +71,39 @@ export class MmkvPersistentSessionsManager {
   }
 
   static storeUserSession(session: FaroUserSession): void {
+    runtimeSession = session;
     try {
-      getMmkv().set(STORAGE_KEY, stringifyExternalJson(session));
+      getMmkv().set(STORAGE_KEY, serializePersistentSession(session));
     } catch (error) {
       faro.unpatchedConsole?.warn?.('Failed to store session in MMKV:', error);
     }
   }
 
   static fetchUserSession(): FaroUserSession | null {
+    if (runtimeSession !== undefined) {
+      return runtimeSession;
+    }
+
     try {
-      const storedSession = getMmkv().getString(STORAGE_KEY);
-      if (storedSession) {
-        return JSON.parse(storedSession) as FaroUserSession;
+      const mmkv = getMmkv();
+      const storedSession = mmkv.getString(STORAGE_KEY);
+      if (storedSession == null) {
+        runtimeSession = null;
+        return null;
       }
-      return null;
+
+      runtimeSession = parsePersistentSession(storedSession);
+      if (runtimeSession == null) {
+        mmkv.remove(STORAGE_KEY);
+      }
+      return runtimeSession;
     } catch (error) {
+      runtimeSession = null;
+      try {
+        getMmkv().remove(STORAGE_KEY);
+      } catch {
+        // The read warning below includes the original storage failure.
+      }
       faro.unpatchedConsole?.warn?.('Failed to fetch session from MMKV:', error);
       return null;
     }

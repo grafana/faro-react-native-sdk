@@ -192,10 +192,27 @@ export function getSessionMetaUpdateHandler({
     const hasSessionIdChanged = !!session && sessionId !== sessionFromSessionStorage?.sessionId;
 
     if (hasSessionIdChanged || hasAttributesChanged || hasSessionOverridesChanged) {
-      const userSession = addSessionMetadataToNextSession(
-        createUserSessionObject({ sessionId, isSampled: isSampled() }),
-        sessionFromSessionStorage
-      );
+      const userSession =
+        sessionFromSessionStorage != null && !hasSessionIdChanged
+          ? {
+              ...sessionFromSessionStorage,
+              sessionMeta: toStorableSessionMeta({
+                id: sessionFromSessionStorage.sessionId,
+                ...(sessionAttributes == null
+                  ? {}
+                  : {
+                      attributes: {
+                        ...sessionAttributes,
+                        isSampled: sessionFromSessionStorage.isSampled.toString(),
+                      },
+                    }),
+                ...(sessionOverrides == null ? {} : { overrides: sessionOverrides }),
+              }),
+            }
+          : addSessionMetadataToNextSession(
+              createUserSessionObject({ sessionId, isSampled: isSampled() }),
+              sessionFromSessionStorage
+            );
 
       await storeUserSession(userSession);
       sendOverrideEvent(hasSessionOverridesChanged, sessionOverrides, storedSessionMetaOverrides);
