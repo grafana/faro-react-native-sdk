@@ -41,7 +41,6 @@ function getDemoEnvironment(): string {
 /**
  * Initialize Faro for React Native demo app with Grafana Cloud.
  * Flag-based config: enable what you need, makeRNConfig builds the rest.
- * Aligned with mobile-o11y-demo (Flutter) and faro-flutter-sdk example.
  */
 export async function initFaro() {
   console.log('[FARO DEBUG] Starting Faro initialization');
@@ -72,13 +71,13 @@ export async function initFaro() {
       sampling: new SamplingRate(1),
     },
 
-    // Performance vitals (aligned with Flutter SDK)
+    // Performance vitals
     cpuUsageVitals: true,
     memoryUsageVitals: true,
     refreshRateVitals: true,
     fetchVitalsInterval,
 
-    // Error & crash tracking (aligned with Flutter SDK)
+    // Error & crash tracking
     enableErrorReporting: true,
     enableCrashReporting: true,
     anrTracking: true,

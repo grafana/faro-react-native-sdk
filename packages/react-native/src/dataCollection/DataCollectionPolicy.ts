@@ -13,8 +13,7 @@ const DEFAULT_STORAGE_KEY = 'faro_enable_data_collection';
  * Controls whether telemetry data is collected and sent.
  * The setting is persisted to AsyncStorage so it survives app restarts.
  *
- * Implementation follows Flutter SDK's DataCollectionPolicy pattern:
- * - Uses AsyncStorage for persistence (matching Flutter's SharedPreferences)
+ * Uses AsyncStorage for persisting data collection policy state.
  * - Provides enable/disable methods
  * - Initializes from persisted value or default
  *

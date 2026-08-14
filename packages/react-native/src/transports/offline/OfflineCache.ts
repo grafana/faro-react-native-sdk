@@ -16,7 +16,7 @@ const DEFAULT_MAX_CACHE_SIZE = 1000;
  * File-based offline cache implementation using AsyncStorage.
  *
  * Stores cached telemetry payloads as JSONL (one JSON object per line)
- * following the Flutter SDK's offline transport pattern.
+ * Persistent offline telemetry cache backed by AsyncStorage.
  *
  * Uses a mutex pattern for thread-safe file access.
  */
@@ -77,7 +77,7 @@ export class AsyncStorageOfflineCache implements OfflineCache {
 
   /**
    * Execute an operation with a mutex lock to ensure thread-safe access.
-   * Follows Flutter SDK's Completer-based lock pattern.
+   * Async lock to serialize cache read/write operations.
    */
   private async withLock<T>(operation: () => Promise<T>): Promise<T> {
     const currentLock = this.lockPromise;

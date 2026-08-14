@@ -15,8 +15,7 @@ const DEFAULT_STORAGE_KEY = 'faro_persisted_user';
  * Stores user information persistently so it can be restored on app restart.
  * This ensures early telemetry events include user identification.
  *
- * Implementation follows Flutter SDK's UserPersistence pattern:
- * - Uses AsyncStorage for persistence (matching Flutter's SharedPreferences)
+ * Uses AsyncStorage for persistent user data across app sessions.
  * - Stores user as JSON
  * - Handles null/cleared users
  *

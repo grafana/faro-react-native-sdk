@@ -2,7 +2,6 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { BaseInstrumentation, dateNow, VERSION } from '@grafana/faro-core';
 
-// Event name aligned with Faro Flutter SDK (app_lifecycle_changed)
 export const EVENT_APP_STATE_CHANGED = 'app_lifecycle_changed';
 
 /**

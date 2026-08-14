@@ -132,9 +132,9 @@ class CrashTestModule: NSObject {
                 
                 iteration += 1
                 
-                // Every 10th iteration: brief freeze (150ms)
+                // Every 10th iteration: freeze above 700ms threshold
                 if iteration % 10 == 0 {
-                    usleep(150_000) // 150ms = frozen frame
+                    usleep(750_000) // 750ms = frozen frame at default threshold
                 }
             }
         }

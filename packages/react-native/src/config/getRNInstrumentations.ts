@@ -26,8 +26,7 @@ function toRegExpArray(patterns: Patterns): RegExp[] {
 /**
  * Returns the default set of instrumentations for React Native.
  *
- * Reads all options from the Faro config (single source of truth).
- * Property names are aligned with Flutter SDK FaroConfig:
+ * Reads all options from the Faro config (single source of truth):
  * - cpuUsageVitals, memoryUsageVitals, anrTracking, refreshRateVitals
  * - enableCrashReporting, enableErrorReporting
  * - fetchVitalsInterval, ignoreUrls
@@ -47,7 +46,6 @@ function toRegExpArray(patterns: Patterns): RegExp[] {
  * ```
  */
 export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): Instrumentation[] {
-  // Aligned with Flutter SDK FaroConfig defaults
   const {
     // Error & crash tracking
     enableErrorReporting = true,
@@ -77,7 +75,7 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
 
   const instrumentations: Instrumentation[] = [];
 
-  // Error reporting (Flutter: enableFlutterErrorReporting)
+  // Error reporting
   if (enableErrorReporting) {
     instrumentations.push(
       new ErrorsInstrumentation({
@@ -86,18 +84,18 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
     );
   }
 
-  // Console capture - not in Flutter SDK, RN-specific
+  // Console capture
   if (enableConsoleCapture) {
     instrumentations.push(new ConsoleInstrumentation());
   }
 
-  // Sessions - always enabled in Flutter, same here
+  // Sessions
   instrumentations.push(new SessionInstrumentation());
 
-  // Views - always enabled in Flutter, same here
+  // Views
   instrumentations.push(new ViewInstrumentation());
 
-  // App state - always enabled in Flutter, same here
+  // App state
   instrumentations.push(new AppStateInstrumentation());
 
   // User actions - enabled by default, opt-out via enableUserActions

@@ -7,11 +7,11 @@ import type { ReactNativeConfig } from '../../config/types';
 import type { FrameMetrics, FrameMonitoringOptions } from './types';
 
 /**
- * Default configuration values matching Flutter SDK's hardcoded values.
- * These are React Native-specific advanced options for customization.
+ * Default configuration values. Frozen frame threshold aligns with Android Vitals
+ * and OpenTelemetry Android slow rendering instrumentation (700ms).
  */
 const DEFAULT_TARGET_FPS = 60;
-const DEFAULT_FROZEN_FRAME_THRESHOLD_MS = 100;
+const DEFAULT_FROZEN_FRAME_THRESHOLD_MS = 700;
 const DEFAULT_REFRESH_RATE_POLLING_INTERVAL = 30000;
 const DEFAULT_NORMALIZED_REFRESH_RATE = 60;
 
@@ -29,7 +29,7 @@ const DEFAULT_NORMALIZED_REFRESH_RATE = 60;
  * - Reports meaningful performance degradation that affects user experience
  *
  * ## Frozen Frame Detection
- * Frozen frames are individual frames exceeding `frozenFrameThresholdMs` (default 100ms).
+ * Frozen frames are individual frames exceeding `frozenFrameThresholdMs` (default 700ms).
  * These represent severe jank where the app appears unresponsive.
  *
  * Sends measurements via Faro API:
@@ -46,7 +46,7 @@ const DEFAULT_NORMALIZED_REFRESH_RATE = 60;
  *   instrumentations: [
  *     new FrameMonitoringInstrumentation({
  *       targetFps: 60,
- *       frozenFrameThresholdMs: 100,
+ *       frozenFrameThresholdMs: 700,
  *       refreshRatePollingInterval: 30000,
  *     }),
  *   ],
@@ -94,7 +94,7 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     // Start native frame monitoring with configuration
     this.startNativeMonitoring(nativeModule);
 
-    // Set up event listeners for real-time frame events (Android pattern)
+    // Set up Android refresh rate events (throttled on native side); frozen/slow frames use polling
     this.setupEventListeners(nativeModule);
 
     // Set up polling for periodic metrics collection (iOS pattern)
@@ -127,35 +127,17 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private setupEventListeners(nativeModule: typeof NativeModules.FaroReactNativeModule): void {
-    // Android uses event-based approach for frozen frames only
-    // Slow frames are retrieved via polling (like iOS) to avoid flooding
-    if (Platform.OS === 'android') {
+    // Android: refresh rate only. Slow and frozen frames are polled (same as iOS) to avoid duplicate reports.
+    if (Platform.OS === 'android' && this.refreshRateVitalsEnabled) {
       try {
         this.eventEmitter = new NativeEventEmitter(nativeModule);
 
-        // Listen for frozen frame events
-        const frozenFrameSubscription = this.eventEmitter.addListener(
-          'onFrozenFrame',
-          (data: number | { count: number; durationMs: number }) => {
-            // Support both formats: number (legacy) or object (with duration)
-            if (typeof data === 'number') {
-              this.handleFrozenFrame(data, 0);
-            } else {
-              this.handleFrozenFrame(data.count, data.durationMs || 0);
-            }
-          }
-        );
-        this.eventSubscriptions.push(frozenFrameSubscription);
+        const refreshRateSubscription = this.eventEmitter.addListener('onRefreshRate', (refreshRate: number) => {
+          this.handleRefreshRate(refreshRate);
+        });
+        this.eventSubscriptions.push(refreshRateSubscription);
 
-        // Listen for refresh rate events (only when refreshRateVitals is enabled in config)
-        if (this.refreshRateVitalsEnabled) {
-          const refreshRateSubscription = this.eventEmitter.addListener('onRefreshRate', (refreshRate: number) => {
-            this.handleRefreshRate(refreshRate);
-          });
-          this.eventSubscriptions.push(refreshRateSubscription);
-        }
-
-        this.logDebug('Set up Android frame event listeners');
+        this.logDebug('Set up Android refresh rate event listener');
       } catch (error) {
         this.logError('Failed to set up frame event listeners', error);
       }
@@ -163,8 +145,7 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private startPolling(): void {
-    // Both iOS and Android use polling approach for slow frames
-    // This provides consistent behavior and avoids flooding with events
+    // Both iOS and Android use polling for slow and frozen frames (avoids duplicate reports on Android).
     this.pollingIntervalId = setInterval(() => {
       this.pollFrameMetrics();
     }, this.options.refreshRatePollingInterval);
@@ -230,14 +211,7 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private handleFrozenFrame(count: number, durationMs: number): void {
-    // Only send frozen frame events if duration is greater than 0
-    // This filters out any erroneous 0ms frozen frames
     if (durationMs > 0) {
-      // 🔍 TEMP DEBUG LOG - Remove after analysis
-      console.log(
-        `[Faro DEBUG ${Platform.OS.toUpperCase()}] 🧊 SENDING frozen frame: count=${count}, duration=${durationMs}ms`
-      );
-
       this.api.pushMeasurement(
         {
           type: 'app_frozen_frame',

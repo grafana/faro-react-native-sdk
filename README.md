@@ -136,9 +136,12 @@ Each package builds to multiple formats:
 
 - [Core SDK Documentation](./packages/react-native/README.md)
 - [Tracing Documentation](./packages/react-native-tracing/README.md)
-- [Feature Parity Matrix](./docs/mobile-rum/feature-parity-matrix.md)
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Changelog](./CHANGELOG.md)
+- Cross-SDK mobile RUM docs (including frozen/slow frame monitoring when
+  that epic lands): [Frontend Observability Knowledge Workbench][fe-o11y-wb]
+
+[fe-o11y-wb]: https://github.com/grafana/frontend-o11y-knowledge-workbench
 
 ## Contributing
 

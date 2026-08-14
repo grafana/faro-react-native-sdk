@@ -91,7 +91,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
           ...sessionsConfig.session?.attributes,
           // Merge with stored attributes
           ...storedUserSessionMeta?.attributes,
-          // Default attributes take precedence (matching Flutter SDK behavior)
+          // Default attributes take precedence
           ...defaultAttributes,
           // For valid resumed sessions we do not want to recalculate the sampling decision on each init phase.
           isSampled: initialSession.isSampled.toString(),
@@ -116,7 +116,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
           isSampled: initialSession.isSampled.toString(),
           // Start with custom attributes from config
           ...sessionsConfig.session?.attributes,
-          // Default attributes take precedence (matching Flutter SDK behavior)
+          // Default attributes take precedence
           ...defaultAttributes,
         },
         // new session we don't care about previous overrides

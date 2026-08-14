@@ -155,9 +155,9 @@ class CrashTestModule(reactContext: ReactApplicationContext) :
 
                 iteration++
 
-                // Every 10th iteration: brief freeze (150ms)
+                // Every 10th iteration: freeze above 700ms threshold
                 if (iteration % 10 == 0) {
-                    Thread.sleep(150) // 150ms = frozen frame
+                    Thread.sleep(750) // 750ms = frozen frame at default threshold
                 }
             }
 
