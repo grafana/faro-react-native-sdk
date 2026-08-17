@@ -30,6 +30,8 @@ export function serializePersistentSession(session: FaroUserSession): string {
     currentSessionId: session.sessionId,
     previousSessionId: isNonEmptyString(previousSession) ? previousSession : null,
     startedAt: session.started,
+    // Preserve the record invariant if the device clock moves backwards after
+    // the session starts.
     lastActivityAt: Math.max(session.started, session.lastActivity),
     isSampled: session.isSampled,
   };

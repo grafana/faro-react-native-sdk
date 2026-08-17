@@ -55,7 +55,10 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
     if (sessionsConfig.persistent && storedUserSession) {
       const now = dateNow();
-      const shouldClearPersistentSession = storedUserSession.lastActivity <= now - maxPersistenceMs;
+      const shouldClearPersistentSession =
+        storedUserSession.started > now ||
+        storedUserSession.lastActivity > now ||
+        storedUserSession.lastActivity <= now - maxPersistenceMs;
 
       if (shouldClearPersistentSession) {
         SessionManagerClass.removeUserSession();
@@ -107,7 +110,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
       });
 
       const sessionId = initialSession.sessionId;
-      const previousSessionId = storedUserSession?.sessionId;
+      const previousSessionId = storedUserSession?.sessionId === sessionId ? undefined : storedUserSession?.sessionId;
       const overrides = sessionsConfig.session?.overrides;
 
       initialSession.sessionMeta = {
@@ -130,23 +133,29 @@ export class SessionInstrumentation extends BaseInstrumentation {
     return { initialSession, emitSessionStartOnInit };
   }
 
-  private registerBeforeSendHook(sessionManager: InstanceType<SessionManager>) {
+  private registerBeforeSendHook(
+    sessionManager: InstanceType<SessionManager>,
+    SessionManagerClass: SessionManager
+  ): void {
     const { updateSession } = sessionManager;
 
     this.transports?.addBeforeSendHooks((item: TransportItem) => {
       updateSession();
 
       const attributes = item.meta.session?.attributes;
+      const samplingAttribute =
+        attributes?.['isSampled'] ?? SessionManagerClass.fetchUserSession()?.isSampled.toString();
 
       // Only filter out items when session is explicitly NOT sampled (isSampled='false')
       // If isSampled='true', remove the attribute before sending (it's internal)
-      // If no isSampled attribute, pass through the item unchanged
-      if (attributes?.['isSampled'] === 'false') {
+      // During a setSession update, fall back to the manager's stable decision
+      // while the internal attribute is being restored asynchronously.
+      if (samplingAttribute === 'false') {
         // Session is not sampled - drop this item
         return null;
       }
 
-      if (attributes?.['isSampled'] === 'true') {
+      if (samplingAttribute === 'true') {
         // Session is sampled - remove internal isSampled attribute before sending
         let newItem: TransportItem = JSON.parse(JSON.stringify(item));
 
@@ -180,7 +189,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     // instance `unpatch()` cleans up.
     this.sessionManagerInstance = new SessionManagerClass();
 
-    this.registerBeforeSendHook(this.sessionManagerInstance);
+    this.registerBeforeSendHook(this.sessionManagerInstance, SessionManagerClass);
 
     const { initialSession, emitSessionStartOnInit } = this.createInitialSession(
       SessionManagerClass,

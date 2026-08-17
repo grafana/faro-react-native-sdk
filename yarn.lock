@@ -1758,6 +1758,7 @@ __metadata:
     react-native: "npm:0.85.3"
     react-native-device-info: "npm:^11.1.0"
     react-native-dotenv: "npm:3.4.11"
+    react-native-mmkv: "npm:4.3.2"
     react-native-nitro-modules: "npm:0.36.1"
     react-native-safe-area-context: "npm:^5.5.2"
     react-native-screens: "npm:^4.19.0"

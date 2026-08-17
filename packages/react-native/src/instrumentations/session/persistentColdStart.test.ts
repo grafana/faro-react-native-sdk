@@ -22,12 +22,20 @@ jest.mock('react-native-mmkv', () => ({
 
 const now = new Date('2026-08-14T12:00:00.000Z').getTime();
 
-function persistedSession(lastActivityAt = now - 1) {
+function persistedSession({
+  currentSessionId = 'persisted-session',
+  startedAt = now - 10_000,
+  lastActivityAt = now - 1,
+}: {
+  currentSessionId?: string;
+  startedAt?: number;
+  lastActivityAt?: number;
+} = {}) {
   return JSON.stringify({
     schemaVersion: 1,
-    currentSessionId: 'persisted-session',
+    currentSessionId,
     previousSessionId: 'older-session',
-    startedAt: now - 10_000,
+    startedAt,
     lastActivityAt,
     isSampled: false,
   });
@@ -81,9 +89,11 @@ describe('persistent session cold starts', () => {
 
     expect(faro.metas.value.session?.id).toBe('new-session');
     expect(faro.metas.value.session?.attributes?.['previousSession']).toBe('persisted-session');
-    expect(
-      transport.items.filter((item) => item.type === 'event' && item.payload.name === EVENT_SESSION_START)
-    ).toHaveLength(1);
+    const sessionStartEvents = transport.items.filter(
+      (item) => item.type === 'event' && 'name' in item.payload && item.payload.name === EVENT_SESSION_START
+    );
+    expect(sessionStartEvents).toHaveLength(1);
+    expect(sessionStartEvents[0]?.meta.session?.attributes?.['previousSession']).toBe('persisted-session');
   });
 
   it('does not load MMKV when persistence is disabled', () => {
@@ -102,13 +112,32 @@ describe('persistent session cold starts', () => {
   });
 
   it('does not link expired persisted state', () => {
-    mockMmkvValues.set(STORAGE_KEY, persistedSession(now - MAX_SESSION_PERSISTENCE_TIME));
+    const lastActivityAt = now - MAX_SESSION_PERSISTENCE_TIME;
+    mockMmkvValues.set(STORAGE_KEY, persistedSession({ startedAt: lastActivityAt - 10_000, lastActivityAt }));
 
     const { faro } = initializePersistentSession();
 
     expect(faro.metas.value.session?.id).toBe('new-session');
     expect(faro.metas.value.session?.attributes?.['previousSession']).toBeUndefined();
     expect(mockMmkv.remove).toHaveBeenCalledWith(STORAGE_KEY);
+  });
+
+  it('does not link future-dated persisted state', () => {
+    mockMmkvValues.set(STORAGE_KEY, persistedSession({ startedAt: now + 1, lastActivityAt: now + 1 }));
+
+    const { faro } = initializePersistentSession();
+
+    expect(faro.metas.value.session?.attributes?.['previousSession']).toBeUndefined();
+    expect(mockMmkv.remove).toHaveBeenCalledWith(STORAGE_KEY);
+  });
+
+  it('does not link a configured session ID to itself', () => {
+    mockMmkvValues.set(STORAGE_KEY, persistedSession({ currentSessionId: 'new-session' }));
+
+    const { faro } = initializePersistentSession();
+
+    expect(faro.metas.value.session?.id).toBe('new-session');
+    expect(faro.metas.value.session?.attributes?.['previousSession']).toBeUndefined();
   });
 
   it.each([
@@ -139,7 +168,9 @@ describe('persistent session cold starts', () => {
 
     initializePersistentSession();
 
-    expect(JSON.parse(mockMmkvValues.get(STORAGE_KEY)!)).toStrictEqual({
+    const storedSession = mockMmkvValues.get(STORAGE_KEY);
+    expect(storedSession).toBeDefined();
+    expect(JSON.parse(storedSession ?? '')).toStrictEqual({
       schemaVersion: 1,
       currentSessionId: 'new-session',
       previousSessionId: 'persisted-session',

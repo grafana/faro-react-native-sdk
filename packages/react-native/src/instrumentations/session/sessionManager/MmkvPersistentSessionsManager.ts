@@ -7,7 +7,7 @@ import { throttle } from '../../../utils/throttle';
 
 import { parsePersistentSession, serializePersistentSession } from './persistentSessionRecord';
 import { STORAGE_KEY, STORAGE_UPDATE_DELAY } from './sessionConstants';
-import { getSessionMetaUpdateHandler, getUserSessionUpdater } from './sessionManagerUtils';
+import { getSessionMetaUpdateHandler, getUserSessionUpdater, toStorableSessionMeta } from './sessionManagerUtils';
 import type { FaroUserSession } from './types';
 
 function createMmkvInstance(): MMKV {
@@ -27,14 +27,43 @@ function createMmkvInstance(): MMKV {
   }
 }
 
-let mmkvSingleton: MMKV | undefined;
+// undefined means MMKV has not been resolved; null means it is unavailable.
+let mmkvSingleton: MMKV | null | undefined;
+// undefined means storage has not been read, null means no persisted state is
+// available, and a session is the live value for this JavaScript runtime.
 let runtimeSession: FaroUserSession | null | undefined;
 
-function getMmkv(): MMKV {
-  if (mmkvSingleton == null) {
-    mmkvSingleton = createMmkvInstance();
+function tryGetMmkv(): MMKV | null {
+  if (mmkvSingleton !== undefined) {
+    return mmkvSingleton;
   }
+
+  try {
+    mmkvSingleton = createMmkvInstance();
+  } catch (error) {
+    mmkvSingleton = null;
+    faro.unpatchedConsole?.warn?.('Session persistence is unavailable; using an in-memory session:', error);
+  }
+
   return mmkvSingleton;
+}
+
+function removeMmkvValue(mmkv: MMKV, key: string): void {
+  const compatibleMmkv = mmkv as MMKV & {
+    delete?: (storageKey: string) => void;
+    remove?: (storageKey: string) => void;
+  };
+
+  if (typeof compatibleMmkv.remove === 'function') {
+    compatibleMmkv.remove(key);
+    return;
+  }
+  if (typeof compatibleMmkv.delete === 'function') {
+    compatibleMmkv.delete(key);
+    return;
+  }
+
+  throw new Error('The installed react-native-mmkv version cannot remove stored values.');
 }
 
 /** @internal */
@@ -63,17 +92,31 @@ export class MmkvPersistentSessionsManager {
 
   static removeUserSession(): void {
     runtimeSession = null;
+    const mmkv = tryGetMmkv();
+    if (mmkv == null) {
+      return;
+    }
     try {
-      getMmkv().remove(STORAGE_KEY);
+      removeMmkvValue(mmkv, STORAGE_KEY);
     } catch (error) {
       faro.unpatchedConsole?.warn?.('Failed to remove session from MMKV:', error);
     }
   }
 
   static storeUserSession(session: FaroUserSession): void {
-    runtimeSession = session;
+    runtimeSession =
+      session.sessionMeta == null
+        ? session
+        : {
+            ...session,
+            sessionMeta: toStorableSessionMeta(session.sessionMeta),
+          };
+    const mmkv = tryGetMmkv();
+    if (mmkv == null) {
+      return;
+    }
     try {
-      getMmkv().set(STORAGE_KEY, serializePersistentSession(session));
+      mmkv.set(STORAGE_KEY, serializePersistentSession(session));
     } catch (error) {
       faro.unpatchedConsole?.warn?.('Failed to store session in MMKV:', error);
     }
@@ -84,8 +127,13 @@ export class MmkvPersistentSessionsManager {
       return runtimeSession;
     }
 
+    const mmkv = tryGetMmkv();
+    if (mmkv == null) {
+      runtimeSession = null;
+      return null;
+    }
+
     try {
-      const mmkv = getMmkv();
       const storedSession = mmkv.getString(STORAGE_KEY);
       if (storedSession == null) {
         runtimeSession = null;
@@ -94,16 +142,11 @@ export class MmkvPersistentSessionsManager {
 
       runtimeSession = parsePersistentSession(storedSession);
       if (runtimeSession == null) {
-        mmkv.remove(STORAGE_KEY);
+        removeMmkvValue(mmkv, STORAGE_KEY);
       }
       return runtimeSession;
     } catch (error) {
       runtimeSession = null;
-      try {
-        getMmkv().remove(STORAGE_KEY);
-      } catch {
-        // The read warning below includes the original storage failure.
-      }
       faro.unpatchedConsole?.warn?.('Failed to fetch session from MMKV:', error);
       return null;
     }

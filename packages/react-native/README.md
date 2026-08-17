@@ -63,8 +63,6 @@ initializeFaro({
   sessionTracking: {
     enabled: true,
     persistent: true,
-    inactivityTimeout: 15 * 60 * 1000,
-    sessionExpirationTime: 4 * 60 * 60 * 1000,
     maxSessionPersistenceTime: 15 * 60 * 1000,
     // Optional: sampling: new SamplingRate(0.1) or new SamplingFunction((ctx) => ...)
     // Omit sampling to record all sessions (default).
@@ -791,7 +789,8 @@ yarn add react-native-mmkv
 
 Rebuild the native projects after installation. Set `persistent: false` to opt out and use in-memory sessions without MMKV.
 
-Session tracking supports configurable expiration and inactivity timeouts:
+Use `maxSessionPersistenceTime` to control the inactivity and cold-start linking window. A session's
+maximum lifetime is fixed at four hours.
 
 ```tsx
 import { initializeFaro, SamplingFunction, SamplingRate } from '@grafana/faro-react-native';
@@ -805,9 +804,7 @@ initializeFaro({
   sessionTracking: {
     enabled: true, // default: true
     persistent: true, // default: true
-    // Configurable timeouts (all in ms):
-    inactivityTimeout: 15 * 60 * 1000, // default: 15 min
-    sessionExpirationTime: 4 * 60 * 60 * 1000, // default: 4 h
+    // Inactivity and cold-start linking window (ms):
     maxSessionPersistenceTime: 15 * 60 * 1000, // default: 15 min
 
     // Optional: session sampling (omit = all sessions recorded)
@@ -846,7 +843,7 @@ Persistent storage currently supports one React Native runtime writing the MMKV 
 
 **Sampling:** Set `sessionTracking.sampling` to a `SamplingRate` (fixed 0–1) or `SamplingFunction` (dynamic, receives `context.meta`). Omit `sampling` to record all sessions. The decision is made once per session.
 
-**Defaults:** `persistent=true`, `inactivityTimeout=15min`, `sessionExpirationTime=4h`, `maxSessionPersistenceTime=15min`
+**Defaults:** `persistent=true`, `maxSessionPersistenceTime=15min`. The maximum session lifetime is four hours.
 
 **Session events:**
 
