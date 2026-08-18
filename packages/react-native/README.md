@@ -781,13 +781,16 @@ initializeFaro({
 
 ### Session Configuration
 
-The SDK persists minimal session state by default so a cold start can link to the previous session. Install MMKV before using the default:
+Session persistence is enabled by default. The SDK does not bundle storage, so
+apps using the default configuration must install the optional
+`react-native-mmkv` peer dependency:
 
 ```bash
 yarn add react-native-mmkv
 ```
 
-Rebuild the native projects after installation. Set `persistent: false` to opt out and use in-memory sessions without MMKV.
+Rebuild the native projects after installation. Apps using `persistent: false`
+use in-memory sessions and do not need MMKV.
 
 Use `maxSessionPersistenceTime` to control the inactivity and cold-start linking window. A session's
 maximum lifetime is fixed at four hours.
