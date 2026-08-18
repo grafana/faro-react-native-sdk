@@ -1,8 +1,10 @@
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
+import { SamplingRate } from '../../config/sampling';
 import { initializeFaro } from '../../initialize';
 
 import { SessionInstrumentation } from './index';
+import { VolatileSessionsManager } from './sessionManager/VolatileSessionManager';
 
 function testEventItems(transport: MockTransport) {
   return transport.items.filter((i) => i.type === 'event' && i.payload.name === 'test_event');
@@ -13,6 +15,7 @@ describe('SessionInstrumentation beforeSend hook', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    VolatileSessionsManager.removeUserSession();
   });
 
   it('should pass through items when session is sampled (isSampled="true")', async () => {
@@ -71,6 +74,34 @@ describe('SessionInstrumentation beforeSend hook', () => {
     faro.api.pushEvent('test_event', { data: 'test' });
 
     // Should NOT send the test event (session_start may still be emitted before setSession)
+    expect(testEventItems(transport)).toHaveLength(0);
+  });
+
+  it('keeps dropping items after an overrides-only session update', async () => {
+    transport = new MockTransport();
+
+    const faro = await initializeFaro(
+      mockConfig({
+        url: 'http://localhost:12345/collect',
+        transports: [transport],
+        instrumentations: [new SessionInstrumentation()],
+        sessionTracking: {
+          enabled: true,
+          persistent: false,
+          sampling: new SamplingRate(0),
+        },
+      })
+    );
+
+    faro.api.setSession({
+      id: faro.api.getSession()?.id,
+      overrides: { serviceName: 'override-service' },
+    });
+
+    // This event is sent before the async session-meta listener can restore
+    // internal attributes, so the manager's sampling decision must still win.
+    faro.api.pushEvent('test_event', { data: 'test' });
+
     expect(testEventItems(transport)).toHaveLength(0);
   });
 

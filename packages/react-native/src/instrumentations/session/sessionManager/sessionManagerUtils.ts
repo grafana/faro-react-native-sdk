@@ -62,12 +62,17 @@ export function isUserSessionValid(session: FaroUserSession | null): boolean {
 
   const { sessionExpirationTime, inactivityTimeout } = getSessionTimeouts();
   const now = dateNow();
+  if (session.started > now || session.lastActivity > now) {
+    return false;
+  }
+
   const lifetimeValid = now - session.started < sessionExpirationTime;
 
   if (!lifetimeValid) {
     return false;
   }
 
+  // The session expires at the boundary, matching cold-start record cleanup.
   const inactivityPeriodValid = now - session.lastActivity < inactivityTimeout;
   return inactivityPeriodValid;
 }
@@ -111,7 +116,7 @@ export function getUserSessionUpdater({
  * rewrite the session on every meta notification. Applying the same round-trip
  * in memory keeps the two sides comparable, for attributes and overrides alike.
  */
-function toStorableSessionMeta(sessionMeta: MetaSession): MetaSession {
+export function toStorableSessionMeta(sessionMeta: MetaSession): MetaSession {
   return JSON.parse(stringifyExternalJson(sessionMeta)) as MetaSession;
 }
 
@@ -134,7 +139,7 @@ export function addSessionMetadataToNextSession(newSession: FaroUserSession, pre
   }
 
   const previousSessionId = previousSession?.sessionId;
-  if (previousSessionId != null) {
+  if (previousSessionId != null && previousSessionId !== newSession.sessionId) {
     sessionWithMeta.sessionMeta.attributes!['previousSession'] = previousSessionId;
   }
 
@@ -187,15 +192,36 @@ export function getSessionMetaUpdateHandler({
     const storedSessionMeta = sessionFromSessionStorage?.sessionMeta;
     const storedSessionMetaOverrides = storedSessionMeta?.overrides;
 
-    const hasSessionOverridesChanged = !!sessionOverrides && !deepEqual(sessionOverrides, storedSessionMetaOverrides);
-    const hasAttributesChanged = !!sessionAttributes && !deepEqual(sessionAttributes, storedSessionMeta?.attributes);
+    const hasSessionOverridesChanged =
+      sessionOverrides != null && !deepEqual(sessionOverrides, storedSessionMetaOverrides);
+    const hasSessionMetaChanged =
+      session != null &&
+      (!deepEqual(sessionAttributes, storedSessionMeta?.attributes) ||
+        !deepEqual(sessionOverrides, storedSessionMetaOverrides));
     const hasSessionIdChanged = !!session && sessionId !== sessionFromSessionStorage?.sessionId;
 
-    if (hasSessionIdChanged || hasAttributesChanged || hasSessionOverridesChanged) {
-      const userSession = addSessionMetadataToNextSession(
-        createUserSessionObject({ sessionId, isSampled: isSampled() }),
-        sessionFromSessionStorage
-      );
+    if (hasSessionIdChanged || hasSessionMetaChanged) {
+      const storedPreviousSessionId = storedSessionMeta?.attributes?.['previousSession'];
+      const effectiveOverrides = sessionOverrides ?? storedSessionMetaOverrides;
+      const userSession =
+        sessionFromSessionStorage != null && !hasSessionIdChanged
+          ? {
+              ...sessionFromSessionStorage,
+              sessionMeta: toStorableSessionMeta({
+                id: sessionFromSessionStorage.sessionId,
+                attributes: {
+                  ...faro.config.sessionTracking?.session?.attributes,
+                  ...(sessionAttributes ?? storedSessionMeta?.attributes),
+                  ...(storedPreviousSessionId == null ? {} : { previousSession: storedPreviousSessionId }),
+                  isSampled: sessionFromSessionStorage.isSampled.toString(),
+                },
+                ...(isEmpty(effectiveOverrides) ? {} : { overrides: effectiveOverrides }),
+              }),
+            }
+          : addSessionMetadataToNextSession(
+              createUserSessionObject({ sessionId, isSampled: isSampled() }),
+              sessionFromSessionStorage
+            );
 
       await storeUserSession(userSession);
       sendOverrideEvent(hasSessionOverridesChanged, sessionOverrides, storedSessionMetaOverrides);

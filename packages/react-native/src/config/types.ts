@@ -11,8 +11,10 @@ import type { Sampling } from './sampling';
  * Extends Config['sessionTracking'] with sampling and RN-specific props.
  * Excludes samplingRate and sampler in favor of sampling.
  *
- * When `persistent` is true, sessions are stored with [react-native-mmkv](https://github.com/mrousavy/react-native-mmkv)
- * (synchronous). Add `react-native-mmkv` to your app and rebuild native projects.
+ * Persistence defaults to true and stores a minimal, versioned record with
+ * [react-native-mmkv](https://github.com/mrousavy/react-native-mmkv) (synchronous).
+ * Add `react-native-mmkv` to your app and rebuild native projects, or set
+ * `persistent` to false to use in-memory sessions.
  */
 export type ReactNativeSessionTrackingConfig = Omit<
   NonNullable<Config['sessionTracking']>,

@@ -108,6 +108,12 @@ describe('makeRNConfig', () => {
     });
   });
 
+  it('enables minimal session persistence by default', () => {
+    const cfg = makeRNConfig({ ...base });
+
+    expect(cfg.sessionTracking?.persistent).toBe(true);
+  });
+
   it('uses getRNInstrumentations for the instrumentation set from flags', () => {
     const minimal = makeRNConfig({
       ...base,

@@ -108,11 +108,11 @@ export class MyInstrumentation extends BaseInstrumentation {
 
 Sessions are managed by `SessionInstrumentation` with two modes:
 
-**Persistent (AsyncStorage):**
+**Persistent (MMKV):**
 
-- Sessions survive app restarts
-- Expire after 4 hours of inactivity
-- Timeout after 15 minutes of inactivity
+- Minimal session state is stored between app processes
+- Every process start creates a new session linked to the previous ID when available
+- Sessions have a four-hour maximum lifetime and a 15-minute inactivity timeout by default
 
 **Volatile (in-memory):**
 

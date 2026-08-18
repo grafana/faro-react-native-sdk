@@ -141,6 +141,13 @@ describe('sessionManagerUtils', () => {
       const isValid = isUserSessionValid(session);
       expect(isValid).toBe(true);
     });
+
+    it.each(['started', 'lastActivity'] as const)('returns false when %s is in the future', (timestamp) => {
+      const session = createUserSessionObject();
+      session[timestamp] = fakeSystemTime + 1;
+
+      expect(isUserSessionValid(session)).toBe(false);
+    });
   });
 
   describe('addSessionMetadataToNextSession', () => {
@@ -377,18 +384,31 @@ describe('sessionManagerUtils', () => {
     });
 
     it('updates attributes without creating new session', async () => {
-      const faro = initializeFaro(mockConfig({}));
+      const faro = initializeFaro(
+        mockConfig({
+          sessionTracking: {
+            session: {
+              attributes: {
+                configured: 'value',
+              },
+            },
+          },
+        })
+      );
+      const samplingSpy = jest.spyOn(samplingModule, 'isSampled');
 
       const storedSession: FaroUserSession = {
         sessionId: mockSessionId,
-        isSampled: true,
-        lastActivity: fakeSystemTime,
-        started: fakeSystemTime,
+        isSampled: false,
+        lastActivity: fakeSystemTime - 500,
+        started: fakeSystemTime - 1000,
         sessionMeta: {
           id: mockSessionId,
           attributes: {
-            isSampled: 'true',
+            isSampled: 'false',
+            previousSession: 'previous-session',
           },
+          overrides: { serviceName: 'stored-service' },
         },
       };
 
@@ -413,13 +433,65 @@ describe('sessionManagerUtils', () => {
       expect(mockStoreUserSession).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: mockSessionId,
+          isSampled: false,
+          started: fakeSystemTime - 1000,
+          lastActivity: fakeSystemTime - 500,
           sessionMeta: expect.objectContaining({
             attributes: expect.objectContaining({
               foo: 'bar',
+              isSampled: 'false',
+              previousSession: 'previous-session',
+              configured: 'value',
             }),
+            overrides: { serviceName: 'stored-service' },
           }),
         })
       );
+      expect(samplingSpy).not.toHaveBeenCalled();
+    });
+
+    it('restores internal attributes when the same session is set without metadata', async () => {
+      const faro = initializeFaro(mockConfig({}));
+      const storedSession: FaroUserSession = {
+        sessionId: mockSessionId,
+        isSampled: false,
+        lastActivity: fakeSystemTime - 500,
+        started: fakeSystemTime - 1000,
+        sessionMeta: {
+          id: mockSessionId,
+          attributes: {
+            isSampled: 'false',
+            previousSession: 'previous-session',
+          },
+        },
+      };
+      const mockStoreUserSession = jest.fn().mockResolvedValue(undefined);
+      const handler = getSessionMetaUpdateHandler({
+        fetchUserSession: jest.fn().mockResolvedValue(storedSession),
+        storeUserSession: mockStoreUserSession,
+      });
+
+      await handler({ session: { id: mockSessionId } });
+
+      expect(mockStoreUserSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isSampled: false,
+          sessionMeta: {
+            id: mockSessionId,
+            attributes: {
+              isSampled: 'false',
+              previousSession: 'previous-session',
+            },
+          },
+        })
+      );
+      expect(faro.api.getSession()).toStrictEqual({
+        id: mockSessionId,
+        attributes: {
+          isSampled: 'false',
+          previousSession: 'previous-session',
+        },
+      });
     });
 
     it('sends service name override event when service name changes', async () => {

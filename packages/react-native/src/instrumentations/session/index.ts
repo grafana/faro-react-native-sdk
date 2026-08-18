@@ -1,4 +1,4 @@
-import { BaseInstrumentation, dateNow, EVENT_SESSION_START, genShortID, VERSION } from '@grafana/faro-core';
+import { BaseInstrumentation, dateNow, EVENT_SESSION_START, VERSION } from '@grafana/faro-core';
 import type { Config, Meta, MetaSession, TransportItem } from '@grafana/faro-core';
 
 import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
@@ -55,7 +55,10 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
     if (sessionsConfig.persistent && storedUserSession) {
       const now = dateNow();
-      const shouldClearPersistentSession = storedUserSession.lastActivity < now - maxPersistenceMs;
+      const shouldClearPersistentSession =
+        storedUserSession.started > now ||
+        storedUserSession.lastActivity > now ||
+        storedUserSession.lastActivity <= now - maxPersistenceMs;
 
       if (shouldClearPersistentSession) {
         SessionManagerClass.removeUserSession();
@@ -68,7 +71,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     let emitSessionStartOnInit: boolean;
     let initialSession: FaroUserSession;
 
-    if (isUserSessionValid(storedUserSession)) {
+    if (!sessionsConfig.persistent && isUserSessionValid(storedUserSession)) {
       const sessionId = storedUserSession?.sessionId;
 
       initialSession = createUserSessionObject({
@@ -101,23 +104,24 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
       emitSessionStartOnInit = false;
     } else {
-      const sessionId = sessionsConfig.session?.id ?? genShortID();
-
       initialSession = createUserSessionObject({
-        sessionId,
+        sessionId: sessionsConfig.session?.id,
         isSampled: isSampled(),
       });
 
+      const sessionId = initialSession.sessionId;
+      const previousSessionId = storedUserSession?.sessionId === sessionId ? undefined : storedUserSession?.sessionId;
       const overrides = sessionsConfig.session?.overrides;
 
       initialSession.sessionMeta = {
         id: sessionId,
         attributes: {
-          isSampled: initialSession.isSampled.toString(),
           // Start with custom attributes from config
           ...sessionsConfig.session?.attributes,
           // Default attributes take precedence
           ...defaultAttributes,
+          isSampled: initialSession.isSampled.toString(),
+          ...(previousSessionId == null ? {} : { previousSession: previousSessionId }),
         },
         // new session we don't care about previous overrides
         ...(overrides ? { overrides } : {}),
@@ -129,23 +133,29 @@ export class SessionInstrumentation extends BaseInstrumentation {
     return { initialSession, emitSessionStartOnInit };
   }
 
-  private registerBeforeSendHook(sessionManager: InstanceType<SessionManager>) {
+  private registerBeforeSendHook(
+    sessionManager: InstanceType<SessionManager>,
+    SessionManagerClass: SessionManager
+  ): void {
     const { updateSession } = sessionManager;
 
     this.transports?.addBeforeSendHooks((item: TransportItem) => {
       updateSession();
 
       const attributes = item.meta.session?.attributes;
+      const samplingAttribute =
+        attributes?.['isSampled'] ?? SessionManagerClass.fetchUserSession()?.isSampled.toString();
 
       // Only filter out items when session is explicitly NOT sampled (isSampled='false')
       // If isSampled='true', remove the attribute before sending (it's internal)
-      // If no isSampled attribute, pass through the item unchanged
-      if (attributes?.['isSampled'] === 'false') {
+      // During a setSession update, fall back to the manager's stable decision
+      // while the internal attribute is being restored asynchronously.
+      if (samplingAttribute === 'false') {
         // Session is not sampled - drop this item
         return null;
       }
 
-      if (attributes?.['isSampled'] === 'true') {
+      if (samplingAttribute === 'true') {
         // Session is sampled - remove internal isSampled attribute before sending
         let newItem: TransportItem = JSON.parse(JSON.stringify(item));
 
@@ -179,7 +189,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     // instance `unpatch()` cleans up.
     this.sessionManagerInstance = new SessionManagerClass();
 
-    this.registerBeforeSendHook(this.sessionManagerInstance);
+    this.registerBeforeSendHook(this.sessionManagerInstance, SessionManagerClass);
 
     const { initialSession, emitSessionStartOnInit } = this.createInitialSession(
       SessionManagerClass,

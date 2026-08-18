@@ -62,9 +62,7 @@ initializeFaro({
   // Session - optional
   sessionTracking: {
     enabled: true,
-    persistent: false,
-    inactivityTimeout: 15 * 60 * 1000,
-    sessionExpirationTime: 4 * 60 * 60 * 1000,
+    persistent: true,
     maxSessionPersistenceTime: 15 * 60 * 1000,
     // Optional: sampling: new SamplingRate(0.1) or new SamplingFunction((ctx) => ...)
     // Omit sampling to record all sessions (default).
@@ -783,7 +781,19 @@ initializeFaro({
 
 ### Session Configuration
 
-The SDK supports both persistent and volatile session tracking with configurable expiration and inactivity timeouts:
+Session persistence is enabled by default. The SDK does not bundle storage, so
+apps using the default configuration must install the optional
+`react-native-mmkv` peer dependency:
+
+```bash
+yarn add react-native-mmkv
+```
+
+Rebuild the native projects after installation. Apps using `persistent: false`
+use in-memory sessions and do not need MMKV.
+
+Use `maxSessionPersistenceTime` to control the inactivity and cold-start linking window. A session's
+maximum lifetime is fixed at four hours.
 
 ```tsx
 import { initializeFaro, SamplingFunction, SamplingRate } from '@grafana/faro-react-native';
@@ -796,10 +806,8 @@ initializeFaro({
   },
   sessionTracking: {
     enabled: true, // default: true
-    persistent: true, // default: false (volatile)
-    // Configurable timeouts (all in ms):
-    inactivityTimeout: 15 * 60 * 1000, // default: 15 min
-    sessionExpirationTime: 4 * 60 * 60 * 1000, // default: 4 h
+    persistent: true, // default: true
+    // Inactivity and cold-start linking window (ms):
     maxSessionPersistenceTime: 15 * 60 * 1000, // default: 15 min
 
     // Optional: session sampling (omit = all sessions recorded)
@@ -828,17 +836,21 @@ initializeFaro({
 
 **Session Types:**
 
-- **Persistent Sessions** (`persistent: true`): Stored in AsyncStorage and survive app restarts. Sessions expire after `sessionExpirationTime` (default 4 h) or `inactivityTimeout` (default 15 min).
+- **Persistent Sessions** (`persistent: true`, default): A versioned record is stored in MMKV. Every process start creates a new session and links the previous ID when the record is valid. The live session is never resumed across a process start.
 
-- **Volatile Sessions** (`persistent: false`, default): Stored in memory only. Each app launch creates a new session.
+- **Volatile Sessions** (`persistent: false`): Stored in memory only. Each app launch creates a new session.
+
+The persisted record contains only the current and previous session IDs, start and last-activity timestamps, the sampling decision, and a schema version. Session attributes, device state, and overrides remain in memory. Records older than `maxSessionPersistenceTime` are discarded. Unversioned records from earlier SDK versions, corrupt records, and unsupported schema versions are removed and start an unlinked session.
+
+Persistent storage currently supports one React Native runtime writing the MMKV record. Apps that initialize Faro from multiple native processes or independently launched runtimes should set `persistent: false` until process ownership is implemented in [#166](https://github.com/grafana/faro-react-native-sdk/issues/166).
 
 **Sampling:** Set `sessionTracking.sampling` to a `SamplingRate` (fixed 0–1) or `SamplingFunction` (dynamic, receives `context.meta`). Omit `sampling` to record all sessions. The decision is made once per session.
 
-**Defaults:** `persistent=false`, `inactivityTimeout=15min`, `sessionExpirationTime=4h`, `maxSessionPersistenceTime=15min`
+**Defaults:** `persistent=true`, `maxSessionPersistenceTime=15min`. The maximum session lifetime is four hours.
 
 **Session events:**
 
-The SDK emits `session_start` when a new session is created (including when session metadata changes to a new session id). Resuming a valid persisted session does not emit additional lifecycle events.
+The SDK emits `session_start` when a new session is created, including each cold start and when session metadata changes to a new session ID.
 
 ### Default Session Attributes
 
