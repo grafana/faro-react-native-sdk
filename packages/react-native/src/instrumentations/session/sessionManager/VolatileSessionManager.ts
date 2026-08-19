@@ -11,6 +11,7 @@ export class VolatileSessionsManager {
   private static volatileStorage: FaroUserSession | null = null;
   private updateUserSession: ReturnType<typeof getUserSessionUpdater>;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
+  private wasBackgrounded = AppState.currentState === 'background';
   private metaUnsubscribe: (() => void) | null = null;
 
   constructor() {
@@ -34,12 +35,18 @@ export class VolatileSessionsManager {
     return VolatileSessionsManager.volatileStorage;
   }
 
-  checkSession(activity: SessionActivityKind): FaroUserSession | null {
-    return this.updateUserSession(activity);
+  checkSession(activity: SessionActivityKind, currentSession?: FaroUserSession | null): FaroUserSession {
+    return this.updateUserSession(activity, currentSession);
   }
 
   private handleAppStateChange = (nextAppState: AppStateStatus) => {
-    if (nextAppState === 'active') {
+    if (nextAppState === 'background') {
+      this.wasBackgrounded = true;
+      return;
+    }
+
+    if (nextAppState === 'active' && this.wasBackgrounded) {
+      this.wasBackgrounded = false;
       this.checkSession(SessionActivityKind.Meaningful);
     }
   };

@@ -294,6 +294,24 @@ describe('sessionManagerUtils', () => {
   });
 
   describe('getUserSessionUpdater', () => {
+    it('uses an already fetched session without reading storage again', () => {
+      initializeFaro(mockConfig({}));
+      const existingSession: FaroUserSession = {
+        sessionId: mockSessionId,
+        started: fakeSystemTime,
+        lastActivity: fakeSystemTime - 1000,
+        isSampled: true,
+      };
+      const mockFetchUserSession = jest.fn();
+      const updateSession = getUserSessionUpdater({
+        fetchUserSession: mockFetchUserSession,
+        storeUserSession: jest.fn(),
+      });
+
+      expect(updateSession(SessionActivityKind.Passive, existingSession)).toBe(existingSession);
+      expect(mockFetchUserSession).not.toHaveBeenCalled();
+    });
+
     it('updates session when session is invalid', async () => {
       const mockOnSessionChange = jest.fn();
       const config = mockConfig({

@@ -16,6 +16,6 @@ export interface FaroUserSession {
 export type SessionManager = typeof VolatileSessionsManager | typeof MmkvPersistentSessionsManager;
 
 export interface SessionManagerInstance {
-  checkSession(activity: SessionActivityKind): FaroUserSession | null;
+  checkSession(activity: SessionActivityKind, currentSession?: FaroUserSession | null): FaroUserSession;
   unpatch(): void;
 }

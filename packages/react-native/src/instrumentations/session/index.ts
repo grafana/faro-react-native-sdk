@@ -138,7 +138,9 @@ export class SessionInstrumentation extends BaseInstrumentation {
     this.transports?.addBeforeSendHooks((item: TransportItem) => {
       const storedSession = SessionManagerClass.fetchUserSession();
       const recoveredCrash = isRecoveredCrashItem(item, storedSession?.sessionId);
-      const checkedSession = recoveredCrash ? null : sessionManager.checkSession(classifySessionActivity(item));
+      const checkedSession = recoveredCrash
+        ? null
+        : sessionManager.checkSession(classifySessionActivity(item), storedSession);
 
       let nextItem = item;
       if (checkedSession?.sessionMeta != null && item.meta.session?.id !== checkedSession.sessionId) {
@@ -152,8 +154,11 @@ export class SessionInstrumentation extends BaseInstrumentation {
       }
 
       const attributes = nextItem.meta.session?.attributes;
-      const samplingAttribute =
-        attributes?.['isSampled'] ?? (recoveredCrash ? undefined : checkedSession?.isSampled.toString());
+      // New crash records carry the crash-time decision. Older records may not,
+      // so retain the previous behavior and use the live session's stable
+      // decision rather than implicitly sampling every recovered crash.
+      const fallbackSamplingDecision = recoveredCrash ? storedSession?.isSampled : checkedSession?.isSampled;
+      const samplingAttribute = attributes?.['isSampled'] ?? fallbackSamplingDecision?.toString();
 
       // Only filter out items when session is explicitly NOT sampled (isSampled='false')
       // If isSampled='true', remove the attribute before sending (it's internal)
@@ -231,8 +236,6 @@ export class SessionInstrumentation extends BaseInstrumentation {
    * Clean up session manager listeners
    */
   unpatch(): void {
-    if (this.sessionManagerInstance && 'unpatch' in this.sessionManagerInstance) {
-      this.sessionManagerInstance.unpatch();
-    }
+    this.sessionManagerInstance?.unpatch();
   }
 }

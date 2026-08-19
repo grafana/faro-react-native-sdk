@@ -1,5 +1,5 @@
 import { EVENT_VIEW_CHANGED, TransportItemType } from '@grafana/faro-core';
-import type { TransportItem } from '@grafana/faro-core';
+import type { EventAttributes, TransportItem } from '@grafana/faro-core';
 
 import { EVENT_NAVIGATION } from '../../navigation/utils';
 import { EVENT_APP_STATE_CHANGED } from '../appState';
@@ -11,7 +11,7 @@ export enum SessionActivityKind {
 
 type ActivityEventPayload = {
   action?: unknown;
-  attributes?: Record<string, string>;
+  attributes?: EventAttributes;
   name?: string;
 };
 
@@ -31,7 +31,11 @@ export function classifySessionActivity(item: TransportItem): SessionActivityKin
     return SessionActivityKind.Meaningful;
   }
 
-  if (payload.name === EVENT_APP_STATE_CHANGED && payload.attributes?.['toState'] === 'active') {
+  if (
+    payload.name === EVENT_APP_STATE_CHANGED &&
+    payload.attributes?.['fromState'] === 'background' &&
+    payload.attributes?.['toState'] === 'active'
+  ) {
     return SessionActivityKind.Meaningful;
   }
 

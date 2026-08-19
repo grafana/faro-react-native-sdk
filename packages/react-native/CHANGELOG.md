@@ -87,16 +87,22 @@
 ### Changed
 
 - **Session inactivity now refreshes only for meaningful activity.** Navigation
-  and view changes, foreground returns, and telemetry linked to tracked user
-  actions refresh the inactivity window. Passive telemetry still checks expiry
-  but no longer keeps a session alive. Apps that relied on generic telemetry to
-  extend sessions should track the work as a user action instead.
+  and view changes, background-to-foreground returns, and telemetry linked to
+  tracked user actions refresh the inactivity window. Passive telemetry still
+  checks expiry but no longer keeps a session alive. User interactions are not
+  detected automatically, so apps that relied on generic telemetry to extend
+  sessions should use `withFaroUserAction` or `trackUserAction` instead.
 - Error stack trace parsing now normalizes Hermes/minified release frame
   `filename` values to the configured release bundle basename instead of
   verbose Hermes labels, matching ingest source map lookup.
 
 ### Fixed
 
+- Session expiry is checked before attribution, so telemetry that triggers a
+  rotation carries the new linked session ID instead of the expired one.
+- Recovered crashes retain their crash-time session without rotating or
+  refreshing the live session. Older crash records without a saved sampling
+  decision keep the existing fallback to the live session's sampling decision.
 - Android composed source map upload runs only after the release bundle task
   succeeds.
 - iOS upload script loads `ios/.xcode.env` / `.xcode.env.local` before

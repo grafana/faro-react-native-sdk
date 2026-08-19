@@ -1,7 +1,7 @@
 import { AppState, type AppStateStatus } from 'react-native';
 import type { MMKV } from 'react-native-mmkv';
 
-import { faro } from '@grafana/faro-core';
+import { dateNow, faro } from '@grafana/faro-core';
 
 import { SessionActivityKind } from '../sessionActivity';
 
@@ -82,6 +82,7 @@ export class MmkvPersistentSessionsManager {
   private activityWriteTimer: ReturnType<typeof setTimeout> | null = null;
   private hasPendingActivityWrite = false;
   private lastActivityWrite = 0;
+  private wasBackgrounded = AppState.currentState === 'background';
   private metaUnsubscribe: (() => void) | null = null;
 
   constructor() {
@@ -164,8 +165,8 @@ export class MmkvPersistentSessionsManager {
     }
   }
 
-  checkSession(activity: SessionActivityKind): FaroUserSession | null {
-    return this.updateUserSession(activity);
+  checkSession(activity: SessionActivityKind, currentSession?: FaroUserSession | null): FaroUserSession {
+    return this.updateUserSession(activity, currentSession);
   }
 
   private flushActivityWrite = (): void => {
@@ -185,7 +186,7 @@ export class MmkvPersistentSessionsManager {
     }
 
     MmkvPersistentSessionsManager.persistSession(session);
-    this.lastActivityWrite = Date.now();
+    this.lastActivityWrite = dateNow();
   };
 
   private recordUserSessionActivity = (session: FaroUserSession): void => {
@@ -193,7 +194,7 @@ export class MmkvPersistentSessionsManager {
     MmkvPersistentSessionsManager.setRuntimeSession(session);
     this.hasPendingActivityWrite = true;
 
-    const elapsed = Date.now() - this.lastActivityWrite;
+    const elapsed = dateNow() - this.lastActivityWrite;
     if (this.lastActivityWrite === 0 || elapsed < 0 || elapsed >= STORAGE_UPDATE_DELAY) {
       this.flushActivityWrite();
       return;
@@ -205,10 +206,15 @@ export class MmkvPersistentSessionsManager {
   };
 
   private handleAppStateChange = (nextAppState: AppStateStatus) => {
-    if (nextAppState === 'active') {
-      this.checkSession(SessionActivityKind.Meaningful);
-    } else if (nextAppState === 'background') {
+    if (nextAppState === 'background') {
+      this.wasBackgrounded = true;
       this.flushActivityWrite();
+      return;
+    }
+
+    if (nextAppState === 'active' && this.wasBackgrounded) {
+      this.wasBackgrounded = false;
+      this.checkSession(SessionActivityKind.Meaningful);
     }
   };
 

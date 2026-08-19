@@ -89,11 +89,17 @@ export function getUserSessionUpdater({
   fetchUserSession,
   recordUserSessionActivity,
   storeUserSession,
-}: GetUserSessionUpdaterParams): (activity: SessionActivityKind) => FaroUserSession | null {
+}: GetUserSessionUpdaterParams): (
+  activity: SessionActivityKind,
+  currentSession?: FaroUserSession | null
+) => FaroUserSession {
   const persistActivity = recordUserSessionActivity ?? storeUserSession;
 
-  return function updateSession(activity: SessionActivityKind): FaroUserSession | null {
-    const sessionFromStorage = fetchUserSession();
+  return function updateSession(
+    activity: SessionActivityKind,
+    currentSession?: FaroUserSession | null
+  ): FaroUserSession {
+    const sessionFromStorage = currentSession === undefined ? fetchUserSession() : currentSession;
 
     if (sessionFromStorage != null && isUserSessionValid(sessionFromStorage)) {
       if (activity === SessionActivityKind.Meaningful) {
@@ -116,6 +122,9 @@ export function getUserSessionUpdater({
     );
 
     storeUserSession(newSession);
+    // setSession synchronously emits session_start through the meta listener.
+    // The transport hook then resumes and attributes the triggering item to
+    // the newly stored session.
     faro.api?.setSession(newSession.sessionMeta);
 
     const newSessionMeta = newSession.sessionMeta;

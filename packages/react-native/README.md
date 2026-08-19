@@ -797,15 +797,20 @@ maximum lifetime is fixed at four hours.
 
 The inactivity window is refreshed only by meaningful activity:
 
-- navigation and view changes
-- returning to the foreground
-- telemetry linked to a tracked user action
+| Telemetry source                                                          | Activity category |
+| ------------------------------------------------------------------------- | ----------------- |
+| Navigation and view changes                                               | Meaningful        |
+| Return from `background` to `active`                                      | Meaningful        |
+| Telemetry linked to a tracked user action                                 | Meaningful        |
+| Other app lifecycle events                                                | Passive           |
+| Unmarked events, logs, errors, measurements, and traces                   | Passive           |
+| Unmarked HTTP and XHR requests                                            | Passive           |
+| Unmarked session, startup, ANR, frame, console, and performance telemetry | Passive           |
 
-Events, logs, errors, measurements, lifecycle events other than foreground return,
-periodic telemetry, and unmarked network requests are passive. Passive telemetry
-still checks whether the session has expired, but it does not keep the session
-alive. Use a tracked user action for meaningful foreground or background work that
-should refresh the inactivity window.
+Passive telemetry still checks whether the session has expired, but it does not
+keep the session alive. User interactions are not detected automatically. Wrap
+interactive components with `withFaroUserAction` or call `trackUserAction` for
+foreground or background work that should refresh the inactivity window.
 
 ```tsx
 import { initializeFaro, SamplingFunction, SamplingRate } from '@grafana/faro-react-native';

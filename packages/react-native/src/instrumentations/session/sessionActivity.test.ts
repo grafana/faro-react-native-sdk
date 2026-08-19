@@ -22,7 +22,7 @@ describe('session activity classification', () => {
       'foreground returns',
       item(TransportItemType.EVENT, {
         name: EVENT_APP_STATE_CHANGED,
-        attributes: { toState: 'active' },
+        attributes: { fromState: 'background', toState: 'active' },
       }),
     ],
     ['tracked actions', item(TransportItemType.EXCEPTION, { action: { name: 'checkout' } })],
@@ -37,6 +37,13 @@ describe('session activity classification', () => {
       item(TransportItemType.EVENT, {
         name: EVENT_APP_STATE_CHANGED,
         attributes: { toState: 'background' },
+      }),
+    ],
+    [
+      'returns from an inactive overlay',
+      item(TransportItemType.EVENT, {
+        name: EVENT_APP_STATE_CHANGED,
+        attributes: { fromState: 'inactive', toState: 'active' },
       }),
     ],
     ['logs', item(TransportItemType.LOG, { message: 'heartbeat' })],

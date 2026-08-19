@@ -3,6 +3,7 @@ import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 import { initializeFaro } from '../../initialize';
 
 import { SessionInstrumentation } from './index';
+import { SessionActivityKind } from './sessionActivity';
 import { VolatileSessionsManager } from './sessionManager/VolatileSessionManager';
 
 describe('SessionInstrumentation session manager', () => {
@@ -30,5 +31,35 @@ describe('SessionInstrumentation session manager', () => {
     );
 
     expect(initSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes activity only after returning from the background', async () => {
+    await initializeFaro(
+      mockConfig({
+        url: 'http://localhost:12345/collect',
+        transports: [new MockTransport()],
+        instrumentations: [],
+        sessionTracking: { enabled: true, persistent: false },
+      })
+    );
+    const manager = new VolatileSessionsManager();
+    const checkSessionSpy = jest.spyOn(manager, 'checkSession');
+    const handleAppStateChange = (
+      manager as unknown as { handleAppStateChange: (state: 'active' | 'background' | 'inactive') => void }
+    ).handleAppStateChange;
+
+    handleAppStateChange('active');
+    checkSessionSpy.mockClear();
+    handleAppStateChange('inactive');
+    handleAppStateChange('active');
+    expect(checkSessionSpy).not.toHaveBeenCalled();
+
+    handleAppStateChange('background');
+    handleAppStateChange('inactive');
+    handleAppStateChange('active');
+    expect(checkSessionSpy).toHaveBeenCalledTimes(1);
+    expect(checkSessionSpy).toHaveBeenCalledWith(SessionActivityKind.Meaningful);
+
+    manager.unpatch();
   });
 });

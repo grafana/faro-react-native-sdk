@@ -226,6 +226,34 @@ describe('SessionInstrumentation beforeSend hook', () => {
     expect(sentEvent?.meta.session?.id).toBe(nextSession.sessionId);
   });
 
+  it('rotates at the exact four-hour lifetime boundary before sending the triggering item', async () => {
+    transport = new MockTransport();
+    const faro = await initializeFaro(
+      mockConfig({
+        url: 'http://localhost:12345/collect',
+        transports: [transport],
+        instrumentations: [new SessionInstrumentation()],
+        sessionTracking: { enabled: true, persistent: false },
+      })
+    );
+    const previousSession = getVolatileSession();
+    VolatileSessionsManager.storeUserSession({
+      ...previousSession,
+      started: Date.now() - 4 * 60 * 60 * 1000,
+      lastActivity: Date.now() - 1000,
+    });
+
+    faro.api.pushEvent(EVENT_NAVIGATION, { screen: 'checkout' });
+
+    const nextSession = getVolatileSession();
+    const navigationEvent = transport.items.find(
+      (item) => item.type === TransportItemType.EVENT && item.payload.name === EVENT_NAVIGATION
+    );
+    expect(nextSession.sessionId).not.toBe(previousSession.sessionId);
+    expect(nextSession.sessionMeta?.attributes?.['previousSession']).toBe(previousSession.sessionId);
+    expect(navigationEvent?.meta.session?.id).toBe(nextSession.sessionId);
+  });
+
   it('refreshes inactivity for navigation and tracked user actions', async () => {
     transport = new MockTransport();
     const faro = await initializeFaro(
@@ -308,6 +336,40 @@ describe('SessionInstrumentation beforeSend hook', () => {
       .reduce<TransportItem | null>((item, hook) => (item == null ? null : hook(item)), recoveredCrash);
 
     expect(result?.meta.session).toStrictEqual({ id: 'crashed-session' });
+    expect(VolatileSessionsManager.fetchUserSession()).toStrictEqual(currentSession);
+  });
+
+  it('uses the live sampling decision when an older recovered crash has no sampling metadata', async () => {
+    transport = new MockTransport();
+    const faro = await initializeFaro(
+      mockConfig({
+        url: 'http://localhost:12345/collect',
+        transports: [transport],
+        instrumentations: [new SessionInstrumentation()],
+        sessionTracking: {
+          enabled: true,
+          persistent: false,
+          sampling: new SamplingRate(0),
+        },
+      })
+    );
+    const currentSession = getVolatileSession();
+    const recoveredCrash: TransportItem = {
+      type: TransportItemType.EXCEPTION,
+      meta: { session: { id: 'crashed-session' } },
+      payload: {
+        type: 'crash',
+        value: 'native crash',
+        fatal: true,
+        timestamp: new Date().toISOString(),
+      },
+    };
+
+    const result = faro.transports
+      .getBeforeSendHooks()
+      .reduce<TransportItem | null>((item, hook) => (item == null ? null : hook(item)), recoveredCrash);
+
+    expect(result).toBeNull();
     expect(VolatileSessionsManager.fetchUserSession()).toStrictEqual(currentSession);
   });
 });

@@ -241,11 +241,13 @@ describe('MmkvPersistentSessionsManager - session persistence', () => {
       const { mockConfig, MockTransport } = require('@grafana/faro-test-utils');
       const { initializeFaro } = require('../../../initialize');
       const { EVENT_NAVIGATION } = require('../../../navigation/utils');
+      const { SessionInstrumentation } = require('../index');
       const { MmkvPersistentSessionsManager } = require('./MmkvPersistentSessionsManager');
       const faro = await initializeFaro(
         mockConfig({
           url: 'http://localhost:12345/collect',
           transports: [new MockTransport()],
+          instrumentations: [new SessionInstrumentation()],
           sessionTracking: { enabled: true, persistent: true },
         })
       );
@@ -276,6 +278,104 @@ describe('MmkvPersistentSessionsManager - session persistence', () => {
 
       jest.advanceTimersByTime(1000);
       expect(store.set).toHaveBeenCalledTimes(writesAfterInitialization + 3);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('flushes pending activity when the app enters the background', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-19T12:00:00.000Z'));
+
+    try {
+      const store = {
+        getString: jest.fn().mockReturnValue(undefined),
+        set: jest.fn(),
+      };
+      jest.doMock('react-native-mmkv', () => ({ createMMKV: jest.fn().mockReturnValue(store) }));
+
+      const { mockConfig } = require('@grafana/faro-test-utils');
+      const { initializeFaro } = require('../../../initialize');
+      const { SessionActivityKind } = require('../sessionActivity');
+      const { MmkvPersistentSessionsManager } = require('./MmkvPersistentSessionsManager');
+      await initializeFaro(
+        mockConfig({
+          url: 'http://localhost:12345/collect',
+          instrumentations: [],
+          sessionTracking: { enabled: true, persistent: true },
+        })
+      );
+      const manager = new MmkvPersistentSessionsManager();
+      MmkvPersistentSessionsManager.storeUserSession({
+        sessionId: 'current-session',
+        started: Date.now() - 1000,
+        lastActivity: Date.now() - 1000,
+        isSampled: true,
+      });
+      const writesAfterStore = store.set.mock.calls.length;
+
+      manager.checkSession(SessionActivityKind.Meaningful);
+      jest.advanceTimersByTime(1);
+      manager.checkSession(SessionActivityKind.Meaningful);
+      expect(store.set).toHaveBeenCalledTimes(writesAfterStore + 1);
+
+      (
+        manager as unknown as {
+          handleAppStateChange: (state: 'background') => void;
+        }
+      ).handleAppStateChange('background');
+      expect(store.set).toHaveBeenCalledTimes(writesAfterStore + 2);
+
+      manager.unpatch();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('rotates the persistent session at the inactivity boundary before attribution', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-19T12:00:00.000Z'));
+
+    try {
+      const store = {
+        getString: jest.fn().mockReturnValue(undefined),
+        set: jest.fn(),
+      };
+      jest.doMock('react-native-mmkv', () => ({ createMMKV: jest.fn().mockReturnValue(store) }));
+
+      const { TransportItemType } = require('@grafana/faro-core');
+      const { mockConfig, MockTransport } = require('@grafana/faro-test-utils');
+      const { initializeFaro } = require('../../../initialize');
+      const { SessionInstrumentation } = require('../index');
+      const { MmkvPersistentSessionsManager } = require('./MmkvPersistentSessionsManager');
+      const transport = new MockTransport();
+      const faro = await initializeFaro(
+        mockConfig({
+          url: 'http://localhost:12345/collect',
+          transports: [transport],
+          instrumentations: [new SessionInstrumentation()],
+          sessionTracking: { enabled: true, persistent: true },
+        })
+      );
+      const previousSession = MmkvPersistentSessionsManager.fetchUserSession();
+      if (previousSession == null) {
+        throw new Error('Expected an active persistent session.');
+      }
+      MmkvPersistentSessionsManager.storeUserSession({
+        ...previousSession,
+        lastActivity: Date.now() - 15 * 60 * 1000,
+      });
+
+      faro.api.pushEvent('poll_complete');
+
+      const nextSession = MmkvPersistentSessionsManager.fetchUserSession();
+      const sentEvent = transport.items.find(
+        (item: { type: string; payload: { name?: string } }) =>
+          item.type === TransportItemType.EVENT && item.payload.name === 'poll_complete'
+      );
+      expect(nextSession?.sessionId).not.toBe(previousSession.sessionId);
+      expect(nextSession?.sessionMeta?.attributes?.['previousSession']).toBe(previousSession.sessionId);
+      expect(sentEvent?.meta.session?.id).toBe(nextSession?.sessionId);
     } finally {
       jest.useRealTimers();
     }
