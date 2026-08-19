@@ -2,9 +2,8 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { faro } from '@grafana/faro-core';
 
-import { throttle } from '../../../utils/throttle';
+import { SessionActivityKind } from '../sessionActivity';
 
-import { STORAGE_UPDATE_DELAY } from './sessionConstants';
 import { getSessionMetaUpdateHandler, getUserSessionUpdater } from './sessionManagerUtils';
 import type { FaroUserSession } from './types';
 
@@ -35,11 +34,13 @@ export class VolatileSessionsManager {
     return VolatileSessionsManager.volatileStorage;
   }
 
-  updateSession = throttle(() => this.updateUserSession(), STORAGE_UPDATE_DELAY);
+  checkSession(activity: SessionActivityKind): FaroUserSession | null {
+    return this.updateUserSession(activity);
+  }
 
   private handleAppStateChange = (nextAppState: AppStateStatus) => {
     if (nextAppState === 'active') {
-      this.updateSession();
+      this.checkSession(SessionActivityKind.Meaningful);
     }
   };
 

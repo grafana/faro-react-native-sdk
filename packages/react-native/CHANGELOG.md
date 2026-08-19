@@ -86,6 +86,11 @@
 
 ### Changed
 
+- **Session inactivity now refreshes only for meaningful activity.** Navigation
+  and view changes, foreground returns, and telemetry linked to tracked user
+  actions refresh the inactivity window. Passive telemetry still checks expiry
+  but no longer keeps a session alive. Apps that relied on generic telemetry to
+  extend sessions should track the work as a user action instead.
 - Error stack trace parsing now normalizes Hermes/minified release frame
   `filename` values to the configured release bundle basename instead of
   verbose Hermes labels, matching ingest source map lookup.

@@ -9,6 +9,8 @@ import {
 } from '@grafana/faro-core';
 import type { Meta, MetaOverrides, MetaSession } from '@grafana/faro-core';
 
+import { SessionActivityKind } from '../sessionActivity';
+
 import { isSampled } from './sampling';
 import { MAX_SESSION_PERSISTENCE_TIME } from './sessionConstants';
 import type { FaroUserSession } from './types';
@@ -78,34 +80,54 @@ export function isUserSessionValid(session: FaroUserSession | null): boolean {
 }
 
 type GetUserSessionUpdaterParams = {
-  storeUserSession: (session: FaroUserSession) => void | Promise<void>;
-  fetchUserSession: () => FaroUserSession | null | Promise<FaroUserSession | null>;
+  storeUserSession: (session: FaroUserSession) => void;
+  fetchUserSession: () => FaroUserSession | null;
+  recordUserSessionActivity?: (session: FaroUserSession) => void;
 };
 
 export function getUserSessionUpdater({
   fetchUserSession,
+  recordUserSessionActivity,
   storeUserSession,
-}: GetUserSessionUpdaterParams): () => Promise<void> {
-  return async function updateSession(): Promise<void> {
-    if (!fetchUserSession || !storeUserSession) {
-      return;
+}: GetUserSessionUpdaterParams): (activity: SessionActivityKind) => FaroUserSession | null {
+  const persistActivity = recordUserSessionActivity ?? storeUserSession;
+
+  return function updateSession(activity: SessionActivityKind): FaroUserSession | null {
+    const sessionFromStorage = fetchUserSession();
+
+    if (sessionFromStorage != null && isUserSessionValid(sessionFromStorage)) {
+      if (activity === SessionActivityKind.Meaningful) {
+        const lastActivity = dateNow();
+        if (lastActivity === sessionFromStorage.lastActivity) {
+          return sessionFromStorage;
+        }
+
+        const refreshedSession = { ...sessionFromStorage, lastActivity };
+        persistActivity(refreshedSession);
+        return refreshedSession;
+      }
+
+      return sessionFromStorage;
     }
 
-    const sessionFromStorage = await fetchUserSession();
+    const newSession = addSessionMetadataToNextSession(
+      createUserSessionObject({ isSampled: isSampled() }),
+      sessionFromStorage
+    );
 
-    if (isUserSessionValid(sessionFromStorage)) {
-      await storeUserSession({ ...sessionFromStorage!, lastActivity: dateNow() });
-    } else {
-      let newSession = addSessionMetadataToNextSession(
-        createUserSessionObject({ isSampled: isSampled() }),
-        sessionFromStorage
-      );
+    storeUserSession(newSession);
+    faro.api?.setSession(newSession.sessionMeta);
 
-      await storeUserSession(newSession);
-
-      faro.api?.setSession(newSession.sessionMeta);
-      faro.config.sessionTracking?.onSessionChange?.(sessionFromStorage?.sessionMeta ?? null, newSession.sessionMeta!);
+    const newSessionMeta = newSession.sessionMeta;
+    if (newSessionMeta != null) {
+      try {
+        faro.config.sessionTracking?.onSessionChange?.(sessionFromStorage?.sessionMeta ?? null, newSessionMeta);
+      } catch (error) {
+        faro.unpatchedConsole?.warn?.('The session change callback failed:', error);
+      }
     }
+
+    return newSession;
   };
 }
 
@@ -151,8 +173,8 @@ export function addSessionMetadataToNextSession(newSession: FaroUserSession, pre
 }
 
 type GetUserSessionMetaUpdateHandlerParams = {
-  storeUserSession: (session: FaroUserSession) => void | Promise<void>;
-  fetchUserSession: () => FaroUserSession | null | Promise<FaroUserSession | null>;
+  storeUserSession: (session: FaroUserSession) => void;
+  fetchUserSession: () => FaroUserSession | null;
 };
 
 /**
@@ -173,8 +195,8 @@ export function getSessionMetaUpdateHandler({
   fetchUserSession,
   storeUserSession,
 }: GetUserSessionMetaUpdateHandlerParams) {
-  return async function syncSessionIfChangedExternally(meta: Meta) {
-    // Checked before the first `await` so the synchronous re-entry triggered by
+  return function syncSessionIfChangedExternally(meta: Meta): void {
+    // Checked before work begins so the synchronous re-entry triggered by
     // `setSession()` below is rejected while the flag is still set.
     if (isApplyingOwnUpdate) {
       return;
@@ -183,7 +205,7 @@ export function getSessionMetaUpdateHandler({
     // Compare in storable form, so keys that storage cannot hold do not read
     // as a perpetual external change.
     const session = meta.session && toStorableSessionMeta(meta.session);
-    const sessionFromSessionStorage = await fetchUserSession();
+    const sessionFromSessionStorage = fetchUserSession();
 
     let sessionId = session?.id;
     const sessionAttributes = session?.attributes;
@@ -223,7 +245,7 @@ export function getSessionMetaUpdateHandler({
               sessionFromSessionStorage
             );
 
-      await storeUserSession(userSession);
+      storeUserSession(userSession);
       sendOverrideEvent(hasSessionOverridesChanged, sessionOverrides, storedSessionMetaOverrides);
 
       isApplyingOwnUpdate = true;

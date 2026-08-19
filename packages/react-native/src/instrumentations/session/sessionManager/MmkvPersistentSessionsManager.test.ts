@@ -226,4 +226,58 @@ describe('MmkvPersistentSessionsManager - session persistence', () => {
     expect(store.remove).not.toHaveBeenCalled();
     expect(store.delete).not.toHaveBeenCalled();
   });
+
+  it('updates activity in memory immediately and coalesces MMKV writes', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-19T12:00:00.000Z'));
+
+    try {
+      const store = {
+        getString: jest.fn().mockReturnValue(undefined),
+        set: jest.fn(),
+      };
+      jest.doMock('react-native-mmkv', () => ({ createMMKV: jest.fn().mockReturnValue(store) }));
+
+      const { mockConfig, MockTransport } = require('@grafana/faro-test-utils');
+      const { initializeFaro } = require('../../../initialize');
+      const { EVENT_NAVIGATION } = require('../../../navigation/utils');
+      const { MmkvPersistentSessionsManager } = require('./MmkvPersistentSessionsManager');
+      const faro = await initializeFaro(
+        mockConfig({
+          url: 'http://localhost:12345/collect',
+          transports: [new MockTransport()],
+          sessionTracking: { enabled: true, persistent: true },
+        })
+      );
+      const instrumentation = faro.instrumentations.instrumentations.find(
+        ({ name }: { name: string }) => name === '@grafana/faro-react-native:instrumentation-session'
+      );
+      if (instrumentation == null || typeof instrumentation.unpatch !== 'function') {
+        throw new Error('Expected the default session instrumentation.');
+      }
+      const writesAfterInitialization = store.set.mock.calls.length;
+
+      jest.advanceTimersByTime(1);
+      faro.api.pushEvent(EVENT_NAVIGATION, { screen: 'cart' });
+      const activityAfterFirstEvent = MmkvPersistentSessionsManager.fetchUserSession().lastActivity;
+      jest.advanceTimersByTime(1);
+      faro.api.pushEvent(EVENT_NAVIGATION, { screen: 'checkout' });
+
+      expect(activityAfterFirstEvent).toBe(Date.now() - 1);
+      expect(MmkvPersistentSessionsManager.fetchUserSession().lastActivity).toBe(Date.now());
+      expect(store.set).toHaveBeenCalledTimes(writesAfterInitialization + 1);
+
+      jest.advanceTimersByTime(999);
+      expect(store.set).toHaveBeenCalledTimes(writesAfterInitialization + 2);
+
+      faro.api.pushEvent(EVENT_NAVIGATION, { screen: 'confirmation' });
+      instrumentation.unpatch();
+      expect(store.set).toHaveBeenCalledTimes(writesAfterInitialization + 3);
+
+      jest.advanceTimersByTime(1000);
+      expect(store.set).toHaveBeenCalledTimes(writesAfterInitialization + 3);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

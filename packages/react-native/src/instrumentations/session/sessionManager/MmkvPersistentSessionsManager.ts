@@ -3,7 +3,7 @@ import type { MMKV } from 'react-native-mmkv';
 
 import { faro } from '@grafana/faro-core';
 
-import { throttle } from '../../../utils/throttle';
+import { SessionActivityKind } from '../sessionActivity';
 
 import { parsePersistentSession, serializePersistentSession } from './persistentSessionRecord';
 import { STORAGE_KEY, STORAGE_UPDATE_DELAY } from './sessionConstants';
@@ -79,11 +79,15 @@ export function resetMmkvSingletonForTests(): void {
 export class MmkvPersistentSessionsManager {
   private updateUserSession: ReturnType<typeof getUserSessionUpdater>;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
+  private activityWriteTimer: ReturnType<typeof setTimeout> | null = null;
+  private hasPendingActivityWrite = false;
+  private lastActivityWrite = 0;
   private metaUnsubscribe: (() => void) | null = null;
 
   constructor() {
     this.updateUserSession = getUserSessionUpdater({
       fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
+      recordUserSessionActivity: this.recordUserSessionActivity,
       storeUserSession: MmkvPersistentSessionsManager.storeUserSession,
     });
 
@@ -104,6 +108,11 @@ export class MmkvPersistentSessionsManager {
   }
 
   static storeUserSession(session: FaroUserSession): void {
+    MmkvPersistentSessionsManager.setRuntimeSession(session);
+    MmkvPersistentSessionsManager.persistSession(session);
+  }
+
+  private static setRuntimeSession(session: FaroUserSession): void {
     runtimeSession =
       session.sessionMeta == null
         ? session
@@ -111,6 +120,9 @@ export class MmkvPersistentSessionsManager {
             ...session,
             sessionMeta: toStorableSessionMeta(session.sessionMeta),
           };
+  }
+
+  private static persistSession(session: FaroUserSession): void {
     const mmkv = tryGetMmkv();
     if (mmkv == null) {
       return;
@@ -152,11 +164,51 @@ export class MmkvPersistentSessionsManager {
     }
   }
 
-  updateSession = throttle(() => this.updateUserSession(), STORAGE_UPDATE_DELAY);
+  checkSession(activity: SessionActivityKind): FaroUserSession | null {
+    return this.updateUserSession(activity);
+  }
+
+  private flushActivityWrite = (): void => {
+    if (this.activityWriteTimer != null) {
+      clearTimeout(this.activityWriteTimer);
+      this.activityWriteTimer = null;
+    }
+
+    if (!this.hasPendingActivityWrite) {
+      return;
+    }
+
+    const session = MmkvPersistentSessionsManager.fetchUserSession();
+    this.hasPendingActivityWrite = false;
+    if (session == null) {
+      return;
+    }
+
+    MmkvPersistentSessionsManager.persistSession(session);
+    this.lastActivityWrite = Date.now();
+  };
+
+  private recordUserSessionActivity = (session: FaroUserSession): void => {
+    // Keep expiry checks exact in memory while limiting native storage writes.
+    MmkvPersistentSessionsManager.setRuntimeSession(session);
+    this.hasPendingActivityWrite = true;
+
+    const elapsed = Date.now() - this.lastActivityWrite;
+    if (this.lastActivityWrite === 0 || elapsed < 0 || elapsed >= STORAGE_UPDATE_DELAY) {
+      this.flushActivityWrite();
+      return;
+    }
+
+    if (this.activityWriteTimer == null) {
+      this.activityWriteTimer = setTimeout(this.flushActivityWrite, STORAGE_UPDATE_DELAY - elapsed);
+    }
+  };
 
   private handleAppStateChange = (nextAppState: AppStateStatus) => {
     if (nextAppState === 'active') {
-      this.updateSession();
+      this.checkSession(SessionActivityKind.Meaningful);
+    } else if (nextAppState === 'background') {
+      this.flushActivityWrite();
     }
   };
 
@@ -173,6 +225,8 @@ export class MmkvPersistentSessionsManager {
   }
 
   unpatch(): void {
+    this.flushActivityWrite();
+
     if (this.appStateSubscription) {
       this.appStateSubscription.remove();
       this.appStateSubscription = null;

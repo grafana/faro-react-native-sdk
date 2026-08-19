@@ -3,11 +3,12 @@ import type { Config, Meta, MetaSession, TransportItem } from '@grafana/faro-cor
 
 import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
 
+import { classifySessionActivity, isRecoveredCrashItem } from './sessionActivity';
 import { minimalSessionDeviceAttributes, type SessionAttributes } from './sessionAttributes';
 import { type FaroUserSession, getSessionManagerByConfig, isSampled } from './sessionManager';
 import { MAX_SESSION_PERSISTENCE_TIME } from './sessionManager/sessionConstants';
 import { createUserSessionObject, isUserSessionValid } from './sessionManager/sessionManagerUtils';
-import type { SessionManager } from './sessionManager/types';
+import type { SessionManager, SessionManagerInstance } from './sessionManager/types';
 
 /**
  * Session instrumentation for React Native
@@ -133,23 +134,30 @@ export class SessionInstrumentation extends BaseInstrumentation {
     return { initialSession, emitSessionStartOnInit };
   }
 
-  private registerBeforeSendHook(
-    sessionManager: InstanceType<SessionManager>,
-    SessionManagerClass: SessionManager
-  ): void {
-    const { updateSession } = sessionManager;
-
+  private registerBeforeSendHook(sessionManager: SessionManagerInstance, SessionManagerClass: SessionManager): void {
     this.transports?.addBeforeSendHooks((item: TransportItem) => {
-      updateSession();
+      const storedSession = SessionManagerClass.fetchUserSession();
+      const recoveredCrash = isRecoveredCrashItem(item, storedSession?.sessionId);
+      const checkedSession = recoveredCrash ? null : sessionManager.checkSession(classifySessionActivity(item));
 
-      const attributes = item.meta.session?.attributes;
+      let nextItem = item;
+      if (checkedSession?.sessionMeta != null && item.meta.session?.id !== checkedSession.sessionId) {
+        nextItem = {
+          ...item,
+          meta: {
+            ...item.meta,
+            session: checkedSession.sessionMeta,
+          },
+        };
+      }
+
+      const attributes = nextItem.meta.session?.attributes;
       const samplingAttribute =
-        attributes?.['isSampled'] ?? SessionManagerClass.fetchUserSession()?.isSampled.toString();
+        attributes?.['isSampled'] ?? (recoveredCrash ? undefined : checkedSession?.isSampled.toString());
 
       // Only filter out items when session is explicitly NOT sampled (isSampled='false')
       // If isSampled='true', remove the attribute before sending (it's internal)
-      // During a setSession update, fall back to the manager's stable decision
-      // while the internal attribute is being restored asynchronously.
+      // Fall back to the manager's stable decision when item metadata omits it.
       if (samplingAttribute === 'false') {
         // Session is not sampled - drop this item
         return null;
@@ -157,7 +165,18 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
       if (samplingAttribute === 'true') {
         // Session is sampled - remove internal isSampled attribute before sending
-        let newItem: TransportItem = JSON.parse(JSON.stringify(item));
+        const newItem: TransportItem = {
+          ...nextItem,
+          meta: {
+            ...nextItem.meta,
+            session: nextItem.meta.session
+              ? {
+                  ...nextItem.meta.session,
+                  attributes: nextItem.meta.session.attributes ? { ...nextItem.meta.session.attributes } : undefined,
+                }
+              : undefined,
+          },
+        };
 
         const newAttributes = newItem.meta.session?.attributes;
         delete newAttributes?.['isSampled'];
@@ -170,7 +189,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
       }
 
       // No isSampled attribute or other value - pass through unchanged
-      return item;
+      return nextItem;
     });
   }
 
