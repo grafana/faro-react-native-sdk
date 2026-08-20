@@ -869,6 +869,32 @@ Persistent storage currently supports one React Native runtime writing the MMKV 
 
 The SDK emits `session_start` when a new session is created, including each cold start and when session metadata changes to a new session ID.
 
+**Explicit session reset:**
+
+Use `resetSession()` after changing or clearing the current user at an
+application-defined boundary. It immediately creates a new session, links the
+previous session ID, restarts the lifetime, inactivity, and sampling windows,
+and emits the normal `session_start` event. Persistent sessions write the new
+record before the call returns.
+
+```tsx
+import { resetSession } from '@grafana/faro-react-native';
+
+function logout() {
+  faro.api.resetUser();
+  resetSession();
+}
+
+function switchAccount(nextUserId: string) {
+  faro.api.setUser({ id: nextUserId });
+  resetSession();
+}
+```
+
+Any active user action is ended before the reset so its buffered telemetry
+stays with the previous session. Calls made before Faro initializes, after
+teardown, or while session tracking is disabled have no effect.
+
 ### Default Session Attributes
 
 Every telemetry event automatically includes default session attributes with device and SDK information.
@@ -1342,6 +1368,7 @@ See the [demo](../../demo) directory for a complete example application.
 - `faro.api.pushMeasurement(measurement: Measurement)` - Track performance
 - `faro.api.setUser(user: User)` - Identify users
 - `faro.api.resetUser()` - Clear user identification
+- `resetSession()` - Start a new session linked to the current session
 
 ### User Actions API
 

@@ -66,6 +66,10 @@
 
 ### Added
 
+- `resetSession()` for logout, account changes, and custom session boundaries.
+  It starts a new linked session immediately, restarts timing and sampling,
+  emits `session_start`, and persists the new record when persistence is
+  enabled.
 - Structured mobile payload fields: `meta.device`, `meta.os`,
   `meta.app.installationId`, and `exception.fatal`. Legacy flat
   `session.attributes` device/OS fields are still emitted during migration.

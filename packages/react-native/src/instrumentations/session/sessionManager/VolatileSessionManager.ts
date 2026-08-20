@@ -4,11 +4,12 @@ import { faro } from '@grafana/faro-core';
 
 import { SessionActivityKind } from '../sessionActivity';
 
-import { getSessionMetaUpdateHandler, getUserSessionUpdater } from './sessionManagerUtils';
+import { getSessionMetaUpdateHandler, getUserSessionResetter, getUserSessionUpdater } from './sessionManagerUtils';
 import type { FaroUserSession } from './types';
 
 export class VolatileSessionsManager {
   private static volatileStorage: FaroUserSession | null = null;
+  private resetUserSession: ReturnType<typeof getUserSessionResetter>;
   private updateUserSession: ReturnType<typeof getUserSessionUpdater>;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
   private wasBackgrounded = AppState.currentState === 'background';
@@ -16,6 +17,10 @@ export class VolatileSessionsManager {
 
   constructor() {
     this.updateUserSession = getUserSessionUpdater({
+      fetchUserSession: VolatileSessionsManager.fetchUserSession,
+      storeUserSession: VolatileSessionsManager.storeUserSession,
+    });
+    this.resetUserSession = getUserSessionResetter({
       fetchUserSession: VolatileSessionsManager.fetchUserSession,
       storeUserSession: VolatileSessionsManager.storeUserSession,
     });
@@ -37,6 +42,10 @@ export class VolatileSessionsManager {
 
   checkSession(activity: SessionActivityKind, currentSession?: FaroUserSession | null): FaroUserSession {
     return this.updateUserSession(activity, currentSession);
+  }
+
+  resetSession(): FaroUserSession {
+    return this.resetUserSession();
   }
 
   private handleAppStateChange = (nextAppState: AppStateStatus) => {

@@ -85,6 +85,59 @@ type GetUserSessionUpdaterParams = {
   recordUserSessionActivity?: (session: FaroUserSession) => void;
 };
 
+type GetUserSessionResetterParams = Pick<GetUserSessionUpdaterParams, 'fetchUserSession' | 'storeUserSession'>;
+
+function notifySessionChange(previousSession: FaroUserSession | null, newSession: FaroUserSession): void {
+  const newSessionMeta = newSession.sessionMeta;
+  if (newSessionMeta == null) {
+    return;
+  }
+
+  try {
+    faro.config.sessionTracking?.onSessionChange?.(previousSession?.sessionMeta ?? null, newSessionMeta);
+  } catch (error) {
+    faro.unpatchedConsole?.warn?.('The session change callback failed:', error);
+  }
+}
+
+function createNextUserSession(previousSession: FaroUserSession | null): FaroUserSession {
+  const nextSession = createUserSessionObject({ isSampled: isSampled() });
+
+  if (previousSession != null && nextSession.sessionId === previousSession.sessionId) {
+    faro.unpatchedConsole?.warn?.(
+      'The session ID generator returned the current session ID; using a generated fallback for the new session.'
+    );
+    nextSession.sessionId = `${previousSession.sessionId}-${genShortID()}`;
+  }
+
+  return addSessionMetadataToNextSession(nextSession, previousSession);
+}
+
+function startNextUserSession(
+  previousSession: FaroUserSession | null,
+  storeUserSession: (session: FaroUserSession) => void
+): FaroUserSession {
+  const nextSession = createNextUserSession(previousSession);
+
+  storeUserSession(nextSession);
+  // setSession synchronously emits session_start through the meta listener.
+  // The transport hook then resumes and attributes the triggering item to
+  // the newly stored session.
+  faro.api?.setSession(nextSession.sessionMeta);
+  notifySessionChange(previousSession, nextSession);
+
+  return nextSession;
+}
+
+export function getUserSessionResetter({
+  fetchUserSession,
+  storeUserSession,
+}: GetUserSessionResetterParams): () => FaroUserSession {
+  return function resetSession(): FaroUserSession {
+    return startNextUserSession(fetchUserSession(), storeUserSession);
+  };
+}
+
 export function getUserSessionUpdater({
   fetchUserSession,
   recordUserSessionActivity,
@@ -116,27 +169,7 @@ export function getUserSessionUpdater({
       return sessionFromStorage;
     }
 
-    const newSession = addSessionMetadataToNextSession(
-      createUserSessionObject({ isSampled: isSampled() }),
-      sessionFromStorage
-    );
-
-    storeUserSession(newSession);
-    // setSession synchronously emits session_start through the meta listener.
-    // The transport hook then resumes and attributes the triggering item to
-    // the newly stored session.
-    faro.api?.setSession(newSession.sessionMeta);
-
-    const newSessionMeta = newSession.sessionMeta;
-    if (newSessionMeta != null) {
-      try {
-        faro.config.sessionTracking?.onSessionChange?.(sessionFromStorage?.sessionMeta ?? null, newSessionMeta);
-      } catch (error) {
-        faro.unpatchedConsole?.warn?.('The session change callback failed:', error);
-      }
-    }
-
-    return newSession;
+    return startNextUserSession(sessionFromStorage, storeUserSession);
   };
 }
 

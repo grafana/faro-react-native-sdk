@@ -7,7 +7,12 @@ import { SessionActivityKind } from '../sessionActivity';
 
 import { parsePersistentSession, serializePersistentSession } from './persistentSessionRecord';
 import { STORAGE_KEY, STORAGE_UPDATE_DELAY } from './sessionConstants';
-import { getSessionMetaUpdateHandler, getUserSessionUpdater, toStorableSessionMeta } from './sessionManagerUtils';
+import {
+  getSessionMetaUpdateHandler,
+  getUserSessionResetter,
+  getUserSessionUpdater,
+  toStorableSessionMeta,
+} from './sessionManagerUtils';
 import type { FaroUserSession } from './types';
 
 function createMmkvInstance(): MMKV {
@@ -77,6 +82,7 @@ export function resetMmkvSingletonForTests(): void {
  * Used when `sessionTracking.persistent` is true.
  */
 export class MmkvPersistentSessionsManager {
+  private resetUserSession: ReturnType<typeof getUserSessionResetter>;
   private updateUserSession: ReturnType<typeof getUserSessionUpdater>;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
   private activityWriteTimer: ReturnType<typeof setTimeout> | null = null;
@@ -89,6 +95,10 @@ export class MmkvPersistentSessionsManager {
     this.updateUserSession = getUserSessionUpdater({
       fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
       recordUserSessionActivity: this.recordUserSessionActivity,
+      storeUserSession: MmkvPersistentSessionsManager.storeUserSession,
+    });
+    this.resetUserSession = getUserSessionResetter({
+      fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
       storeUserSession: MmkvPersistentSessionsManager.storeUserSession,
     });
 
@@ -167,6 +177,18 @@ export class MmkvPersistentSessionsManager {
 
   checkSession(activity: SessionActivityKind, currentSession?: FaroUserSession | null): FaroUserSession {
     return this.updateUserSession(activity, currentSession);
+  }
+
+  resetSession(): FaroUserSession {
+    if (this.activityWriteTimer != null) {
+      clearTimeout(this.activityWriteTimer);
+      this.activityWriteTimer = null;
+    }
+    this.hasPendingActivityWrite = false;
+
+    const session = this.resetUserSession();
+    this.lastActivityWrite = dateNow();
+    return session;
   }
 
   private flushActivityWrite = (): void => {

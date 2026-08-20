@@ -1,5 +1,5 @@
-import { BaseInstrumentation, dateNow, EVENT_SESSION_START, VERSION } from '@grafana/faro-core';
-import type { Config, Meta, MetaSession, TransportItem } from '@grafana/faro-core';
+import { BaseInstrumentation, dateNow, EVENT_SESSION_START, faro, VERSION } from '@grafana/faro-core';
+import type { Config, Meta, MetaSession, TransportItem, UserActionInternalInterface } from '@grafana/faro-core';
 
 import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
 
@@ -10,18 +10,39 @@ import { MAX_SESSION_PERSISTENCE_TIME } from './sessionManager/sessionConstants'
 import { createUserSessionObject, isUserSessionValid } from './sessionManager/sessionManagerUtils';
 import type { SessionManager, SessionManagerInstance } from './sessionManager/types';
 
+const SESSION_INSTRUMENTATION_NAME = '@grafana/faro-react-native:instrumentation-session';
+
+/**
+ * Starts a new linked session at an application-defined boundary.
+ *
+ * Call this after changing or clearing the current user for logout, account
+ * changes, or another boundary that must not share a session. Calls made
+ * before Faro initializes, after teardown, or while session tracking is
+ * disabled have no effect.
+ */
+export function resetSession(): void {
+  const instrumentation = faro?.instrumentations?.instrumentations.find(
+    ({ name }) => name === SESSION_INSTRUMENTATION_NAME
+  );
+
+  if (instrumentation instanceof SessionInstrumentation) {
+    instrumentation.resetSession();
+  }
+}
+
 /**
  * Session instrumentation for React Native
  * Manages persistent or volatile sessions with expiration and inactivity tracking
  */
 export class SessionInstrumentation extends BaseInstrumentation {
-  readonly name = '@grafana/faro-react-native:instrumentation-session';
+  readonly name = SESSION_INSTRUMENTATION_NAME;
   readonly version = VERSION;
 
   // previously notified session, to ensure we don't send session start
   // event twice for the same session
   private notifiedSession: MetaSession | undefined;
   private sessionManagerInstance: InstanceType<SessionManager> | undefined;
+  private isResettingSession = false;
 
   private getDefaultSessionDeviceAttributes(): SessionAttributes {
     const cfg = this.config as ReactNativeFullConfig;
@@ -232,10 +253,32 @@ export class SessionInstrumentation extends BaseInstrumentation {
     this.metas.addListener(this.sendSessionStartEvent.bind(this));
   }
 
+  /** Starts a new linked session immediately. */
+  resetSession(): void {
+    if (this.sessionManagerInstance == null || this.isResettingSession) {
+      return;
+    }
+
+    this.isResettingSession = true;
+    try {
+      try {
+        const activeAction = this.api.getActiveUserAction?.() as UserActionInternalInterface | undefined;
+        activeAction?.end();
+      } catch (error) {
+        this.logWarn('Failed to end the active user action before resetting the session:', error);
+      }
+
+      this.sessionManagerInstance.resetSession();
+    } finally {
+      this.isResettingSession = false;
+    }
+  }
+
   /**
    * Clean up session manager listeners
    */
   unpatch(): void {
     this.sessionManagerInstance?.unpatch();
+    this.sessionManagerInstance = undefined;
   }
 }

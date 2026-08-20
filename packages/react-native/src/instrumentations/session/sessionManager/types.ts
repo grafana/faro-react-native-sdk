@@ -17,5 +17,6 @@ export type SessionManager = typeof VolatileSessionsManager | typeof MmkvPersist
 
 export interface SessionManagerInstance {
   checkSession(activity: SessionActivityKind, currentSession?: FaroUserSession | null): FaroUserSession;
+  resetSession(): FaroUserSession;
   unpatch(): void;
 }
