@@ -25,7 +25,11 @@ export function resetSession(): void {
     ({ name }) => name === SESSION_INSTRUMENTATION_NAME
   );
 
-  if (instrumentation instanceof SessionInstrumentation) {
+  if (
+    instrumentation != null &&
+    'resetSession' in instrumentation &&
+    typeof instrumentation.resetSession === 'function'
+  ) {
     instrumentation.resetSession();
   }
 }
@@ -159,9 +163,13 @@ export class SessionInstrumentation extends BaseInstrumentation {
     this.transports?.addBeforeSendHooks((item: TransportItem) => {
       const storedSession = SessionManagerClass.fetchUserSession();
       const recoveredCrash = isRecoveredCrashItem(item, storedSession?.sessionId);
+      // Ending an active action can send telemetry synchronously. Keep that
+      // telemetry on the current session until the explicit reset completes.
       const checkedSession = recoveredCrash
         ? null
-        : sessionManager.checkSession(classifySessionActivity(item), storedSession);
+        : this.isResettingSession
+          ? storedSession
+          : sessionManager.checkSession(classifySessionActivity(item), storedSession);
 
       let nextItem = item;
       if (checkedSession?.sessionMeta != null && item.meta.session?.id !== checkedSession.sessionId) {

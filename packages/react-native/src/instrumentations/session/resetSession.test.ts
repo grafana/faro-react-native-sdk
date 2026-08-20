@@ -1,8 +1,9 @@
-import { EVENT_SESSION_START, initializeFaro } from '@grafana/faro-core';
+import { BaseInstrumentation, EVENT_SESSION_START, initializeFaro, VERSION } from '@grafana/faro-core';
 import type { Faro } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import { SamplingFunction } from '../../config/sampling';
+import { EVENT_NAVIGATION } from '../../navigation/utils';
 
 import { resetSession, SessionInstrumentation } from './index';
 import {
@@ -26,6 +27,7 @@ jest.mock('react-native-mmkv', () => ({
 const initialTime = new Date('2026-08-20T12:00:00.000Z').getTime();
 
 type InitializeSessionOptions = {
+  maxSessionPersistenceTime?: number;
   persistent: boolean;
   sessionIds?: string[];
   samplingRates?: number[];
@@ -33,6 +35,7 @@ type InitializeSessionOptions = {
 };
 
 function initializeSession({
+  maxSessionPersistenceTime,
   persistent,
   sessionIds = ['session-1', 'session-2', 'session-3'],
   samplingRates = [1, 1, 1],
@@ -49,6 +52,7 @@ function initializeSession({
       instrumentations: [instrumentation],
       sessionTracking: {
         enabled: true,
+        maxSessionPersistenceTime,
         persistent,
         generateSessionId,
         onSessionChange,
@@ -58,6 +62,14 @@ function initializeSession({
   );
 
   return { faro, generateSessionId, instrumentation, onSessionChange, resolveSampling, transport };
+}
+
+class CompatibleSessionInstrumentation extends BaseInstrumentation {
+  readonly name = '@grafana/faro-react-native:instrumentation-session';
+  readonly version = VERSION;
+  readonly resetSession = jest.fn();
+
+  initialize(): void {}
 }
 
 function sessionStartItems(transport: MockTransport) {
@@ -171,20 +183,102 @@ describe('resetSession', () => {
     resetSession();
     expect(VolatileSessionsManager.fetchUserSession()?.isSampled).toBe(true);
     expect(setup.resolveSampling).toHaveBeenCalledTimes(3);
+    expect(sessionStartItems(setup.transport).map((item) => item.meta.session?.id)).toStrictEqual([
+      'session-1',
+      'session-3',
+    ]);
   });
 
-  it('uses a different ID when a custom generator repeats the current ID', () => {
+  it('uses compact fallback IDs when a custom generator repeats the current ID', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation();
-    const setup = initializeSession({ persistent: false, sessionIds: ['same-session', 'same-session'] });
+    const setup = initializeSession({
+      persistent: false,
+      sessionIds: ['same-session', 'same-session', 'same-session', 'same-session'],
+    });
     initializedFaros.push(setup.faro);
 
     resetSession();
+    const secondSessionId = setup.faro.api.getSession()?.id;
+    resetSession();
+    const thirdSessionId = setup.faro.api.getSession()?.id;
+    resetSession();
+    const fourthSessionId = setup.faro.api.getSession()?.id;
 
-    expect(setup.faro.api.getSession()?.id).not.toBe('same-session');
+    expect(secondSessionId).not.toBe('same-session');
+    expect(secondSessionId).not.toMatch(/^same-session-/);
+    expect(thirdSessionId).toBe('same-session');
+    expect(fourthSessionId).not.toBe('same-session');
+    expect(fourthSessionId).not.toMatch(/^same-session-/);
     expect(setup.faro.api.getSession()?.attributes?.['previousSession']).toBe('same-session');
-    expect(warn).toHaveBeenCalledWith(
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenNthCalledWith(
+      1,
       'The session ID generator returned the current session ID; using a generated fallback for the new session.'
     );
+  });
+
+  it('keeps an active action with the previous session when an explicit reset happens after expiry', () => {
+    const setup = initializeSession({
+      maxSessionPersistenceTime: 15 * 60 * 1000,
+      persistent: false,
+    });
+    initializedFaros.push(setup.faro);
+    const activeAction = {
+      end: jest.fn(() => setup.faro.api.pushEvent('active_action_flushed')),
+    };
+    jest.spyOn(setup.faro.api, 'getActiveUserAction').mockReturnValue(activeAction as never);
+
+    jest.setSystemTime(initialTime + 15 * 60 * 1000);
+    resetSession();
+
+    const flushedAction = setup.transport.items.find(
+      (item) => item.type === 'event' && 'name' in item.payload && item.payload.name === 'active_action_flushed'
+    );
+    expect(flushedAction?.meta.session?.id).toBe('session-1');
+    expect(setup.faro.api.getSession()).toMatchObject({
+      id: 'session-2',
+      attributes: { previousSession: 'session-1' },
+    });
+    expect(sessionStartItems(setup.transport).map((item) => item.meta.session?.id)).toStrictEqual([
+      'session-1',
+      'session-2',
+    ]);
+    expect(setup.generateSessionId).toHaveBeenCalledTimes(2);
+    expect(setup.onSessionChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears a pending persistent activity write before storing the reset session', () => {
+    const setup = initializeSession({ persistent: true });
+    initializedFaros.push(setup.faro);
+
+    jest.advanceTimersByTime(1);
+    setup.faro.api.pushEvent(EVENT_NAVIGATION, { screen: 'cart' });
+    jest.advanceTimersByTime(1);
+    setup.faro.api.pushEvent(EVENT_NAVIGATION, { screen: 'checkout' });
+    const writesBeforeReset = mockMmkv.set.mock.calls.length;
+
+    jest.advanceTimersByTime(1);
+    resetSession();
+    const writesAfterReset = mockMmkv.set.mock.calls.length;
+
+    expect(writesAfterReset).toBe(writesBeforeReset + 1);
+    expect(MmkvPersistentSessionsManager.fetchUserSession()?.sessionId).toBe('session-2');
+    jest.advanceTimersByTime(1000);
+    expect(mockMmkv.set).toHaveBeenCalledTimes(writesAfterReset);
+  });
+
+  it('uses a compatible session instrumentation from another module copy', () => {
+    const instrumentation = new CompatibleSessionInstrumentation();
+    const faro = initializeFaro(
+      mockConfig({
+        instrumentations: [instrumentation],
+      })
+    );
+    initializedFaros.push(faro);
+
+    resetSession();
+
+    expect(instrumentation.resetSession).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a reset triggered re-entrantly by onSessionChange', () => {

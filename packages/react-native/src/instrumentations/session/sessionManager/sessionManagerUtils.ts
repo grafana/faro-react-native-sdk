@@ -107,7 +107,7 @@ function createNextUserSession(previousSession: FaroUserSession | null): FaroUse
     faro.unpatchedConsole?.warn?.(
       'The session ID generator returned the current session ID; using a generated fallback for the new session.'
     );
-    nextSession.sessionId = `${previousSession.sessionId}-${genShortID()}`;
+    nextSession.sessionId = genShortID();
   }
 
   return addSessionMetadataToNextSession(nextSession, previousSession);

@@ -874,8 +874,10 @@ The SDK emits `session_start` when a new session is created, including each cold
 Use `resetSession()` after changing or clearing the current user at an
 application-defined boundary. It immediately creates a new session, links the
 previous session ID, restarts the lifetime, inactivity, and sampling windows,
-and emits the normal `session_start` event. Persistent sessions write the new
-record before the call returns.
+and creates the normal `session_start` event. As with other telemetry, the event
+is not exported when the new session is sampled out. Persistent sessions attempt
+the synchronous MMKV write before the call returns; write failures are logged
+and the new session remains active in memory.
 
 ```tsx
 import { resetSession } from '@grafana/faro-react-native';
@@ -1368,7 +1370,7 @@ See the [demo](../../demo) directory for a complete example application.
 - `faro.api.pushMeasurement(measurement: Measurement)` - Track performance
 - `faro.api.setUser(user: User)` - Identify users
 - `faro.api.resetUser()` - Clear user identification
-- `resetSession()` - Start a new session linked to the current session
+- `resetSession()` - Top-level API that starts a new session linked to the current session
 
 ### User Actions API
 
