@@ -808,9 +808,31 @@ The inactivity window is refreshed only by meaningful activity:
 | Unmarked session, startup, ANR, frame, console, and performance telemetry | Passive           |
 
 Passive telemetry still checks whether the session has expired, but it does not
-keep the session alive. User interactions are not detected automatically. Wrap
-interactive components with `withFaroUserAction` or call `trackUserAction` for
-foreground or background work that should refresh the inactivity window.
+keep the session alive. To refresh inactivity for ordinary touches without
+emitting user-action telemetry, wrap the application once with
+`FaroSessionActivityBoundary`:
+
+```tsx
+import { FaroSessionActivityBoundary } from '@grafana/faro-react-native';
+
+export function App() {
+  return (
+    <FaroSessionActivityBoundary>
+      <AppNavigator />
+    </FaroSessionActivityBoundary>
+  );
+}
+```
+
+The boundary observes touch-start responder negotiation from descendants
+without becoming the responder. This covers standard React Native presses,
+scrolling, dragging, and touches that focus inputs on Android and iOS.
+Interactions rendered outside the boundary's React Native view tree, or native
+and accessibility interactions that do not produce a React Native touch event,
+are not observed. Call
+`notifySessionActivity()` for those paths. Use `withFaroUserAction` or
+`trackUserAction` only when the interaction should also emit user-action
+telemetry and correlate related work.
 
 ```tsx
 import { initializeFaro, SamplingFunction, SamplingRate } from '@grafana/faro-react-native';

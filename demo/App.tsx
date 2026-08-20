@@ -7,6 +7,8 @@ import React, { useEffect } from 'react';
 import { StatusBar, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { FaroSessionActivityBoundary } from '@grafana/faro-react-native';
+
 import { initFaro } from './src/faro/initialize';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { getRandomUser } from './src/utils/randomUser';
@@ -38,10 +40,12 @@ function App() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AppNavigator />
-    </SafeAreaProvider>
+    <FaroSessionActivityBoundary>
+      <SafeAreaProvider>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+        <AppNavigator />
+      </SafeAreaProvider>
+    </FaroSessionActivityBoundary>
   );
 }
 
