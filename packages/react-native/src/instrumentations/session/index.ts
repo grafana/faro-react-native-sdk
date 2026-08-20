@@ -3,7 +3,7 @@ import type { Config, Meta, MetaSession, TransportItem } from '@grafana/faro-cor
 
 import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
 
-import { registerDirectSessionActivityHandler } from './directSessionActivity';
+import { clearDirectSessionActivityHandler, registerDirectSessionActivityHandler } from './directSessionActivity';
 import { classifySessionActivity, isRecoveredCrashItem, SessionActivityKind } from './sessionActivity';
 import { minimalSessionDeviceAttributes, type SessionAttributes } from './sessionAttributes';
 import { type FaroUserSession, getSessionManagerByConfig, isSampled } from './sessionManager';
@@ -202,6 +202,10 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
   initialize(): void {
     const sessionTrackingConfig = this.config.sessionTracking;
+
+    // A new initialization owns direct-activity routing, including when
+    // session tracking is disabled.
+    clearDirectSessionActivityHandler();
 
     if (!sessionTrackingConfig?.enabled) {
       this.metas.addListener(this.sendSessionStartEvent.bind(this));

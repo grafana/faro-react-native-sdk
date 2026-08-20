@@ -4,6 +4,11 @@ type DirectSessionActivityHandler = () => void;
 
 let directSessionActivityHandler: DirectSessionActivityHandler | undefined;
 
+/** Clears a handler left by a previous SDK initialization. */
+export function clearDirectSessionActivityHandler(): void {
+  directSessionActivityHandler = undefined;
+}
+
 /** Registers the active session manager as the direct-activity consumer. */
 export function registerDirectSessionActivityHandler(handler: DirectSessionActivityHandler): () => void {
   directSessionActivityHandler = handler;

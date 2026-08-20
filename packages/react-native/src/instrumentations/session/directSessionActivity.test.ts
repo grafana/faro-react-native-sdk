@@ -1,7 +1,11 @@
 import { EVENT_SESSION_START, initializeFaro } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
-import { notifySessionActivity, registerDirectSessionActivityHandler } from './directSessionActivity';
+import {
+  clearDirectSessionActivityHandler,
+  notifySessionActivity,
+  registerDirectSessionActivityHandler,
+} from './directSessionActivity';
 import { SessionInstrumentation } from './index';
 import type { FaroUserSession } from './sessionManager';
 import { VolatileSessionsManager } from './sessionManager/VolatileSessionManager';
@@ -15,6 +19,8 @@ function getVolatileSession(): FaroUserSession {
 }
 
 describe('direct session activity', () => {
+  const instrumentations: SessionInstrumentation[] = [];
+
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-08-20T12:00:00.000Z'));
@@ -23,11 +29,16 @@ describe('direct session activity', () => {
   });
 
   afterEach(() => {
+    instrumentations.splice(0).forEach((instrumentation) => instrumentation.unpatch());
+    clearDirectSessionActivityHandler();
+    VolatileSessionsManager.removeUserSession();
     jest.useRealTimers();
   });
 
   it('does nothing before session tracking initializes', () => {
+    expect(VolatileSessionsManager.fetchUserSession()).toBeNull();
     expect(() => notifySessionActivity()).not.toThrow();
+    expect(VolatileSessionsManager.fetchUserSession()).toBeNull();
   });
 
   it('does not let an activity handler failure escape into the app', () => {
@@ -42,9 +53,9 @@ describe('direct session activity', () => {
   it('refreshes an active session without emitting telemetry', async () => {
     const transport = new MockTransport();
     const instrumentation = new SessionInstrumentation();
+    instrumentations.push(instrumentation);
     await initializeFaro(
       mockConfig({
-        url: 'http://localhost:12345/collect',
         transports: [transport],
         instrumentations: [instrumentation],
         sessionTracking: { enabled: true, persistent: false },
@@ -64,15 +75,14 @@ describe('direct session activity', () => {
       lastActivity: Date.now(),
     });
     expect(transport.items).toHaveLength(0);
-    instrumentation.unpatch();
   });
 
   it('rotates at the inactivity boundary before later telemetry is attributed', async () => {
     const transport = new MockTransport();
     const instrumentation = new SessionInstrumentation();
+    instrumentations.push(instrumentation);
     const faro = await initializeFaro(
       mockConfig({
-        url: 'http://localhost:12345/collect',
         transports: [transport],
         instrumentations: [instrumentation],
         sessionTracking: { enabled: true, persistent: false },
@@ -99,14 +109,38 @@ describe('direct session activity', () => {
     expect(nextSession.sessionMeta?.attributes?.['previousSession']).toBe(previousSession.sessionId);
     expect(sessionStartEvents).toHaveLength(1);
     expect(pressedButton?.meta.session?.id).toBe(nextSession.sessionId);
-    instrumentation.unpatch();
+  });
+
+  it('does not retain a handler when a later initialization disables session tracking', async () => {
+    const enabledInstrumentation = new SessionInstrumentation();
+    const disabledInstrumentation = new SessionInstrumentation();
+    instrumentations.push(enabledInstrumentation, disabledInstrumentation);
+    await initializeFaro(
+      mockConfig({
+        instrumentations: [enabledInstrumentation],
+        sessionTracking: { enabled: true, persistent: false },
+      })
+    );
+    const session = getVolatileSession();
+    const lastActivity = Date.now() - 10 * 60 * 1000;
+    VolatileSessionsManager.storeUserSession({ ...session, lastActivity });
+
+    await initializeFaro(
+      mockConfig({
+        instrumentations: [disabledInstrumentation],
+        sessionTracking: { enabled: false, persistent: false },
+      })
+    );
+    notifySessionActivity();
+
+    expect(VolatileSessionsManager.fetchUserSession()?.lastActivity).toBe(lastActivity);
   });
 
   it('stops recording direct activity after session instrumentation is unpatched', async () => {
     const instrumentation = new SessionInstrumentation();
+    instrumentations.push(instrumentation);
     await initializeFaro(
       mockConfig({
-        url: 'http://localhost:12345/collect',
         transports: [new MockTransport()],
         instrumentations: [instrumentation],
         sessionTracking: { enabled: true, persistent: false },

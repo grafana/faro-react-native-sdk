@@ -1,33 +1,60 @@
 import React from 'react';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
+import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 
 import * as directSessionActivity from './directSessionActivity';
 import { FaroSessionActivityBoundary } from './FaroSessionActivityBoundary';
 
 describe('FaroSessionActivityBoundary', () => {
-  beforeEach(() => {
+  let renderer: ReactTestRenderer | undefined;
+
+  afterEach(() => {
+    if (renderer != null) {
+      const mountedRenderer = renderer;
+      act(() => mountedRenderer.unmount());
+      renderer = undefined;
+    }
     jest.restoreAllMocks();
   });
 
-  it('records a captured touch without claiming the responder', () => {
+  it('renders a boundary that records a captured touch without claiming the responder', async () => {
     const notifySpy = jest.spyOn(directSessionActivity, 'notifySessionActivity').mockImplementation();
     const child = React.createElement(Text, null, 'Press me');
-    const element = FaroSessionActivityBoundary({ children: child });
     const event = { nativeEvent: {} } as never;
+    await act(async () => {
+      renderer = create(React.createElement(FaroSessionActivityBoundary, null, child));
+    });
+    if (renderer == null) {
+      throw new Error('Expected the activity boundary to render.');
+    }
 
-    const claimsResponder = element.props.onStartShouldSetResponderCapture(event);
+    const boundary = renderer.root.findByType(View);
+    const claimsResponder = boundary.props.onStartShouldSetResponderCapture(event);
 
     expect(notifySpy).toHaveBeenCalledTimes(1);
     expect(claimsResponder).toBe(false);
-    expect(element.props.children).toBe(child);
+    expect(renderer.root.findByType(Text).props.children).toBe('Press me');
   });
 
-  it('preserves a caller responder decision', () => {
+  it('preserves a caller responder decision and layout override', async () => {
     const onStartShouldSetResponderCapture = jest.fn(() => true);
-    const element = FaroSessionActivityBoundary({ children: null, onStartShouldSetResponderCapture });
     const event = { nativeEvent: {} } as never;
+    await act(async () => {
+      renderer = create(
+        React.createElement(FaroSessionActivityBoundary, {
+          onStartShouldSetResponderCapture,
+          style: { flex: 0, height: 40 },
+        })
+      );
+    });
+    if (renderer == null) {
+      throw new Error('Expected the activity boundary to render.');
+    }
 
-    expect(element.props.onStartShouldSetResponderCapture(event)).toBe(true);
+    const boundary = renderer.root.findByType(View);
+
+    expect(boundary.props.onStartShouldSetResponderCapture(event)).toBe(true);
     expect(onStartShouldSetResponderCapture).toHaveBeenCalledWith(event);
+    expect(boundary.props.style).toEqual([{ flex: 1 }, { flex: 0, height: 40 }]);
   });
 });

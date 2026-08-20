@@ -1,4 +1,4 @@
-import { type PropsWithChildren } from 'react';
+import { type PropsWithChildren, useCallback } from 'react';
 import { type GestureResponderEvent, StyleSheet, View, type ViewProps } from 'react-native';
 
 import { notifySessionActivity } from './directSessionActivity';
@@ -15,10 +15,13 @@ export function FaroSessionActivityBoundary({
   style,
   ...viewProps
 }: FaroSessionActivityBoundaryProps) {
-  const handleStartShouldSetResponderCapture = (event: GestureResponderEvent): boolean => {
-    notifySessionActivity();
-    return onStartShouldSetResponderCapture?.(event) ?? false;
-  };
+  const handleStartShouldSetResponderCapture = useCallback(
+    (event: GestureResponderEvent): boolean => {
+      notifySessionActivity();
+      return onStartShouldSetResponderCapture?.(event) ?? false;
+    },
+    [onStartShouldSetResponderCapture]
+  );
 
   return (
     <View
