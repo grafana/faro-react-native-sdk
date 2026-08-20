@@ -795,6 +795,23 @@ use in-memory sessions and do not need MMKV.
 Use `maxSessionPersistenceTime` to control the inactivity and cold-start linking window. A session's
 maximum lifetime is fixed at four hours.
 
+The inactivity window is refreshed only by meaningful activity:
+
+| Telemetry source                                                          | Activity category |
+| ------------------------------------------------------------------------- | ----------------- |
+| Navigation and view changes                                               | Meaningful        |
+| Return from `background` to `active`                                      | Meaningful        |
+| Telemetry linked to a tracked user action                                 | Meaningful        |
+| Other app lifecycle events                                                | Passive           |
+| Unmarked events, logs, errors, measurements, and traces                   | Passive           |
+| Unmarked HTTP and XHR requests                                            | Passive           |
+| Unmarked session, startup, ANR, frame, console, and performance telemetry | Passive           |
+
+Passive telemetry still checks whether the session has expired, but it does not
+keep the session alive. User interactions are not detected automatically. Wrap
+interactive components with `withFaroUserAction` or call `trackUserAction` for
+foreground or background work that should refresh the inactivity window.
+
 ```tsx
 import { initializeFaro, SamplingFunction, SamplingRate } from '@grafana/faro-react-native';
 

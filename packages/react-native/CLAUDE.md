@@ -407,7 +407,7 @@ try {
 
 ### Performance Considerations
 
-- Use throttling for high-frequency events (see `src/utils/throttle.ts`)
+- Coalesce high-frequency native writes while keeping runtime state current
 - Batch telemetry items when possible
 - Avoid synchronous heavy operations in hot paths
 - Clean up listeners and timers in `unpatch()`

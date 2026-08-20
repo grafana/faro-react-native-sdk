@@ -4,6 +4,8 @@ import { faro } from '@grafana/faro-core';
 
 import { setCurrentScreen } from '../metas/screen';
 
+export const EVENT_NAVIGATION = 'navigation';
+
 /**
  * Gets the currently active route from navigation state
  */
@@ -57,7 +59,7 @@ export function onNavigationStateChange(state: NavigationState | undefined): voi
 
     // Optionally push additional attributes if route has params
     if (currentRoute?.params) {
-      faro.api?.pushEvent('navigation', {
+      faro.api?.pushEvent(EVENT_NAVIGATION, {
         screen: screenName,
         params: JSON.stringify(currentRoute.params),
       });

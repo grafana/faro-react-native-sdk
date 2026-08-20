@@ -2,9 +2,8 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { faro } from '@grafana/faro-core';
 
-import { throttle } from '../../../utils/throttle';
+import { SessionActivityKind } from '../sessionActivity';
 
-import { STORAGE_UPDATE_DELAY } from './sessionConstants';
 import { getSessionMetaUpdateHandler, getUserSessionUpdater } from './sessionManagerUtils';
 import type { FaroUserSession } from './types';
 
@@ -12,6 +11,7 @@ export class VolatileSessionsManager {
   private static volatileStorage: FaroUserSession | null = null;
   private updateUserSession: ReturnType<typeof getUserSessionUpdater>;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
+  private wasBackgrounded = AppState.currentState === 'background';
   private metaUnsubscribe: (() => void) | null = null;
 
   constructor() {
@@ -35,11 +35,19 @@ export class VolatileSessionsManager {
     return VolatileSessionsManager.volatileStorage;
   }
 
-  updateSession = throttle(() => this.updateUserSession(), STORAGE_UPDATE_DELAY);
+  checkSession(activity: SessionActivityKind, currentSession?: FaroUserSession | null): FaroUserSession {
+    return this.updateUserSession(activity, currentSession);
+  }
 
   private handleAppStateChange = (nextAppState: AppStateStatus) => {
-    if (nextAppState === 'active') {
-      this.updateSession();
+    if (nextAppState === 'background') {
+      this.wasBackgrounded = true;
+      return;
+    }
+
+    if (nextAppState === 'active' && this.wasBackgrounded) {
+      this.wasBackgrounded = false;
+      this.checkSession(SessionActivityKind.Meaningful);
     }
   };
 

@@ -1,5 +1,7 @@
 import type { MetaSession } from '@grafana/faro-core';
 
+import type { SessionActivityKind } from '../sessionActivity';
+
 import type { MmkvPersistentSessionsManager } from './MmkvPersistentSessionsManager';
 import type { VolatileSessionsManager } from './VolatileSessionManager';
 
@@ -12,3 +14,8 @@ export interface FaroUserSession {
 }
 
 export type SessionManager = typeof VolatileSessionsManager | typeof MmkvPersistentSessionsManager;
+
+export interface SessionManagerInstance {
+  checkSession(activity: SessionActivityKind, currentSession?: FaroUserSession | null): FaroUserSession;
+  unpatch(): void;
+}
