@@ -98,6 +98,9 @@
 
 ### Changed
 
+- Persistent sessions now require rebuilding with the updated Faro native
+  module. JavaScript-only or OTA upgrades without the process-coordination
+  methods fall back to in-memory sessions.
 - **Session inactivity now refreshes only for meaningful activity.** Navigation
   and view changes, background-to-foreground returns, and telemetry linked to
   tracked user actions refresh the inactivity window. Passive telemetry still

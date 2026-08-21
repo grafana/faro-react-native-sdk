@@ -110,12 +110,16 @@ describe('MmkvPersistentSessionsManager - react-native-mmkv version compatibilit
     expect(MMKV).not.toHaveBeenCalled();
   });
 
-  it('uses a separate MMKV id for a secondary process', () => {
+  it('uses a separate MMKV id for an Android secondary process', () => {
+    (Platform as { OS: string }).OS = 'android';
     const store = { getString: jest.fn().mockReturnValue(undefined) };
     const createMMKV = jest.fn().mockReturnValue(store);
     const processStorageId = 'grafana-faro-react-native-session.com.example.myapp%3Async';
 
-    const { MmkvPersistentSessionsManager } = loadWithMmkvMock({ createMMKV }, processStorageId);
+    const { MmkvPersistentSessionsManager } = loadWithMmkvMock({ createMMKV }, processStorageId, {
+      identifier: 'com.example.myapp:sync',
+      isMain: false,
+    });
     MmkvPersistentSessionsManager.fetchUserSession();
 
     expect(createMMKV).toHaveBeenCalledWith({ id: processStorageId });
