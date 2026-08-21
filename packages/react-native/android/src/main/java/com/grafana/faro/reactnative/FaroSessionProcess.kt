@@ -4,18 +4,30 @@ import android.app.Application
 import android.content.Context
 import android.os.Build
 import java.io.File
-import java.util.concurrent.atomic.AtomicBoolean
+import java.lang.ref.WeakReference
 
 /** Process identity and single-writer ownership for persisted session state. */
 internal object FaroSessionProcess {
-    private val persistenceClaimed = AtomicBoolean(false)
+    private val persistenceLock = Any()
+    private var persistenceOwner: WeakReference<Any>? = null
 
-    fun identifier(): String? {
+    fun identifier(): String? =
+        identifier(
+            sdkInt = Build.VERSION.SDK_INT,
+            currentProcessName = { Application.getProcessName() },
+            legacyProcessName = { File("/proc/self/cmdline").readText() },
+        )
+
+    internal fun identifier(
+        sdkInt: Int,
+        currentProcessName: () -> String?,
+        legacyProcessName: () -> String?,
+    ): String? {
         val currentName = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                Application.getProcessName()
+            if (sdkInt >= Build.VERSION_CODES.P) {
+                currentProcessName()
             } else {
-                File("/proc/self/cmdline").readText().substringBefore('\u0000')
+                legacyProcessName()?.substringBefore('\u0000')
             }
         } catch (_: Exception) {
             null
@@ -32,7 +44,26 @@ internal object FaroSessionProcess {
         )
     }
 
-    fun claimPersistence(): Boolean = persistenceClaimed.compareAndSet(false, true)
+    fun claimPersistence(owner: Any): Boolean =
+        synchronized(persistenceLock) {
+            val currentOwner = persistenceOwner?.get()
+            if (currentOwner != null && currentOwner !== owner) {
+                false
+            } else {
+                persistenceOwner = WeakReference(owner)
+                true
+            }
+        }
+
+    fun releasePersistence(owner: Any): Boolean =
+        synchronized(persistenceLock) {
+            if (persistenceOwner?.get() !== owner) {
+                false
+            } else {
+                persistenceOwner = null
+                true
+            }
+        }
 
     internal fun normalizeIdentifier(currentName: String?): String? =
         currentName?.trim()?.takeIf { it.isNotEmpty() }
@@ -50,6 +81,8 @@ internal object FaroSessionProcess {
     }
 
     internal fun resetPersistenceClaimForTest() {
-        persistenceClaimed.set(false)
+        synchronized(persistenceLock) {
+            persistenceOwner = null
+        }
     }
 }

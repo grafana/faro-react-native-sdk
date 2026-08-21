@@ -789,8 +789,10 @@ apps using the default configuration must install the optional
 yarn add react-native-mmkv
 ```
 
-Rebuild the native projects after installation. Apps using `persistent: false`
-use in-memory sessions and do not need MMKV.
+Rebuild the native projects after installing or upgrading the SDK. A JavaScript-only
+or OTA update cannot add the native process-coordination methods; when they are
+unavailable, Faro uses an in-memory session rather than risking concurrent writes.
+Apps using `persistent: false` use in-memory sessions and do not need MMKV.
 
 Use `maxSessionPersistenceTime` to control the inactivity and cold-start linking window. A session's
 maximum lifetime is fixed at four hours.
@@ -886,10 +888,10 @@ The persisted record contains only the current and previous session IDs, start a
 Persistent storage is isolated by native process:
 
 - On Android, the main process keeps the existing MMKV storage ID. A process declared with `android:process` uses a separate record based on its full process name.
-- On iOS, the host app and each extension use separate records based on `Bundle.main.bundleIdentifier`. Each target that initializes Faro must include the Faro native module and MMKV.
+- On iOS, the host app and each extension use separate records based on `Bundle.main.bundleIdentifier`. Each target that initializes Faro must include the Faro native module and MMKV. Extension persistence requires `react-native-mmkv` v3 or newer so Faro can enable MMKV's multi-process mode; older versions fall back to memory in extensions.
 - Each process maintains its own previous-session link. The `process_name` session attribute identifies which process or extension produced the telemetry.
 
-Only the first React Native runtime that initializes persistent sessions in a native process may write that process's record. Additional runtimes in the same process use in-memory sessions until the process restarts. The SDK also falls back to an in-memory session when native process identity is unavailable or exclusive ownership cannot be established, and logs a warning rather than risking concurrent MMKV writes.
+Only one React Native runtime at a time may write a native process's record. An overlapping runtime uses an in-memory session; after the owning runtime is invalidated, a replacement runtime can claim persistence. The SDK also falls back to memory when native process identity is unavailable, MMKV cannot be initialized safely, or exclusive ownership cannot be established, and logs a warning rather than risking concurrent writes.
 
 A single session shared across Android processes or between an iOS host app and extension is not supported. Configuring an App Group does not merge their Faro session chains; shared sessions would require a multi-process-safe store and native writer coordination. Use `persistent: false` for runtimes where an independent persisted chain is not wanted.
 

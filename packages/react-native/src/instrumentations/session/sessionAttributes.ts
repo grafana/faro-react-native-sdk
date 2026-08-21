@@ -229,7 +229,6 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     // Memory info
     const totalMemory = DeviceInfo.getTotalMemorySync();
     const usedMemory = DeviceInfo.getUsedMemorySync();
-    const reactNativeVersion = getReactNativeVersion();
 
     // Try to get async device info (battery, carrier)
     let batteryLevel: string | undefined;
@@ -273,7 +272,6 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
 
     const attributes: SessionAttributes = {
       ...minimalSessionDeviceAttributes(),
-      react_native_version: reactNativeVersion,
       device_os: systemName,
       device_os_version: systemVersion,
       device_os_detail: deviceOsDetail,

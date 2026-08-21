@@ -7,6 +7,13 @@ import { resetSessionProcessForTests } from './sessionProcess';
 
 const INSTALLATION_ID_STORAGE_KEY = '@grafana/faro-react-native/installation_id';
 const STORED_INSTALLATION_ID = 'stored-installation-id';
+const originalNativeModule = NativeModules.FaroReactNativeModule;
+const sessionNativeModule = {
+  claimSessionPersistence: () => true,
+  getSessionProcessIdentifier: () => 'com.example.myapp',
+  isMainSessionProcess: () => true,
+  releaseSessionPersistence: () => true,
+};
 
 function setStoredInstallationId(value = STORED_INSTALLATION_ID): void {
   (global as any).mockAsyncStorage = {
@@ -38,7 +45,13 @@ jest.mock('react-native-device-info', () => ({
 describe('sessionAttributes', () => {
   beforeEach(() => {
     (global as any).mockAsyncStorage = {};
+    NativeModules.FaroReactNativeModule = sessionNativeModule;
     jest.clearAllMocks();
+    resetSessionProcessForTests();
+  });
+
+  afterAll(() => {
+    NativeModules.FaroReactNativeModule = originalNativeModule;
     resetSessionProcessForTests();
   });
 

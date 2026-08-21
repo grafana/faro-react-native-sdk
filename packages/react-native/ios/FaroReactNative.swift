@@ -20,9 +20,6 @@ import Foundation
 /// but include improvements where applicable (e.g., better memory metric).
 @objc(FaroReactNative)
 public class FaroReactNative: NSObject {
-    private static let sessionPersistenceLock = NSLock()
-    private static var sessionPersistenceClaimed = false
-
     /// Stable bundle identity used to isolate persisted session chains.
     @objc public static func getSessionProcessIdentifier() -> String {
         return Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName
@@ -32,19 +29,6 @@ public class FaroReactNative: NSObject {
     @objc public static func isMainSessionProcess() -> Bool {
         return Bundle.main.object(forInfoDictionaryKey: "NSExtension") == nil
     }
-
-    /// Allows only one React Native runtime in this process to write session state.
-    @objc public static func claimSessionPersistence() -> Bool {
-        sessionPersistenceLock.lock()
-        defer { sessionPersistenceLock.unlock() }
-
-        guard !sessionPersistenceClaimed else {
-            return false
-        }
-        sessionPersistenceClaimed = true
-        return true
-    }
-
 
     // MARK: - App Startup Time
 

@@ -1,10 +1,14 @@
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState, type AppStateStatus, Platform } from 'react-native';
 import type { MMKV } from 'react-native-mmkv';
 
 import { dateNow, faro } from '@grafana/faro-core';
 
 import { SessionActivityKind } from '../sessionActivity';
-import { claimSessionPersistenceStorageId } from '../sessionProcess';
+import {
+  claimSessionPersistenceStorageId,
+  getSessionProcessInfo,
+  releaseSessionPersistenceOwnership,
+} from '../sessionProcess';
 
 import { parsePersistentSession, serializePersistentSession } from './persistentSessionRecord';
 import { STORAGE_KEY, STORAGE_UPDATE_DELAY } from './sessionConstants';
@@ -16,25 +20,75 @@ import {
 } from './sessionManagerUtils';
 import type { FaroUserSession } from './types';
 
-function createMmkvInstance(): MMKV {
-  const storageId = claimSessionPersistenceStorageId();
-  if (storageId == null) {
+type MmkvConfiguration = {
+  id: string;
+  mode?: number | 'multi-process';
+};
+
+type MmkvModule = {
+  createMMKV?: (configuration: MmkvConfiguration) => MMKV;
+  MMKV?: new (configuration: MmkvConfiguration) => MMKV;
+  Mode?: { MULTI_PROCESS?: number };
+};
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function loadMmkvModule(): MmkvModule {
+  try {
+    return require('react-native-mmkv') as MmkvModule;
+  } catch (error) {
     throw new Error(
-      'This runtime could not claim exclusive session storage ownership. Rebuild the native project with the current Faro SDK, or use sessionTracking.persistent=false for additional runtimes.'
+      `react-native-mmkv could not be loaded. Install it and rebuild the native project. ${errorMessage(error)}`
+    );
+  }
+}
+
+function mmkvConfiguration(mmkv: MmkvModule, storageId: string, isIosExtension: boolean): MmkvConfiguration {
+  if (!isIosExtension) {
+    return { id: storageId };
+  }
+
+  if (typeof mmkv.createMMKV === 'function') {
+    return { id: storageId, mode: 'multi-process' };
+  }
+
+  const legacyMultiProcessMode = mmkv.Mode?.MULTI_PROCESS;
+  if (typeof legacyMultiProcessMode !== 'number') {
+    throw new Error('Persisting sessions in an iOS extension requires react-native-mmkv v3 or newer.');
+  }
+
+  return { id: storageId, mode: legacyMultiProcessMode };
+}
+
+function createMmkvInstance(): MMKV {
+  // Load MMKV before taking native ownership so a missing dependency cannot
+  // leave the process-wide claim occupied.
+  const mmkv = loadMmkvModule();
+  const processInfo = getSessionProcessInfo();
+  const storageId = claimSessionPersistenceStorageId();
+  if (storageId == null || processInfo == null) {
+    throw new Error(
+      'Native session-storage coordination is unavailable or already owned by another runtime. Rebuild the native app after upgrading Faro, or use sessionTracking.persistent=false in runtimes that cannot own storage.'
     );
   }
 
   try {
-    const mmkv = require('react-native-mmkv');
+    const configuration = mmkvConfiguration(mmkv, storageId, Platform.OS === 'ios' && !processInfo.isMain);
     // react-native-mmkv v4 was rewritten to Nitro and removed the `new MMKV()`
     // class constructor in favor of a `createMMKV()` factory (see the v4 upgrade
     // guide). Support both so v2/v3 (class) and v4+ (factory) work.
     if (typeof mmkv.createMMKV === 'function') {
-      return mmkv.createMMKV({ id: storageId });
+      return mmkv.createMMKV(configuration);
     }
-    return new mmkv.MMKV({ id: storageId });
-  } catch {
-    throw new Error('Session persistence is unavailable. Install react-native-mmkv and rebuild the native project.');
+    if (typeof mmkv.MMKV !== 'function') {
+      throw new Error('The installed react-native-mmkv package does not expose a supported storage API.');
+    }
+    return new mmkv.MMKV(configuration);
+  } catch (error) {
+    releaseSessionPersistenceOwnership();
+    throw new Error(`Session persistence could not be initialized. ${errorMessage(error)}`);
   }
 }
 

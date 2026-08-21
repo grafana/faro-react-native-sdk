@@ -39,6 +39,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     private var anrTracker: ANRTracker? = null
+    private val sessionPersistenceOwner = Any()
 
     override fun getName(): String = NAME
 
@@ -57,7 +58,18 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     /** Allows only one React Native runtime in this process to write session state. */
     @ReactMethod(isBlockingSynchronousMethod = true)
     fun claimSessionPersistence(): Boolean {
-        return FaroSessionProcess.claimPersistence()
+        return FaroSessionProcess.claimPersistence(sessionPersistenceOwner)
+    }
+
+    /** Releases session persistence when this React Native runtime is torn down. */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun releaseSessionPersistence(): Boolean {
+        return FaroSessionProcess.releasePersistence(sessionPersistenceOwner)
+    }
+
+    override fun invalidate() {
+        FaroSessionProcess.releasePersistence(sessionPersistenceOwner)
+        super.invalidate()
     }
 
     /**

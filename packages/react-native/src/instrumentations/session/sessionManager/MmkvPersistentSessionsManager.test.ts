@@ -7,13 +7,20 @@
  * specific export shape, so we can assert which construction path is taken.
  */
 
+import { NativeModules, Platform } from 'react-native';
+
 const SESSION_MMKV_CONFIG = { id: 'grafana-faro-react-native-session' };
+const DEFAULT_PROCESS_INFO = { identifier: 'com.example.myapp', isMain: true };
+const originalNativeModule = NativeModules.FaroReactNativeModule;
+const originalPlatformOS = Platform.OS;
 
 type SessionsManagerModule = typeof import('./MmkvPersistentSessionsManager');
 
 const loadWithMmkvMock = (
   mmkvExports: Record<string, unknown>,
-  storageId: string | null = SESSION_MMKV_CONFIG.id
+  storageId: string | null = SESSION_MMKV_CONFIG.id,
+  processInfo: { identifier: string; isMain: boolean } | null = DEFAULT_PROCESS_INFO,
+  mockReleasePersistenceOwnership: jest.Mock = jest.fn(() => true)
 ): SessionsManagerModule => {
   let mod: SessionsManagerModule | undefined;
 
@@ -21,6 +28,8 @@ const loadWithMmkvMock = (
     jest.doMock('react-native-mmkv', () => mmkvExports);
     jest.doMock('../sessionProcess', () => ({
       claimSessionPersistenceStorageId: jest.fn(() => storageId),
+      getSessionProcessInfo: jest.fn(() => processInfo),
+      releaseSessionPersistenceOwnership: mockReleasePersistenceOwnership,
     }));
     mod = require('./MmkvPersistentSessionsManager');
   });
@@ -31,6 +40,23 @@ const loadWithMmkvMock = (
 
   return mod;
 };
+
+beforeEach(() => {
+  NativeModules.FaroReactNativeModule = {
+    claimSessionPersistence: () => true,
+    getSessionProcessIdentifier: () => 'com.example.myapp',
+    isMainSessionProcess: () => true,
+    releaseSessionPersistence: () => true,
+  };
+});
+
+afterEach(() => {
+  (Platform as { OS: string }).OS = originalPlatformOS;
+});
+
+afterAll(() => {
+  NativeModules.FaroReactNativeModule = originalNativeModule;
+});
 
 describe('MmkvPersistentSessionsManager - react-native-mmkv version compatibility', () => {
   afterEach(() => {
@@ -93,6 +119,53 @@ describe('MmkvPersistentSessionsManager - react-native-mmkv version compatibilit
     MmkvPersistentSessionsManager.fetchUserSession();
 
     expect(createMMKV).toHaveBeenCalledWith({ id: processStorageId });
+  });
+
+  it('uses multi-process mode for iOS extensions with react-native-mmkv v4+', () => {
+    (Platform as { OS: string }).OS = 'ios';
+    const store = { getString: jest.fn().mockReturnValue(undefined) };
+    const createMMKV = jest.fn().mockReturnValue(store);
+    const processStorageId = 'grafana-faro-react-native-session.com.example.share';
+
+    const { MmkvPersistentSessionsManager } = loadWithMmkvMock({ createMMKV }, processStorageId, {
+      identifier: 'com.example.share',
+      isMain: false,
+    });
+    MmkvPersistentSessionsManager.fetchUserSession();
+
+    expect(createMMKV).toHaveBeenCalledWith({ id: processStorageId, mode: 'multi-process' });
+  });
+
+  it('uses multi-process mode for iOS extensions with react-native-mmkv v3', () => {
+    (Platform as { OS: string }).OS = 'ios';
+    const store = { getString: jest.fn().mockReturnValue(undefined) };
+    const MMKV = jest.fn().mockImplementation(() => store);
+    const processStorageId = 'grafana-faro-react-native-session.com.example.share';
+
+    const { MmkvPersistentSessionsManager } = loadWithMmkvMock({ MMKV, Mode: { MULTI_PROCESS: 1 } }, processStorageId, {
+      identifier: 'com.example.share',
+      isMain: false,
+    });
+    MmkvPersistentSessionsManager.fetchUserSession();
+
+    expect(MMKV).toHaveBeenCalledWith({ id: processStorageId, mode: 1 });
+  });
+
+  it('fails closed for iOS extensions when react-native-mmkv lacks multi-process mode', () => {
+    (Platform as { OS: string }).OS = 'ios';
+    const MMKV = jest.fn();
+    const releasePersistenceOwnership = jest.fn(() => true);
+
+    const { MmkvPersistentSessionsManager } = loadWithMmkvMock(
+      { MMKV },
+      'grafana-faro-react-native-session.com.example.share',
+      { identifier: 'com.example.share', isMain: false },
+      releasePersistenceOwnership
+    );
+
+    expect(MmkvPersistentSessionsManager.fetchUserSession()).toBeNull();
+    expect(MMKV).not.toHaveBeenCalled();
+    expect(releasePersistenceOwnership).toHaveBeenCalledTimes(1);
   });
 
   it('does not create MMKV when this runtime cannot claim persistence', () => {
@@ -257,7 +330,13 @@ describe('MmkvPersistentSessionsManager - session persistence', () => {
     const createMMKV = jest.fn(() => {
       throw new Error('native module unavailable');
     });
-    const { MmkvPersistentSessionsManager } = loadWithMmkvMock({ createMMKV });
+    const releasePersistenceOwnership = jest.fn(() => true);
+    const { MmkvPersistentSessionsManager } = loadWithMmkvMock(
+      { createMMKV },
+      SESSION_MMKV_CONFIG.id,
+      DEFAULT_PROCESS_INFO,
+      releasePersistenceOwnership
+    );
     const session = {
       sessionId: 'current-session',
       started: 100,
@@ -270,6 +349,7 @@ describe('MmkvPersistentSessionsManager - session persistence', () => {
 
     expect(MmkvPersistentSessionsManager.fetchUserSession()).toBe(session);
     expect(createMMKV).toHaveBeenCalledTimes(1);
+    expect(releasePersistenceOwnership).toHaveBeenCalledTimes(1);
   });
 
   it('retains the live session when an MMKV write fails', () => {

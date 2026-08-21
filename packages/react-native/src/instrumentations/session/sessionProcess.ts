@@ -6,6 +6,7 @@ interface SessionProcessNativeModule {
   claimSessionPersistence?: () => unknown;
   getSessionProcessIdentifier?: () => unknown;
   isMainSessionProcess?: () => unknown;
+  releaseSessionPersistence?: () => unknown;
 }
 
 export interface SessionProcessInfo {
@@ -82,6 +83,28 @@ export function claimSessionPersistenceStorageId(): string | null {
   return processInfo.isMain
     ? MAIN_PROCESS_SESSION_STORAGE_ID
     : `${MAIN_PROCESS_SESSION_STORAGE_ID}.${encodeURIComponent(processInfo.identifier)}`;
+}
+
+/** Releases storage ownership after MMKV initialization fails. */
+export function releaseSessionPersistenceOwnership(): boolean {
+  if (cachedPersistenceOwnership !== true) {
+    return false;
+  }
+
+  const nativeModule = getNativeModule();
+  if (typeof nativeModule?.releaseSessionPersistence !== 'function') {
+    return false;
+  }
+
+  try {
+    const released = nativeModule.releaseSessionPersistence() === true;
+    if (released) {
+      cachedPersistenceOwnership = undefined;
+    }
+    return released;
+  } catch {
+    return false;
+  }
 }
 
 /** @internal */

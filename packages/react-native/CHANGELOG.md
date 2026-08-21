@@ -75,7 +75,9 @@
 - Process-scoped persistent session chains for Android secondary processes and
   iOS extensions. Telemetry includes `process_name` for correlation, while
   additional React Native runtimes in the same process fall back to in-memory
-  sessions instead of writing the same MMKV record concurrently.
+  sessions instead of writing the same MMKV record concurrently. Ownership is
+  released when a native runtime is invalidated, and iOS extensions use MMKV
+  multi-process mode when supported.
 - Structured mobile payload fields: `meta.device`, `meta.os`,
   `meta.app.installationId`, and `exception.fatal`. Legacy flat
   `session.attributes` device/OS fields are still emitted during migration.

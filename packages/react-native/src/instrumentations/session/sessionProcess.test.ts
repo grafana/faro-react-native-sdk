@@ -4,6 +4,7 @@ import {
   claimSessionPersistenceStorageId,
   getSessionProcessInfo,
   MAIN_PROCESS_SESSION_STORAGE_ID,
+  releaseSessionPersistenceOwnership,
   resetSessionProcessForTests,
 } from './sessionProcess';
 
@@ -13,11 +14,13 @@ function setNativeModule(overrides: Record<string, unknown> = {}): {
   claimSessionPersistence: jest.Mock;
   getSessionProcessIdentifier: jest.Mock;
   isMainSessionProcess: jest.Mock;
+  releaseSessionPersistence: jest.Mock;
 } {
   const nativeModule = {
     claimSessionPersistence: jest.fn(() => true),
     getSessionProcessIdentifier: jest.fn(() => 'com.example.myapp'),
     isMainSessionProcess: jest.fn(() => true),
+    releaseSessionPersistence: jest.fn(() => true),
     ...overrides,
   };
   NativeModules.FaroReactNativeModule = nativeModule;
@@ -100,6 +103,25 @@ describe('sessionProcess', () => {
     expect(claimSessionPersistenceStorageId()).toBeNull();
     expect(claimSessionPersistenceStorageId()).toBeNull();
     expect(nativeModule.claimSessionPersistence).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases ownership so MMKV initialization can be retried safely', () => {
+    const nativeModule = setNativeModule();
+
+    expect(claimSessionPersistenceStorageId()).toBe(MAIN_PROCESS_SESSION_STORAGE_ID);
+    expect(releaseSessionPersistenceOwnership()).toBe(true);
+    expect(claimSessionPersistenceStorageId()).toBe(MAIN_PROCESS_SESSION_STORAGE_ID);
+
+    expect(nativeModule.claimSessionPersistence).toHaveBeenCalledTimes(2);
+    expect(nativeModule.releaseSessionPersistence).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not release persistence when this runtime never claimed it', () => {
+    const nativeModule = setNativeModule({ claimSessionPersistence: jest.fn(() => false) });
+
+    expect(claimSessionPersistenceStorageId()).toBeNull();
+    expect(releaseSessionPersistenceOwnership()).toBe(false);
+    expect(nativeModule.releaseSessionPersistence).not.toHaveBeenCalled();
   });
 
   it('fails closed when the persistence claim throws', () => {

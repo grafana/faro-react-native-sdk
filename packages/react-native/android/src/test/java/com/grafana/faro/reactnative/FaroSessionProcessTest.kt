@@ -35,6 +35,41 @@ class FaroSessionProcessTest {
     }
 
     @Test
+    fun identifier_usesThePlatformApiOnAndroidPAndNewer() {
+        assertEquals(
+            "com.example.app:worker",
+            FaroSessionProcess.identifier(
+                sdkInt = 28,
+                currentProcessName = { "com.example.app:worker" },
+                legacyProcessName = { error("legacy lookup should not run") },
+            ),
+        )
+    }
+
+    @Test
+    fun identifier_readsTheNullTerminatedCmdlineBeforeAndroidP() {
+        assertEquals(
+            "com.example.app:worker",
+            FaroSessionProcess.identifier(
+                sdkInt = 27,
+                currentProcessName = { error("platform lookup should not run") },
+                legacyProcessName = { "com.example.app:worker\u0000ignored" },
+            ),
+        )
+    }
+
+    @Test
+    fun identifier_failsClosedWhenTheProcessNameCannotBeRead() {
+        assertNull(
+            FaroSessionProcess.identifier(
+                sdkInt = 27,
+                currentProcessName = { error("platform lookup should not run") },
+                legacyProcessName = { throw IllegalStateException("unavailable") },
+            ),
+        )
+    }
+
+    @Test
     fun isMainProcess_comparesCurrentProcessWithDeclaredMainProcess() {
         assertEquals(
             true,
@@ -78,8 +113,15 @@ class FaroSessionProcessTest {
     }
 
     @Test
-    fun claimPersistence_allowsOnlyTheFirstRuntimeInThisProcess() {
-        assertTrue(FaroSessionProcess.claimPersistence())
-        assertFalse(FaroSessionProcess.claimPersistence())
+    fun claimPersistence_allowsOnlyOneOwnerAtATime() {
+        val firstOwner = Any()
+        val secondOwner = Any()
+
+        assertTrue(FaroSessionProcess.claimPersistence(firstOwner))
+        assertTrue(FaroSessionProcess.claimPersistence(firstOwner))
+        assertFalse(FaroSessionProcess.claimPersistence(secondOwner))
+        assertFalse(FaroSessionProcess.releasePersistence(secondOwner))
+        assertTrue(FaroSessionProcess.releasePersistence(firstOwner))
+        assertTrue(FaroSessionProcess.claimPersistence(secondOwner))
     }
 }

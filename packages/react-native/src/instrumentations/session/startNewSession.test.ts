@@ -1,3 +1,5 @@
+import { NativeModules } from 'react-native';
+
 import { BaseInstrumentation, EVENT_SESSION_START, initializeFaro, VERSION } from '@grafana/faro-core';
 import type { Faro } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
@@ -12,6 +14,7 @@ import {
 } from './sessionManager/MmkvPersistentSessionsManager';
 import { STORAGE_KEY } from './sessionManager/sessionConstants';
 import { VolatileSessionsManager } from './sessionManager/VolatileSessionManager';
+import { resetSessionProcessForTests } from './sessionProcess';
 
 const mockMmkvValues = new Map<string, string>();
 const mockMmkv = {
@@ -19,6 +22,7 @@ const mockMmkv = {
   set: jest.fn((key: string, value: string) => mockMmkvValues.set(key, value)),
   remove: jest.fn((key: string) => mockMmkvValues.delete(key)),
 };
+const originalNativeModule = NativeModules.FaroReactNativeModule;
 
 jest.mock('react-native-mmkv', () => ({
   createMMKV: jest.fn(() => mockMmkv),
@@ -86,10 +90,17 @@ describe('startNewSession', () => {
   });
 
   beforeEach(() => {
+    NativeModules.FaroReactNativeModule = {
+      claimSessionPersistence: () => true,
+      getSessionProcessIdentifier: () => 'com.example.myapp',
+      isMainSessionProcess: () => true,
+      releaseSessionPersistence: () => true,
+    };
     jest.setSystemTime(initialTime);
     jest.clearAllMocks();
     mockMmkvValues.clear();
     resetMmkvSingletonForTests();
+    resetSessionProcessForTests();
     VolatileSessionsManager.removeUserSession();
   });
 
@@ -104,6 +115,8 @@ describe('startNewSession', () => {
   });
 
   afterAll(() => {
+    NativeModules.FaroReactNativeModule = originalNativeModule;
+    resetSessionProcessForTests();
     jest.useRealTimers();
   });
 
