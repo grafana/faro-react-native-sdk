@@ -66,6 +66,10 @@
 
 ### Added
 
+- `startNewSession()` for logout, account changes, and custom session boundaries.
+  It starts a new linked session immediately, restarts timing and sampling,
+  creates `session_start`, and attempts to persist the new record when
+  persistence is enabled.
 - `FaroSessionActivityBoundary` and `notifySessionActivity()` refresh session
   inactivity for direct interactions without emitting user-action telemetry.
 - Structured mobile payload fields: `meta.device`, `meta.os`,

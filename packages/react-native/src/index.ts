@@ -18,7 +18,7 @@ export { getRNInstrumentations } from './config/getRNInstrumentations';
 export { ErrorMechanism, ErrorsInstrumentation } from './instrumentations/errors';
 export type { ErrorMechanismType, ErrorsInstrumentationOptions } from './instrumentations/errors';
 export { ConsoleInstrumentation } from './instrumentations/console';
-export { SessionInstrumentation } from './instrumentations/session';
+export { startNewSession, SessionInstrumentation } from './instrumentations/session';
 export {
   FaroSessionActivityBoundary,
   type FaroSessionActivityBoundaryProps,
