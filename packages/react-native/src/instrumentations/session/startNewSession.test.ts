@@ -5,7 +5,7 @@ import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 import { SamplingFunction } from '../../config/sampling';
 import { EVENT_NAVIGATION } from '../../navigation/utils';
 
-import { resetSession, SessionInstrumentation } from './index';
+import { SessionInstrumentation, startNewSession } from './index';
 import {
   MmkvPersistentSessionsManager,
   resetMmkvSingletonForTests,
@@ -67,7 +67,7 @@ function initializeSession({
 class CompatibleSessionInstrumentation extends BaseInstrumentation {
   readonly name = '@grafana/faro-react-native:instrumentation-session';
   readonly version = VERSION;
-  readonly resetSession = jest.fn();
+  readonly startNewSession = jest.fn();
 
   initialize(): void {}
 }
@@ -78,7 +78,7 @@ function sessionStartItems(transport: MockTransport) {
   );
 }
 
-describe('resetSession', () => {
+describe('startNewSession', () => {
   const initializedFaros: Faro[] = [];
 
   beforeAll(() => {
@@ -121,14 +121,14 @@ describe('resetSession', () => {
     jest.spyOn(setup.faro.api, 'getActiveUserAction').mockReturnValue(activeAction as never);
 
     jest.setSystemTime(initialTime + 60_000);
-    resetSession();
+    startNewSession();
     const secondSession = setup.faro.api.getSession();
     const secondStoredSession = persistent
       ? MmkvPersistentSessionsManager.fetchUserSession()
       : VolatileSessionsManager.fetchUserSession();
 
     jest.setSystemTime(initialTime + 120_000);
-    resetSession();
+    startNewSession();
     const thirdSession = setup.faro.api.getSession();
     const thirdStoredSession = persistent
       ? MmkvPersistentSessionsManager.fetchUserSession()
@@ -178,9 +178,9 @@ describe('resetSession', () => {
     initializedFaros.push(setup.faro);
 
     expect(VolatileSessionsManager.fetchUserSession()?.isSampled).toBe(true);
-    resetSession();
+    startNewSession();
     expect(VolatileSessionsManager.fetchUserSession()?.isSampled).toBe(false);
-    resetSession();
+    startNewSession();
     expect(VolatileSessionsManager.fetchUserSession()?.isSampled).toBe(true);
     expect(setup.resolveSampling).toHaveBeenCalledTimes(3);
     expect(sessionStartItems(setup.transport).map((item) => item.meta.session?.id)).toStrictEqual([
@@ -197,11 +197,11 @@ describe('resetSession', () => {
     });
     initializedFaros.push(setup.faro);
 
-    resetSession();
+    startNewSession();
     const secondSessionId = setup.faro.api.getSession()?.id;
-    resetSession();
+    startNewSession();
     const thirdSessionId = setup.faro.api.getSession()?.id;
-    resetSession();
+    startNewSession();
     const fourthSessionId = setup.faro.api.getSession()?.id;
 
     expect(secondSessionId).not.toBe('same-session');
@@ -229,7 +229,7 @@ describe('resetSession', () => {
     jest.spyOn(setup.faro.api, 'getActiveUserAction').mockReturnValue(activeAction as never);
 
     jest.setSystemTime(initialTime + 15 * 60 * 1000);
-    resetSession();
+    startNewSession();
 
     const flushedAction = setup.transport.items.find(
       (item) => item.type === 'event' && 'name' in item.payload && item.payload.name === 'active_action_flushed'
@@ -258,7 +258,7 @@ describe('resetSession', () => {
     const writesBeforeReset = mockMmkv.set.mock.calls.length;
 
     jest.advanceTimersByTime(1);
-    resetSession();
+    startNewSession();
     const writesAfterReset = mockMmkv.set.mock.calls.length;
 
     expect(writesAfterReset).toBe(writesBeforeReset + 1);
@@ -276,17 +276,17 @@ describe('resetSession', () => {
     );
     initializedFaros.push(faro);
 
-    resetSession();
+    startNewSession();
 
-    expect(instrumentation.resetSession).toHaveBeenCalledTimes(1);
+    expect(instrumentation.startNewSession).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a reset triggered re-entrantly by onSessionChange', () => {
-    const onSessionChange = jest.fn(() => resetSession());
+    const onSessionChange = jest.fn(() => startNewSession());
     const setup = initializeSession({ persistent: false, onSessionChange });
     initializedFaros.push(setup.faro);
 
-    resetSession();
+    startNewSession();
 
     expect(setup.faro.api.getSession()?.id).toBe('session-2');
     expect(setup.generateSessionId).toHaveBeenCalledTimes(2);
@@ -305,7 +305,7 @@ describe('resetSession', () => {
     );
     initializedFaros.push(faro);
 
-    resetSession();
+    startNewSession();
 
     expect(faro.api.getSession()).toBeUndefined();
     expect(sessionStartItems(transport)).toHaveLength(0);
@@ -316,7 +316,7 @@ describe('resetSession', () => {
     initializedFaros.push(setup.faro);
     setup.instrumentation.unpatch();
 
-    resetSession();
+    startNewSession();
 
     expect(setup.faro.api.getSession()?.id).toBe('session-1');
     expect(setup.generateSessionId).toHaveBeenCalledTimes(1);

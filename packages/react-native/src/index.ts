@@ -18,7 +18,12 @@ export { getRNInstrumentations } from './config/getRNInstrumentations';
 export { ErrorMechanism, ErrorsInstrumentation } from './instrumentations/errors';
 export type { ErrorMechanismType, ErrorsInstrumentationOptions } from './instrumentations/errors';
 export { ConsoleInstrumentation } from './instrumentations/console';
-export { resetSession, SessionInstrumentation } from './instrumentations/session';
+export { startNewSession, SessionInstrumentation } from './instrumentations/session';
+export {
+  FaroSessionActivityBoundary,
+  type FaroSessionActivityBoundaryProps,
+} from './instrumentations/session/FaroSessionActivityBoundary';
+export { notifySessionActivity } from './instrumentations/session/directSessionActivity';
 export {
   getSessionAttributes,
   loadMobileMetaForInit,

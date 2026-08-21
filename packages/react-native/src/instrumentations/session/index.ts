@@ -3,7 +3,8 @@ import type { Config, Meta, MetaSession, TransportItem, UserActionInternalInterf
 
 import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
 
-import { classifySessionActivity, isRecoveredCrashItem } from './sessionActivity';
+import { clearDirectSessionActivityHandler, registerDirectSessionActivityHandler } from './directSessionActivity';
+import { classifySessionActivity, isRecoveredCrashItem, SessionActivityKind } from './sessionActivity';
 import { minimalSessionDeviceAttributes, type SessionAttributes } from './sessionAttributes';
 import { type FaroUserSession, getSessionManagerByConfig, isSampled } from './sessionManager';
 import { MAX_SESSION_PERSISTENCE_TIME } from './sessionManager/sessionConstants';
@@ -20,17 +21,17 @@ const SESSION_INSTRUMENTATION_NAME = '@grafana/faro-react-native:instrumentation
  * before Faro initializes, after teardown, or while session tracking is
  * disabled have no effect.
  */
-export function resetSession(): void {
+export function startNewSession(): void {
   const instrumentation = faro?.instrumentations?.instrumentations.find(
     ({ name }) => name === SESSION_INSTRUMENTATION_NAME
   );
 
   if (
     instrumentation != null &&
-    'resetSession' in instrumentation &&
-    typeof instrumentation.resetSession === 'function'
+    'startNewSession' in instrumentation &&
+    typeof instrumentation.startNewSession === 'function'
   ) {
-    instrumentation.resetSession();
+    instrumentation.startNewSession();
   }
 }
 
@@ -47,6 +48,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
   private notifiedSession: MetaSession | undefined;
   private sessionManagerInstance: InstanceType<SessionManager> | undefined;
   private isResettingSession = false;
+  private unregisterDirectSessionActivity: (() => void) | undefined;
 
   private getDefaultSessionDeviceAttributes(): SessionAttributes {
     const cfg = this.config as ReactNativeFullConfig;
@@ -230,6 +232,10 @@ export class SessionInstrumentation extends BaseInstrumentation {
   initialize(): void {
     const sessionTrackingConfig = this.config.sessionTracking;
 
+    // A new initialization owns direct-activity routing, including when
+    // session tracking is disabled.
+    clearDirectSessionActivityHandler();
+
     if (!sessionTrackingConfig?.enabled) {
       this.metas.addListener(this.sendSessionStartEvent.bind(this));
       return;
@@ -258,11 +264,15 @@ export class SessionInstrumentation extends BaseInstrumentation {
       this.api.pushEvent(EVENT_SESSION_START, {}, undefined, { skipDedupe: true });
     }
 
+    this.unregisterDirectSessionActivity = registerDirectSessionActivityHandler(() => {
+      this.sessionManagerInstance?.checkSession(SessionActivityKind.Meaningful);
+    });
+
     this.metas.addListener(this.sendSessionStartEvent.bind(this));
   }
 
   /** Starts a new linked session immediately. */
-  resetSession(): void {
+  startNewSession(): void {
     if (this.sessionManagerInstance == null || this.isResettingSession) {
       return;
     }
@@ -286,6 +296,8 @@ export class SessionInstrumentation extends BaseInstrumentation {
    * Clean up session manager listeners
    */
   unpatch(): void {
+    this.unregisterDirectSessionActivity?.();
+    this.unregisterDirectSessionActivity = undefined;
     this.sessionManagerInstance?.unpatch();
     this.sessionManagerInstance = undefined;
   }

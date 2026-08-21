@@ -1811,9 +1811,11 @@ __metadata:
     "@types/node": "npm:24.12.4"
     "@types/react": "npm:19.2.18"
     "@types/react-native": "npm:0.73.0"
+    "@types/react-test-renderer": "npm:19.1.0"
     react-native-device-info: "npm:^11.1.0"
     react-native-mmkv: "npm:4.3.2"
     react-native-nitro-modules: "npm:0.36.1"
+    react-test-renderer: "npm:19.2.3"
   peerDependencies:
     "@react-navigation/native": ">=6.0.0"
     react: ">=18.0.0"

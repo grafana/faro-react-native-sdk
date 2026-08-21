@@ -78,8 +78,10 @@
     "@types/node": "24.12.4",
     "@types/react": "19.2.18",
     "@types/react-native": "0.73.0",
+    "@types/react-test-renderer": "19.1.0",
     "react-native-mmkv": "4.3.2",
-    "react-native-nitro-modules": "0.36.1"
+    "react-native-nitro-modules": "0.36.1",
+    "react-test-renderer": "19.2.3"
   },
   "publishConfig": {
     "access": "public"

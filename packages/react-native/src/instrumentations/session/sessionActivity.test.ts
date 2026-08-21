@@ -32,6 +32,7 @@ describe('session activity classification', () => {
 
   it.each([
     ['generic events', item(TransportItemType.EVENT, { name: 'poll_complete' })],
+    ['unmarked HTTP events', item(TransportItemType.EVENT, { name: 'faro.tracing.fetch' })],
     [
       'background lifecycle events',
       item(TransportItemType.EVENT, {
