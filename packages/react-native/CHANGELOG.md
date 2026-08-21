@@ -66,6 +66,8 @@
 
 ### Added
 
+- `FaroSessionActivityBoundary` and `notifySessionActivity()` refresh session
+  inactivity for direct interactions without emitting user-action telemetry.
 - Structured mobile payload fields: `meta.device`, `meta.os`,
   `meta.app.installationId`, and `exception.fatal`. Legacy flat
   `session.attributes` device/OS fields are still emitted during migration.
@@ -89,9 +91,10 @@
 - **Session inactivity now refreshes only for meaningful activity.** Navigation
   and view changes, background-to-foreground returns, and telemetry linked to
   tracked user actions refresh the inactivity window. Passive telemetry still
-  checks expiry but no longer keeps a session alive. User interactions are not
-  detected automatically, so apps that relied on generic telemetry to extend
-  sessions should use `withFaroUserAction` or `trackUserAction` instead.
+  checks expiry but no longer keeps a session alive. Apps that relied on generic
+  telemetry to extend sessions should opt in to direct touch detection with
+  `FaroSessionActivityBoundary`, or explicitly use `notifySessionActivity()`,
+  `withFaroUserAction`, or `trackUserAction` for the relevant paths.
 - Error stack trace parsing now normalizes Hermes/minified release frame
   `filename` values to the configured release bundle basename instead of
   verbose Hermes labels, matching ingest source map lookup.

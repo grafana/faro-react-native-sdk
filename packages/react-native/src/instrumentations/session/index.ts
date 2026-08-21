@@ -3,7 +3,8 @@ import type { Config, Meta, MetaSession, TransportItem } from '@grafana/faro-cor
 
 import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
 
-import { classifySessionActivity, isRecoveredCrashItem } from './sessionActivity';
+import { clearDirectSessionActivityHandler, registerDirectSessionActivityHandler } from './directSessionActivity';
+import { classifySessionActivity, isRecoveredCrashItem, SessionActivityKind } from './sessionActivity';
 import { minimalSessionDeviceAttributes, type SessionAttributes } from './sessionAttributes';
 import { type FaroUserSession, getSessionManagerByConfig, isSampled } from './sessionManager';
 import { MAX_SESSION_PERSISTENCE_TIME } from './sessionManager/sessionConstants';
@@ -22,6 +23,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
   // event twice for the same session
   private notifiedSession: MetaSession | undefined;
   private sessionManagerInstance: InstanceType<SessionManager> | undefined;
+  private unregisterDirectSessionActivity: (() => void) | undefined;
 
   private getDefaultSessionDeviceAttributes(): SessionAttributes {
     const cfg = this.config as ReactNativeFullConfig;
@@ -201,6 +203,10 @@ export class SessionInstrumentation extends BaseInstrumentation {
   initialize(): void {
     const sessionTrackingConfig = this.config.sessionTracking;
 
+    // A new initialization owns direct-activity routing, including when
+    // session tracking is disabled.
+    clearDirectSessionActivityHandler();
+
     if (!sessionTrackingConfig?.enabled) {
       this.metas.addListener(this.sendSessionStartEvent.bind(this));
       return;
@@ -229,6 +235,10 @@ export class SessionInstrumentation extends BaseInstrumentation {
       this.api.pushEvent(EVENT_SESSION_START, {}, undefined, { skipDedupe: true });
     }
 
+    this.unregisterDirectSessionActivity = registerDirectSessionActivityHandler(() => {
+      this.sessionManagerInstance?.checkSession(SessionActivityKind.Meaningful);
+    });
+
     this.metas.addListener(this.sendSessionStartEvent.bind(this));
   }
 
@@ -236,6 +246,9 @@ export class SessionInstrumentation extends BaseInstrumentation {
    * Clean up session manager listeners
    */
   unpatch(): void {
+    this.unregisterDirectSessionActivity?.();
+    this.unregisterDirectSessionActivity = undefined;
     this.sessionManagerInstance?.unpatch();
+    this.sessionManagerInstance = undefined;
   }
 }

@@ -20,6 +20,11 @@ export type { ErrorMechanismType, ErrorsInstrumentationOptions } from './instrum
 export { ConsoleInstrumentation } from './instrumentations/console';
 export { SessionInstrumentation } from './instrumentations/session';
 export {
+  FaroSessionActivityBoundary,
+  type FaroSessionActivityBoundaryProps,
+} from './instrumentations/session/FaroSessionActivityBoundary';
+export { notifySessionActivity } from './instrumentations/session/directSessionActivity';
+export {
   getSessionAttributes,
   loadMobileMetaForInit,
   loadSessionDeviceAttributesForInit,

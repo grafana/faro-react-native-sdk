@@ -808,9 +808,33 @@ The inactivity window is refreshed only by meaningful activity:
 | Unmarked session, startup, ANR, frame, console, and performance telemetry | Passive           |
 
 Passive telemetry still checks whether the session has expired, but it does not
-keep the session alive. User interactions are not detected automatically. Wrap
-interactive components with `withFaroUserAction` or call `trackUserAction` for
-foreground or background work that should refresh the inactivity window.
+keep the session alive. To refresh inactivity for ordinary touches without
+emitting user-action telemetry, wrap the application once with
+`FaroSessionActivityBoundary`:
+
+```tsx
+import { FaroSessionActivityBoundary } from '@grafana/faro-react-native';
+
+export function App() {
+  return (
+    <FaroSessionActivityBoundary>
+      <AppNavigator />
+    </FaroSessionActivityBoundary>
+  );
+}
+```
+
+The boundary observes touch-start responder negotiation from descendants
+without becoming the responder. This covers standard React Native presses,
+scrolling, dragging, and touches that focus inputs on Android and iOS.
+Continued keyboard input after focus is not another touch. Interactions
+rendered outside the boundary's React Native responder tree, or native and
+accessibility interactions that do not produce a React Native touch event, are
+also not observed. Call `notifySessionActivity()` from those paths. The
+boundary renders a `flex: 1` view for root usage; pass `style` to override its
+layout when wrapping a subtree. Use `withFaroUserAction` or `trackUserAction`
+only when the interaction should also emit user-action telemetry and correlate
+related work.
 
 ```tsx
 import { initializeFaro, SamplingFunction, SamplingRate } from '@grafana/faro-react-native';
@@ -1348,6 +1372,13 @@ See the [demo](../../demo) directory for a complete example application.
 - `withFaroUserAction<P>(Component, defaultActionName)` - HOC for tracking component interactions
 - `trackUserAction(actionName, context?)` - Manual user action tracking
 
+### Session Activity API
+
+- `FaroSessionActivityBoundary` - Refresh session inactivity for touch starts
+  inside a React Native responder subtree without emitting user-action telemetry
+- `notifySessionActivity()` - Refresh session inactivity for supported
+  interactions outside the boundary
+
 ### Error Boundary API
 
 - `FaroErrorBoundary` - React component for catching and reporting component errors
@@ -1441,6 +1472,7 @@ console.debug('New event', {
 ### React Components
 
 - `FaroErrorBoundary` - Error boundary component for catching React errors
+- `FaroSessionActivityBoundary` - Touch activity boundary for session inactivity
 - `withFaroErrorBoundary` - HOC for wrapping components with error boundary
 
 ## Future Enhancements
