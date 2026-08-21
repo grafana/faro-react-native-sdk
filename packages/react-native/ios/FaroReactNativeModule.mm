@@ -2,9 +2,80 @@
 #import <React/RCTBridgeModule.h>
 #import "FaroReactNative-Swift.h"
 
+static NSLock *FaroSessionPersistenceLock(void)
+{
+  static NSLock *lock;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    lock = [[NSLock alloc] init];
+  });
+  return lock;
+}
+
+// Weak ownership also clears the claim if teardown skips `invalidate`.
+static __weak FaroReactNativeModule *FaroSessionPersistenceOwner;
+
+@interface FaroReactNativeModule ()
+- (BOOL)claimSessionPersistenceOwnership;
+- (BOOL)releaseSessionPersistenceOwnership;
+@end
+
 @implementation FaroReactNativeModule
 
 RCT_EXPORT_MODULE(FaroReactNativeModule)
+
+/// Stable process identity used to isolate persisted session chains.
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getSessionProcessIdentifier)
+{
+  return [FaroReactNative getSessionProcessIdentifier];
+}
+
+/// Whether this runtime belongs to the host application's main process.
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isMainSessionProcess)
+{
+  return @([FaroReactNative isMainSessionProcess]);
+}
+
+/// Allows only one React Native runtime in a process to persist sessions.
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(claimSessionPersistence)
+{
+  return @([self claimSessionPersistenceOwnership]);
+}
+
+/// Releases persistence only when this native module instance owns it.
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(releaseSessionPersistence)
+{
+  return @([self releaseSessionPersistenceOwnership]);
+}
+
+- (BOOL)claimSessionPersistenceOwnership
+{
+  NSLock *lock = FaroSessionPersistenceLock();
+  [lock lock];
+  BOOL claimed = FaroSessionPersistenceOwner == nil || FaroSessionPersistenceOwner == self;
+  if (claimed) {
+    FaroSessionPersistenceOwner = self;
+  }
+  [lock unlock];
+  return claimed;
+}
+
+- (BOOL)releaseSessionPersistenceOwnership
+{
+  NSLock *lock = FaroSessionPersistenceLock();
+  [lock lock];
+  BOOL released = FaroSessionPersistenceOwner == self;
+  if (released) {
+    FaroSessionPersistenceOwner = nil;
+  }
+  [lock unlock];
+  return released;
+}
+
+- (void)invalidate
+{
+  [self releaseSessionPersistenceOwnership];
+}
 
 /// Synchronous method for immediate access from JavaScript
 /// Returns app startup duration in milliseconds from process start to current time

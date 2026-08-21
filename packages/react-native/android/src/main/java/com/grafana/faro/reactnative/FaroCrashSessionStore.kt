@@ -1,8 +1,6 @@
 package com.grafana.faro.reactnative
 
-import android.app.Application
 import android.content.Context
-import android.os.Build
 import android.os.Process
 import org.json.JSONArray
 import org.json.JSONObject
@@ -253,13 +251,8 @@ internal object FaroCrashSessionStore {
     }
 
     private fun currentProcessName(context: Context): String {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val processName = Application.getProcessName().trim()
-            if (processName.isNotEmpty()) {
-                return processName
-            }
-        }
-        return context.applicationInfo.processName.orEmpty().ifBlank { context.packageName }
+        return FaroSessionProcess.identifier()
+            ?: context.applicationInfo.processName.orEmpty().ifBlank { context.packageName }
     }
 
     private fun readState(

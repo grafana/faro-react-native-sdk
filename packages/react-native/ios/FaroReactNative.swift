@@ -20,6 +20,15 @@ import Foundation
 /// but include improvements where applicable (e.g., better memory metric).
 @objc(FaroReactNative)
 public class FaroReactNative: NSObject {
+    /// Stable bundle identity used to isolate persisted session chains.
+    @objc public static func getSessionProcessIdentifier() -> String {
+        return Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName
+    }
+
+    /// App extensions have an NSExtension dictionary in their main bundle.
+    @objc public static func isMainSessionProcess() -> Bool {
+        return Bundle.main.object(forInfoDictionaryKey: "NSExtension") == nil
+    }
 
     // MARK: - App Startup Time
 

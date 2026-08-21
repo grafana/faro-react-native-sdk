@@ -789,8 +789,10 @@ apps using the default configuration must install the optional
 yarn add react-native-mmkv
 ```
 
-Rebuild the native projects after installation. Apps using `persistent: false`
-use in-memory sessions and do not need MMKV.
+Rebuild the native projects after installing or upgrading the SDK. A JavaScript-only
+or OTA update cannot add the native process-coordination methods; when they are
+unavailable, Faro uses an in-memory session rather than risking concurrent writes.
+Apps using `persistent: false` use in-memory sessions and do not need MMKV.
 
 Use `maxSessionPersistenceTime` to control the inactivity and cold-start linking window. A session's
 maximum lifetime is fixed at four hours.
@@ -883,7 +885,15 @@ initializeFaro({
 
 The persisted record contains only the current and previous session IDs, start and last-activity timestamps, the sampling decision, and a schema version. Session attributes, device state, and overrides remain in memory. Records older than `maxSessionPersistenceTime` are discarded. Unversioned records from earlier SDK versions, corrupt records, and unsupported schema versions are removed and start an unlinked session.
 
-Persistent storage currently supports one React Native runtime writing the MMKV record. Apps that initialize Faro from multiple native processes or independently launched runtimes should set `persistent: false` until process ownership is implemented in [#166](https://github.com/grafana/faro-react-native-sdk/issues/166).
+Persistent storage is isolated by native process:
+
+- On Android, the main process keeps the existing MMKV storage ID. A process declared with `android:process` uses a separate record based on its full process name.
+- On iOS, the host app keeps the existing MMKV storage ID. Each extension uses a separate record based on its `Bundle.main.bundleIdentifier`. Each target that initializes Faro must include the Faro native module and MMKV. Extension persistence requires `react-native-mmkv` v3 or newer so Faro can enable MMKV's multi-process mode; older versions fall back to memory in extensions.
+- Each process maintains its own previous-session link. The `process_name` session attribute identifies which process or extension produced the telemetry.
+
+Only one React Native runtime at a time may write a native process's record. An overlapping runtime that has already fallen back remains in memory for its lifetime. After the owning runtime is invalidated, a newly created replacement runtime can claim persistence. The SDK also falls back to memory when native process identity is unavailable, MMKV cannot be initialized safely, or exclusive ownership cannot be established, and logs a warning rather than risking concurrent writes.
+
+A single session shared across Android processes or between an iOS host app and extension is not supported. Configuring an App Group does not merge Faro session chains between a host app and its extensions because their record IDs remain distinct. If multiple host apps share the same App Group, they share Faro's fixed host record ID; only one of those apps may use `persistent: true`, and the others must use `persistent: false`. Shared sessions would require a multi-process-safe store and native writer coordination. Use `persistent: false` for runtimes where an independent persisted chain is not wanted.
 
 **Sampling:** Set `sessionTracking.sampling` to a `SamplingRate` (fixed 0–1) or `SamplingFunction` (dynamic, receives `context.meta`). Omit `sampling` to record all sessions. The decision is made once per session.
 
@@ -927,19 +937,20 @@ Every telemetry event automatically includes default session attributes with dev
 
 **Automatically Collected Attributes:**
 
-| Attribute              | Description          | iOS Example     | Android Example       |
-| ---------------------- | -------------------- | --------------- | --------------------- |
-| `faro_sdk_version`     | SDK version          | `2.0.2`         | `2.0.2`               |
-| `react_native_version` | React Native version | `0.75.1`        | `0.75.1`              |
-| `device_os`            | Operating system     | `iOS`           | `Android`             |
-| `device_os_version`    | OS version           | `17.0`          | `15`                  |
-| `device_os_detail`     | Detailed OS info     | `iOS 17.0`      | `Android 15 (SDK 35)` |
-| `device_manufacturer`  | Manufacturer         | `apple`         | `samsung`             |
-| `device_model`         | Raw model identifier | `iPhone16,1`    | `SM-A155F`            |
-| `device_model_name`    | Human-readable model | `iPhone 15 Pro` | `SM-A155F`\*          |
-| `device_brand`         | Device brand         | `iPhone`        | `samsung`             |
-| `device_is_physical`   | Physical or emulator | `true`          | `true`                |
-| `device_id`            | Unique device ID     | `uuid`          | `uuid`                |
+| Attribute              | Description          | iOS Example      | Android Example       |
+| ---------------------- | -------------------- | ---------------- | --------------------- |
+| `faro_sdk_version`     | SDK version          | `2.0.2`          | `2.0.2`               |
+| `react_native_version` | React Native version | `0.75.1`         | `0.75.1`              |
+| `process_name`         | Process identity     | `com.acme.share` | `com.acme.app:sync`   |
+| `device_os`            | Operating system     | `iOS`            | `Android`             |
+| `device_os_version`    | OS version           | `17.0`           | `15`                  |
+| `device_os_detail`     | Detailed OS info     | `iOS 17.0`       | `Android 15 (SDK 35)` |
+| `device_manufacturer`  | Manufacturer         | `apple`          | `samsung`             |
+| `device_model`         | Raw model identifier | `iPhone16,1`     | `SM-A155F`            |
+| `device_model_name`    | Human-readable model | `iPhone 15 Pro`  | `SM-A155F`\*          |
+| `device_brand`         | Device brand         | `iPhone`         | `samsung`             |
+| `device_is_physical`   | Physical or emulator | `true`           | `true`                |
+| `device_id`            | Unique device ID     | `uuid`           | `uuid`                |
 
 \*Android does not provide a mapping from model codes to marketing names, so `device_model_name` equals `device_model`.
 

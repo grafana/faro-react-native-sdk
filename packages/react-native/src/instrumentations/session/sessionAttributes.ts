@@ -4,6 +4,7 @@ import DeviceInfo from 'react-native-device-info';
 import type { Meta } from '@grafana/faro-core';
 
 import { getInstallationId } from './installationId';
+import { getSessionProcessInfo } from './sessionProcess';
 
 /**
  * Session attributes for React Native
@@ -19,6 +20,9 @@ import { getInstallationId } from './installationId';
 export interface SessionAttributes {
   /** Host app's React Native framework version (e.g. "0.75.1") from `Platform.constants`. */
   react_native_version: string;
+
+  /** Stable Android process name or Apple bundle identifier for this runtime. */
+  process_name?: string;
 
   /** Operating system ("iOS" or "Android") */
   device_os?: string;
@@ -174,8 +178,10 @@ async function getDeviceOsBuildId(): Promise<string | undefined> {
  * No synchronous DeviceInfo reads — use {@link getSessionAttributes} or the package async `initializeFaro`.
  */
 export function minimalSessionDeviceAttributes(): SessionAttributes {
+  const processInfo = getSessionProcessInfo();
   return {
     react_native_version: getReactNativeVersion(),
+    ...(processInfo == null ? {} : { process_name: processInfo.identifier }),
   };
 }
 
@@ -185,6 +191,7 @@ export function minimalSessionDeviceAttributes(): SessionAttributes {
  *
  * Core session attributes:
  * - react_native_version (RN framework in the host app)
+ * - process_name (Android process name or iOS bundle identifier)
  * - device_os, device_os_version, device_os_detail
  * - device_manufacturer, device_model, device_model_name
  * - device_brand, device_is_physical, device_id
@@ -222,7 +229,6 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     // Memory info
     const totalMemory = DeviceInfo.getTotalMemorySync();
     const usedMemory = DeviceInfo.getUsedMemorySync();
-    const reactNativeVersion = getReactNativeVersion();
 
     // Try to get async device info (battery, carrier)
     let batteryLevel: string | undefined;
@@ -265,7 +271,7 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     }
 
     const attributes: SessionAttributes = {
-      react_native_version: reactNativeVersion,
+      ...minimalSessionDeviceAttributes(),
       device_os: systemName,
       device_os_version: systemVersion,
       device_os_detail: deviceOsDetail,
