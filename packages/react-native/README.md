@@ -888,12 +888,12 @@ The persisted record contains only the current and previous session IDs, start a
 Persistent storage is isolated by native process:
 
 - On Android, the main process keeps the existing MMKV storage ID. A process declared with `android:process` uses a separate record based on its full process name.
-- On iOS, the host app and each extension use separate records based on `Bundle.main.bundleIdentifier`. Each target that initializes Faro must include the Faro native module and MMKV. Extension persistence requires `react-native-mmkv` v3 or newer so Faro can enable MMKV's multi-process mode; older versions fall back to memory in extensions.
+- On iOS, the host app keeps the existing MMKV storage ID. Each extension uses a separate record based on its `Bundle.main.bundleIdentifier`. Each target that initializes Faro must include the Faro native module and MMKV. Extension persistence requires `react-native-mmkv` v3 or newer so Faro can enable MMKV's multi-process mode; older versions fall back to memory in extensions.
 - Each process maintains its own previous-session link. The `process_name` session attribute identifies which process or extension produced the telemetry.
 
 Only one React Native runtime at a time may write a native process's record. An overlapping runtime that has already fallen back remains in memory for its lifetime. After the owning runtime is invalidated, a newly created replacement runtime can claim persistence. The SDK also falls back to memory when native process identity is unavailable, MMKV cannot be initialized safely, or exclusive ownership cannot be established, and logs a warning rather than risking concurrent writes.
 
-A single session shared across Android processes or between an iOS host app and extension is not supported. Configuring an App Group does not merge their Faro session chains; shared sessions would require a multi-process-safe store and native writer coordination. Use `persistent: false` for runtimes where an independent persisted chain is not wanted.
+A single session shared across Android processes or between an iOS host app and extension is not supported. Configuring an App Group does not merge Faro session chains between a host app and its extensions because their record IDs remain distinct. If multiple host apps share the same App Group, they share Faro's fixed host record ID; only one of those apps may use `persistent: true`, and the others must use `persistent: false`. Shared sessions would require a multi-process-safe store and native writer coordination. Use `persistent: false` for runtimes where an independent persisted chain is not wanted.
 
 **Sampling:** Set `sessionTracking.sampling` to a `SamplingRate` (fixed 0–1) or `SamplingFunction` (dynamic, receives `context.meta`). Omit `sampling` to record all sessions. The decision is made once per session.
 
