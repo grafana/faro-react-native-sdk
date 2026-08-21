@@ -72,6 +72,10 @@
   persistence is enabled.
 - `FaroSessionActivityBoundary` and `notifySessionActivity()` refresh session
   inactivity for direct interactions without emitting user-action telemetry.
+- Process-scoped persistent session chains for Android secondary processes and
+  iOS extensions. Telemetry includes `process_name` for correlation, while
+  additional React Native runtimes in the same process fall back to in-memory
+  sessions instead of writing the same MMKV record concurrently.
 - Structured mobile payload fields: `meta.device`, `meta.os`,
   `meta.app.installationId`, and `exception.fatal`. Legacy flat
   `session.attributes` device/OS fields are still emitted during migration.

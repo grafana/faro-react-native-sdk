@@ -883,7 +883,15 @@ initializeFaro({
 
 The persisted record contains only the current and previous session IDs, start and last-activity timestamps, the sampling decision, and a schema version. Session attributes, device state, and overrides remain in memory. Records older than `maxSessionPersistenceTime` are discarded. Unversioned records from earlier SDK versions, corrupt records, and unsupported schema versions are removed and start an unlinked session.
 
-Persistent storage currently supports one React Native runtime writing the MMKV record. Apps that initialize Faro from multiple native processes or independently launched runtimes should set `persistent: false` until process ownership is implemented in [#166](https://github.com/grafana/faro-react-native-sdk/issues/166).
+Persistent storage is isolated by native process:
+
+- On Android, the main process keeps the existing MMKV storage ID. A process declared with `android:process` uses a separate record based on its full process name.
+- On iOS, the host app and each extension use separate records based on `Bundle.main.bundleIdentifier`. Each target that initializes Faro must include the Faro native module and MMKV.
+- Each process maintains its own previous-session link. The `process_name` session attribute identifies which process or extension produced the telemetry.
+
+Only the first React Native runtime that initializes persistent sessions in a native process may write that process's record. Additional runtimes in the same process use in-memory sessions until the process restarts. The SDK also falls back to an in-memory session when native process identity is unavailable or exclusive ownership cannot be established, and logs a warning rather than risking concurrent MMKV writes.
+
+A single session shared across Android processes or between an iOS host app and extension is not supported. Configuring an App Group does not merge their Faro session chains; shared sessions would require a multi-process-safe store and native writer coordination. Use `persistent: false` for runtimes where an independent persisted chain is not wanted.
 
 **Sampling:** Set `sessionTracking.sampling` to a `SamplingRate` (fixed 0–1) or `SamplingFunction` (dynamic, receives `context.meta`). Omit `sampling` to record all sessions. The decision is made once per session.
 
@@ -927,19 +935,20 @@ Every telemetry event automatically includes default session attributes with dev
 
 **Automatically Collected Attributes:**
 
-| Attribute              | Description          | iOS Example     | Android Example       |
-| ---------------------- | -------------------- | --------------- | --------------------- |
-| `faro_sdk_version`     | SDK version          | `2.0.2`         | `2.0.2`               |
-| `react_native_version` | React Native version | `0.75.1`        | `0.75.1`              |
-| `device_os`            | Operating system     | `iOS`           | `Android`             |
-| `device_os_version`    | OS version           | `17.0`          | `15`                  |
-| `device_os_detail`     | Detailed OS info     | `iOS 17.0`      | `Android 15 (SDK 35)` |
-| `device_manufacturer`  | Manufacturer         | `apple`         | `samsung`             |
-| `device_model`         | Raw model identifier | `iPhone16,1`    | `SM-A155F`            |
-| `device_model_name`    | Human-readable model | `iPhone 15 Pro` | `SM-A155F`\*          |
-| `device_brand`         | Device brand         | `iPhone`        | `samsung`             |
-| `device_is_physical`   | Physical or emulator | `true`          | `true`                |
-| `device_id`            | Unique device ID     | `uuid`          | `uuid`                |
+| Attribute              | Description          | iOS Example      | Android Example       |
+| ---------------------- | -------------------- | ---------------- | --------------------- |
+| `faro_sdk_version`     | SDK version          | `2.0.2`          | `2.0.2`               |
+| `react_native_version` | React Native version | `0.75.1`         | `0.75.1`              |
+| `process_name`         | Process identity     | `com.acme.share` | `com.acme.app:sync`   |
+| `device_os`            | Operating system     | `iOS`            | `Android`             |
+| `device_os_version`    | OS version           | `17.0`           | `15`                  |
+| `device_os_detail`     | Detailed OS info     | `iOS 17.0`       | `Android 15 (SDK 35)` |
+| `device_manufacturer`  | Manufacturer         | `apple`          | `samsung`             |
+| `device_model`         | Raw model identifier | `iPhone16,1`     | `SM-A155F`            |
+| `device_model_name`    | Human-readable model | `iPhone 15 Pro`  | `SM-A155F`\*          |
+| `device_brand`         | Device brand         | `iPhone`         | `samsung`             |
+| `device_is_physical`   | Physical or emulator | `true`           | `true`                |
+| `device_id`            | Unique device ID     | `uuid`           | `uuid`                |
 
 \*Android does not provide a mapping from model codes to marketing names, so `device_model_name` equals `device_model`.
 

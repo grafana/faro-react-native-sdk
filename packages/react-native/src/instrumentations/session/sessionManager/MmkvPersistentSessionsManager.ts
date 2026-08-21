@@ -4,6 +4,7 @@ import type { MMKV } from 'react-native-mmkv';
 import { dateNow, faro } from '@grafana/faro-core';
 
 import { SessionActivityKind } from '../sessionActivity';
+import { claimSessionPersistenceStorageId } from '../sessionProcess';
 
 import { parsePersistentSession, serializePersistentSession } from './persistentSessionRecord';
 import { STORAGE_KEY, STORAGE_UPDATE_DELAY } from './sessionConstants';
@@ -16,19 +17,24 @@ import {
 import type { FaroUserSession } from './types';
 
 function createMmkvInstance(): MMKV {
+  const storageId = claimSessionPersistenceStorageId();
+  if (storageId == null) {
+    throw new Error(
+      'This runtime could not claim exclusive session storage ownership. Rebuild the native project with the current Faro SDK, or use sessionTracking.persistent=false for additional runtimes.'
+    );
+  }
+
   try {
     const mmkv = require('react-native-mmkv');
     // react-native-mmkv v4 was rewritten to Nitro and removed the `new MMKV()`
     // class constructor in favor of a `createMMKV()` factory (see the v4 upgrade
     // guide). Support both so v2/v3 (class) and v4+ (factory) work.
     if (typeof mmkv.createMMKV === 'function') {
-      return mmkv.createMMKV({ id: 'grafana-faro-react-native-session' });
+      return mmkv.createMMKV({ id: storageId });
     }
-    return new mmkv.MMKV({ id: 'grafana-faro-react-native-session' });
+    return new mmkv.MMKV({ id: storageId });
   } catch {
-    throw new Error(
-      'sessionTracking.persistent is true but react-native-mmkv could not be loaded. Install it: yarn add react-native-mmkv, then rebuild native projects.'
-    );
+    throw new Error('Session persistence is unavailable. Install react-native-mmkv and rebuild the native project.');
   }
 }
 

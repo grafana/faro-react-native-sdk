@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
-import { getSessionAttributes, loadMobileMetaForInit } from './sessionAttributes';
+import { getSessionAttributes, loadMobileMetaForInit, minimalSessionDeviceAttributes } from './sessionAttributes';
+import { resetSessionProcessForTests } from './sessionProcess';
 
 const INSTALLATION_ID_STORAGE_KEY = '@grafana/faro-react-native/installation_id';
 const STORED_INSTALLATION_ID = 'stored-installation-id';
@@ -38,6 +39,7 @@ describe('sessionAttributes', () => {
   beforeEach(() => {
     (global as any).mockAsyncStorage = {};
     jest.clearAllMocks();
+    resetSessionProcessForTests();
   });
 
   describe('getSessionAttributes', () => {
@@ -79,6 +81,7 @@ describe('sessionAttributes', () => {
 
         expect(attributes).toEqual({
           react_native_version: '0.75.1',
+          process_name: 'com.example.myapp',
           device_os: 'iOS',
           device_os_version: '17.0',
           device_os_detail: 'iOS 17.0',
@@ -177,6 +180,7 @@ describe('sessionAttributes', () => {
 
         expect(attributes).toEqual({
           react_native_version: '0.75.1',
+          process_name: 'com.example.myapp',
           device_os: 'Android',
           device_os_version: '15',
           device_os_detail: 'Android 15 (SDK 35)',
@@ -439,6 +443,7 @@ describe('sessionAttributes', () => {
         expect(mobileMeta).toEqual({
           sessionAttributes: {
             react_native_version: '0.75.1',
+            process_name: 'com.example.myapp',
           },
           meta: {
             app: {
@@ -531,6 +536,7 @@ describe('sessionAttributes', () => {
         // Device info is omitted when collection fails so nothing partial is sent to Faro
         expect(attributes).toEqual({
           react_native_version: expect.any(String),
+          process_name: 'com.example.myapp',
         });
         expect(attributes.device_id).toBeUndefined();
         expect(attributes.device_os).toBeUndefined();
@@ -555,6 +561,7 @@ describe('sessionAttributes', () => {
         // Any synchronous DeviceInfo failure skips all device fields (minimal payload only)
         expect(attributes).toEqual({
           react_native_version: expect.any(String),
+          process_name: 'com.example.myapp',
         });
         expect(attributes.device_id).toBeUndefined();
         expect(attributes.device_manufacturer).toBeUndefined();
@@ -600,6 +607,21 @@ describe('sessionAttributes', () => {
 
         expect(attributes.device_manufacturer).toBe('oneplus');
       });
+    });
+
+    it('omits process identity when the native bridge is unavailable', () => {
+      const nativeModule = NativeModules.FaroReactNativeModule;
+      NativeModules.FaroReactNativeModule = undefined;
+      resetSessionProcessForTests();
+
+      try {
+        expect(minimalSessionDeviceAttributes()).toEqual({
+          react_native_version: expect.any(String),
+        });
+      } finally {
+        NativeModules.FaroReactNativeModule = nativeModule;
+        resetSessionProcessForTests();
+      }
     });
   });
 });

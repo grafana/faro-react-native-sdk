@@ -3,6 +3,21 @@
  * Mocks third-party React Native dependencies
  */
 
+jest.mock('react-native/Libraries/BatchedBridge/NativeModules', () => {
+  const presetModule = jest.requireActual('@react-native/jest-preset/jest/mocks/NativeModules');
+  return {
+    ...presetModule,
+    default: {
+      ...presetModule.default,
+      FaroReactNativeModule: {
+        getSessionProcessIdentifier: jest.fn(() => 'com.example.myapp'),
+        isMainSessionProcess: jest.fn(() => true),
+        claimSessionPersistence: jest.fn(() => true),
+      },
+    },
+  };
+});
+
 // Mock react-native-device-info
 jest.mock('react-native-device-info', () => {
   const mockDeviceInfo = {

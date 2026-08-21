@@ -6,6 +6,24 @@
 
 RCT_EXPORT_MODULE(FaroReactNativeModule)
 
+/// Stable process identity used to isolate persisted session chains.
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getSessionProcessIdentifier)
+{
+  return [FaroReactNative getSessionProcessIdentifier];
+}
+
+/// Whether this runtime belongs to the host application's main process.
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isMainSessionProcess)
+{
+  return @([FaroReactNative isMainSessionProcess]);
+}
+
+/// Allows only one React Native runtime in a process to persist sessions.
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(claimSessionPersistence)
+{
+  return @([FaroReactNative claimSessionPersistence]);
+}
+
 /// Synchronous method for immediate access from JavaScript
 /// Returns app startup duration in milliseconds from process start to current time
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getAppStartDuration)

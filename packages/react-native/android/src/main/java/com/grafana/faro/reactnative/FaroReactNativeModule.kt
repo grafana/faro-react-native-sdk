@@ -42,6 +42,24 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
 
     override fun getName(): String = NAME
 
+    /** Stable process name used to isolate persisted session chains. */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun getSessionProcessIdentifier(): String? {
+        return FaroSessionProcess.identifier()
+    }
+
+    /** Whether this module is running in the application's declared main process. */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun isMainSessionProcess(): Boolean? {
+        return FaroSessionProcess.isMainProcess(reactApplicationContext.applicationContext)
+    }
+
+    /** Allows only one React Native runtime in this process to write session state. */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun claimSessionPersistence(): Boolean {
+        return FaroSessionProcess.claimPersistence()
+    }
+
     /**
      * Gets app startup duration in milliseconds using Android OS APIs
      *

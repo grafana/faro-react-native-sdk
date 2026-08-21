@@ -11,11 +11,17 @@ const SESSION_MMKV_CONFIG = { id: 'grafana-faro-react-native-session' };
 
 type SessionsManagerModule = typeof import('./MmkvPersistentSessionsManager');
 
-const loadWithMmkvMock = (mmkvExports: Record<string, unknown>): SessionsManagerModule => {
+const loadWithMmkvMock = (
+  mmkvExports: Record<string, unknown>,
+  storageId: string | null = SESSION_MMKV_CONFIG.id
+): SessionsManagerModule => {
   let mod: SessionsManagerModule | undefined;
 
   jest.isolateModules(() => {
     jest.doMock('react-native-mmkv', () => mmkvExports);
+    jest.doMock('../sessionProcess', () => ({
+      claimSessionPersistenceStorageId: jest.fn(() => storageId),
+    }));
     mod = require('./MmkvPersistentSessionsManager');
   });
 
@@ -28,6 +34,7 @@ const loadWithMmkvMock = (mmkvExports: Record<string, unknown>): SessionsManager
 
 describe('MmkvPersistentSessionsManager - react-native-mmkv version compatibility', () => {
   afterEach(() => {
+    jest.dontMock('../sessionProcess');
     jest.resetModules();
     jest.clearAllMocks();
   });
@@ -76,10 +83,88 @@ describe('MmkvPersistentSessionsManager - react-native-mmkv version compatibilit
     expect(createMMKV).toHaveBeenCalledWith(SESSION_MMKV_CONFIG);
     expect(MMKV).not.toHaveBeenCalled();
   });
+
+  it('uses a separate MMKV id for a secondary process', () => {
+    const store = { getString: jest.fn().mockReturnValue(undefined) };
+    const createMMKV = jest.fn().mockReturnValue(store);
+    const processStorageId = 'grafana-faro-react-native-session.com.example.myapp%3Async';
+
+    const { MmkvPersistentSessionsManager } = loadWithMmkvMock({ createMMKV }, processStorageId);
+    MmkvPersistentSessionsManager.fetchUserSession();
+
+    expect(createMMKV).toHaveBeenCalledWith({ id: processStorageId });
+  });
+
+  it('does not create MMKV when this runtime cannot claim persistence', () => {
+    const createMMKV = jest.fn();
+    const { MmkvPersistentSessionsManager } = loadWithMmkvMock({ createMMKV }, null);
+    const session = {
+      sessionId: 'runtime-session',
+      started: 100,
+      lastActivity: 200,
+      isSampled: true,
+    };
+
+    expect(MmkvPersistentSessionsManager.fetchUserSession()).toBeNull();
+    MmkvPersistentSessionsManager.storeUserSession(session);
+
+    expect(MmkvPersistentSessionsManager.fetchUserSession()).toBe(session);
+    expect(createMMKV).not.toHaveBeenCalled();
+  });
+
+  it('keeps independent process session chains in separate MMKV records', () => {
+    const stores = new Map<string, { getString: jest.Mock; set: jest.Mock }>();
+    const createMMKV = jest.fn(({ id }: { id: string }) => {
+      const values = new Map<string, string>();
+      const store = {
+        getString: jest.fn((key: string) => values.get(key)),
+        set: jest.fn((key: string, value: string) => values.set(key, value)),
+      };
+      stores.set(id, store);
+      return store;
+    });
+    const workerStorageId = 'grafana-faro-react-native-session.com.example.myapp%3Async';
+
+    const main = loadWithMmkvMock({ createMMKV }, SESSION_MMKV_CONFIG.id);
+    main.MmkvPersistentSessionsManager.storeUserSession({
+      sessionId: 'main-current',
+      started: 100,
+      lastActivity: 200,
+      isSampled: true,
+      sessionMeta: {
+        id: 'main-current',
+        attributes: { previousSession: 'main-previous' },
+      },
+    });
+
+    const worker = loadWithMmkvMock({ createMMKV }, workerStorageId);
+    worker.MmkvPersistentSessionsManager.storeUserSession({
+      sessionId: 'worker-current',
+      started: 300,
+      lastActivity: 400,
+      isSampled: false,
+      sessionMeta: {
+        id: 'worker-current',
+        attributes: { previousSession: 'worker-previous' },
+      },
+    });
+
+    const mainRecord = JSON.parse(stores.get(SESSION_MMKV_CONFIG.id)?.set.mock.calls[0]?.[1] ?? 'null');
+    const workerRecord = JSON.parse(stores.get(workerStorageId)?.set.mock.calls[0]?.[1] ?? 'null');
+    expect(mainRecord).toMatchObject({
+      currentSessionId: 'main-current',
+      previousSessionId: 'main-previous',
+    });
+    expect(workerRecord).toMatchObject({
+      currentSessionId: 'worker-current',
+      previousSessionId: 'worker-previous',
+    });
+  });
 });
 
 describe('MmkvPersistentSessionsManager - session persistence', () => {
   afterEach(() => {
+    jest.dontMock('../sessionProcess');
     jest.resetModules();
     jest.clearAllMocks();
   });
