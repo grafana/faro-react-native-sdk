@@ -12,6 +12,7 @@ static NSLock *FaroSessionPersistenceLock(void)
   return lock;
 }
 
+// Weak ownership also clears the claim if teardown skips `invalidate`.
 static __weak FaroReactNativeModule *FaroSessionPersistenceOwner;
 
 @interface FaroReactNativeModule ()
@@ -72,11 +73,6 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(releaseSessionPersistence)
 }
 
 - (void)invalidate
-{
-  [self releaseSessionPersistenceOwnership];
-}
-
-- (void)dealloc
 {
   [self releaseSessionPersistenceOwnership];
 }
