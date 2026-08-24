@@ -797,11 +797,13 @@ maximum lifetime is fixed at four hours.
 
 The inactivity window is refreshed only by meaningful activity:
 
-| Telemetry source                                                          | Activity category |
+| Activity source                                                           | Activity category |
 | ------------------------------------------------------------------------- | ----------------- |
 | Navigation and view changes                                               | Meaningful        |
 | Return from `background` to `active`                                      | Meaningful        |
 | Telemetry linked to a tracked user action                                 | Meaningful        |
+| React Native touch starts inside `FaroSessionActivityBoundary`            | Meaningful        |
+| Explicit `notifySessionActivity()` calls                                  | Meaningful        |
 | Other app lifecycle events                                                | Passive           |
 | Unmarked events, logs, errors, measurements, and traces                   | Passive           |
 | Unmarked HTTP and XHR requests                                            | Passive           |
