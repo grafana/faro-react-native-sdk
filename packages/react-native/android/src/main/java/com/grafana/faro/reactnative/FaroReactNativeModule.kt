@@ -39,8 +39,38 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     private var anrTracker: ANRTracker? = null
+    private val sessionPersistenceOwner = Any()
 
     override fun getName(): String = NAME
+
+    /** Stable process name used to isolate persisted session chains. */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun getSessionProcessIdentifier(): String? {
+        return FaroSessionProcess.identifier()
+    }
+
+    /** Whether this module is running in the application's declared main process. */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun isMainSessionProcess(): Boolean? {
+        return FaroSessionProcess.isMainProcess(reactApplicationContext.applicationContext)
+    }
+
+    /** Allows only one React Native runtime in this process to write session state. */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun claimSessionPersistence(): Boolean {
+        return FaroSessionProcess.claimPersistence(sessionPersistenceOwner)
+    }
+
+    /** Releases session persistence when this React Native runtime is torn down. */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun releaseSessionPersistence(): Boolean {
+        return FaroSessionProcess.releasePersistence(sessionPersistenceOwner)
+    }
+
+    override fun invalidate() {
+        FaroSessionProcess.releasePersistence(sessionPersistenceOwner)
+        super.invalidate()
+    }
 
     /**
      * Gets app startup duration in milliseconds using Android OS APIs
