@@ -126,13 +126,32 @@ describe('session cleanup', () => {
     expect(registeredListeners).toHaveLength(2);
 
     const beforeSendHooks = faro.transports.getBeforeSendHooks();
-    expect(beforeSendHooks).toHaveLength(1);
-    const beforeSendHook = beforeSendHooks[0];
+    expect(beforeSendHooks).toHaveLength(2);
+    const beforeSendHook = beforeSendHooks.at(-1);
     if (beforeSendHook == null) {
       throw new Error('Expected the session before-send hook to be registered.');
     }
     expectSampledItem(beforeSendHook(sessionItem(true)));
 
+    const storedSession = VolatileSessionsManager.fetchUserSession();
+    if (storedSession == null) {
+      throw new Error('Expected an active volatile session before cleanup.');
+    }
+    const unsampledSession = {
+      ...storedSession,
+      isSampled: false,
+      sessionMeta: {
+        ...storedSession.sessionMeta,
+        id: storedSession.sessionId,
+        attributes: {
+          ...storedSession.sessionMeta?.attributes,
+          isSampled: 'false',
+        },
+      },
+    };
+    VolatileSessionsManager.storeUserSession(unsampledSession);
+    faro.api.setSession(unsampledSession.sessionMeta);
+    expect(faro.api.getSession()?.attributes?.['isSampled']).toBe('false');
     const sessionStartsBeforeDestroy = sessionStartCount(transport);
     instrumentation.destroy();
 
@@ -141,10 +160,22 @@ describe('session cleanup', () => {
       new Set(registeredListeners)
     );
     expect(removeBeforeSendHooksSpy).toHaveBeenCalledWith(beforeSendHook);
-    // A detached session hook must not rotate sessions, but older Faro Core
-    // versions can retain it, so the captured hook still owns sampling cleanup.
+    // A detached session hook must not rotate sessions, but a captured queued
+    // item still carries the sampling decision that the hook must enforce.
     expect(beforeSendHook(sessionItem(false))).toBeNull();
     expectSampledItem(beforeSendHook(sessionItem(true)));
+
+    expect(faro.api.getSession()?.attributes?.['isSampled']).toBeUndefined();
+    const itemsAfterDestroy = transport.items.length;
+    faro.transports.execute(sessionItem(false));
+    expect(transport.items).toHaveLength(itemsAfterDestroy);
+    faro.transports.execute(sessionItem(true));
+    expect(transport.items).toHaveLength(itemsAfterDestroy + 1);
+    expect(transport.items.at(-1)?.meta.session?.attributes?.['isSampled']).toBeUndefined();
+
+    faro.api.pushEvent('after-destroy');
+    expect(transport.items.at(-1)?.payload).toEqual(expect.objectContaining({ name: 'after-destroy' }));
+    expect(transport.items.at(-1)?.meta.session?.attributes?.['isSampled']).toBeUndefined();
 
     faro.api.setSession({ id: 'after-cleanup' });
     expect(sessionStartCount(transport)).toBe(sessionStartsBeforeDestroy);
@@ -184,8 +215,10 @@ describe('session cleanup', () => {
       })
     );
     const firstRemoveListenerSpy = jest.spyOn(firstFaro.metas, 'removeListener');
+    const firstRemoveBeforeSendHooksSpy = jest.spyOn(firstFaro.transports, 'removeBeforeSendHooks');
+    const firstSetSessionSpy = jest.spyOn(firstFaro.api, 'setSession');
     firstFaro.instrumentations.add(instrumentation);
-    const firstHook = firstFaro.transports.getBeforeSendHooks()[0];
+    const firstHook = firstFaro.transports.getBeforeSendHooks().at(-1);
     if (firstHook == null) {
       throw new Error('Expected the first Faro instance to retain its session hook.');
     }
@@ -204,6 +237,12 @@ describe('session cleanup', () => {
     secondFaro.instrumentations.add(instrumentation);
 
     expect(firstRemoveListenerSpy).toHaveBeenCalledTimes(2);
+    expect(firstRemoveBeforeSendHooksSpy).toHaveBeenCalledWith(firstHook);
+    expect(firstSetSessionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attributes: expect.not.objectContaining({ isSampled: expect.anything() }),
+      })
+    );
     expect(secondAddListenerSpy).toHaveBeenCalledTimes(2);
     const firstHookResult = expectSampledItem(firstHook(sessionItem(true)));
     expect(firstHookResult.meta.session?.id).toBe('active-session');
@@ -226,22 +265,48 @@ describe('session cleanup', () => {
     const faro = await initializeWithoutInstrumentations();
     const firstInstrumentation = new SessionInstrumentation();
     faro.instrumentations.add(firstInstrumentation);
+    const firstHook = faro.transports.getBeforeSendHooks().at(-1);
+    if (firstHook == null) {
+      throw new Error('Expected the first instrumentation to register a session hook.');
+    }
+
     faro.instrumentations.remove(firstInstrumentation);
+    expect(faro.instrumentations.instrumentations).not.toContain(firstInstrumentation);
+    expect(faro.instrumentations.instrumentations).toHaveLength(0);
 
     const replacementInstrumentation = new SessionInstrumentation();
     faro.instrumentations.add(replacementInstrumentation);
+    expect(faro.instrumentations.instrumentations).toContain(replacementInstrumentation);
 
     const activeSession = VolatileSessionsManager.fetchUserSession();
     if (activeSession == null) {
       throw new Error('Expected the replacement instrumentation to own a session.');
     }
 
-    const result = faro.transports
-      .getBeforeSendHooks()
-      .reduce<TransportItem | null>((item, hook) => (item == null ? null : hook(item)), sessionItem(false));
+    const installedHooks = faro.transports.getBeforeSendHooks();
+    const hooks = installedHooks.includes(firstHook) ? installedHooks : [firstHook, ...installedHooks];
+    const result = hooks.reduce<TransportItem | null>(
+      (item, hook) => (item == null ? null : hook(item)),
+      sessionItem(false)
+    );
     const sampledResult = expectSampledItem(result);
 
     expect(sampledResult.meta.session?.id).toBe(activeSession.sessionId);
     replacementInstrumentation.destroy();
+  });
+
+  it('registers its manager listener on the instrumentation metas instance', async () => {
+    const ownerFaro = await initializeWithoutInstrumentations();
+    const ownerAddListenerSpy = jest.spyOn(ownerFaro.metas, 'addListener');
+    const otherFaro = await initializeWithoutInstrumentations();
+    const otherAddListenerSpy = jest.spyOn(otherFaro.metas, 'addListener');
+    const instrumentation = new SessionInstrumentation();
+
+    ownerFaro.instrumentations.add(instrumentation);
+
+    expect(ownerAddListenerSpy).toHaveBeenCalledTimes(2);
+    expect(otherAddListenerSpy).not.toHaveBeenCalled();
+
+    instrumentation.destroy();
   });
 });

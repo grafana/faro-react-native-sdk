@@ -116,9 +116,9 @@
 
 - Calling `SessionInstrumentation.destroy()` or `unpatch()` now removes its
   metadata listeners and stops further session rotation or activity processing.
-  Sampling and internal sampling-metadata cleanup remain active for queued items
-  when older Faro Core versions retain the detached before-send hook. A retained
-  hook yields to a replacement session hook on the same Faro instance.
+  Queued items still apply their captured sampling decision and strip internal
+  sampling metadata after teardown. Any retained hook yields to a replacement
+  session hook on the same Faro instance.
   ([#162](https://github.com/grafana/faro-react-native-sdk/issues/162))
 - Session expiry is checked before attribution, so telemetry that triggers a
   rotation carries the new linked session ID instead of the expired one.
