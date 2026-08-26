@@ -114,6 +114,8 @@
 
 ### Fixed
 
+- Session instrumentation now removes its metadata listeners and stops
+  processing session activity when Faro removes it. ([#162](https://github.com/grafana/faro-react-native-sdk/issues/162))
 - Session expiry is checked before attribution, so telemetry that triggers a
   rotation carries the new linked session ID instead of the expired one.
 - Recovered crashes retain their crash-time session without rotating or

@@ -2,6 +2,7 @@ import { AppState, type AppStateStatus, Platform } from 'react-native';
 import type { MMKV } from 'react-native-mmkv';
 
 import { dateNow, faro } from '@grafana/faro-core';
+import type { Metas } from '@grafana/faro-core';
 
 import { SessionActivityKind } from '../sessionActivity';
 import {
@@ -149,7 +150,8 @@ export class MmkvPersistentSessionsManager {
   private hasPendingActivityWrite = false;
   private lastActivityWrite = 0;
   private wasBackgrounded = AppState.currentState === 'background';
-  private metaUnsubscribe: (() => void) | null = null;
+  private metaUpdateHandler: ReturnType<typeof getSessionMetaUpdateHandler> | null = null;
+  private registeredMetas: Metas | null = null;
 
   constructor() {
     this.updateUserSession = getUserSessionUpdater({
@@ -303,13 +305,14 @@ export class MmkvPersistentSessionsManager {
   private init(): void {
     this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
 
-    const unsubscribe = faro.metas.addListener(
-      getSessionMetaUpdateHandler({
-        fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
-        storeUserSession: MmkvPersistentSessionsManager.storeUserSession,
-      })
-    );
-    this.metaUnsubscribe = typeof unsubscribe === 'function' ? unsubscribe : null;
+    const metaUpdateHandler = getSessionMetaUpdateHandler({
+      fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
+      storeUserSession: MmkvPersistentSessionsManager.storeUserSession,
+    });
+    const registeredMetas = faro.metas;
+    registeredMetas.addListener(metaUpdateHandler);
+    this.metaUpdateHandler = metaUpdateHandler;
+    this.registeredMetas = registeredMetas;
   }
 
   unpatch(): void {
@@ -320,9 +323,12 @@ export class MmkvPersistentSessionsManager {
       this.appStateSubscription = null;
     }
 
-    if (this.metaUnsubscribe) {
-      this.metaUnsubscribe();
-      this.metaUnsubscribe = null;
+    const metaUpdateHandler = this.metaUpdateHandler;
+    const registeredMetas = this.registeredMetas;
+    this.metaUpdateHandler = null;
+    this.registeredMetas = null;
+    if (metaUpdateHandler && registeredMetas) {
+      registeredMetas.removeListener(metaUpdateHandler);
     }
   }
 }

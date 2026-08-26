@@ -1,5 +1,12 @@
 import { BaseInstrumentation, dateNow, EVENT_SESSION_START, faro, VERSION } from '@grafana/faro-core';
-import type { Config, Meta, MetaSession, TransportItem, UserActionInternalInterface } from '@grafana/faro-core';
+import type {
+  BeforeSendHook,
+  Config,
+  Meta,
+  MetaSession,
+  TransportItem,
+  UserActionInternalInterface,
+} from '@grafana/faro-core';
 
 import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
 
@@ -9,7 +16,7 @@ import { minimalSessionDeviceAttributes, type SessionAttributes } from './sessio
 import { type FaroUserSession, getSessionManagerByConfig, isSampled } from './sessionManager';
 import { MAX_SESSION_PERSISTENCE_TIME } from './sessionManager/sessionConstants';
 import { createUserSessionObject, isUserSessionValid } from './sessionManager/sessionManagerUtils';
-import type { SessionManager, SessionManagerInstance } from './sessionManager/types';
+import type { SessionManager } from './sessionManager/types';
 
 const SESSION_INSTRUMENTATION_NAME = '@grafana/faro-react-native:instrumentation-session';
 
@@ -49,6 +56,9 @@ export class SessionInstrumentation extends BaseInstrumentation {
   private sessionManagerInstance: InstanceType<SessionManager> | undefined;
   private isResettingSession = false;
   private unregisterDirectSessionActivity: (() => void) | undefined;
+  private sessionMetaListenerRegistered = false;
+  private beforeSendHook: BeforeSendHook | undefined;
+  private beforeSendHookRegistration: object | undefined;
 
   private getDefaultSessionDeviceAttributes(): SessionAttributes {
     const cfg = this.config as ReactNativeFullConfig;
@@ -58,7 +68,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     return minimalSessionDeviceAttributes();
   }
 
-  private sendSessionStartEvent(meta: Meta): void {
+  private readonly sendSessionStartEvent = (meta: Meta): void => {
     const session = meta.session;
 
     if (session && session.id !== this.notifiedSession?.id) {
@@ -67,6 +77,15 @@ export class SessionInstrumentation extends BaseInstrumentation {
       // automatically
       this.api.pushEvent(EVENT_SESSION_START, {}, undefined, { skipDedupe: true });
     }
+  };
+
+  private registerSessionMetaListener(): void {
+    if (this.sessionMetaListenerRegistered) {
+      return;
+    }
+
+    this.metas.addListener(this.sendSessionStartEvent);
+    this.sessionMetaListenerRegistered = true;
   }
 
   private createInitialSession(
@@ -161,8 +180,15 @@ export class SessionInstrumentation extends BaseInstrumentation {
     return { initialSession, emitSessionStartOnInit };
   }
 
-  private registerBeforeSendHook(sessionManager: SessionManagerInstance, SessionManagerClass: SessionManager): void {
-    this.transports?.addBeforeSendHooks((item: TransportItem) => {
+  private registerBeforeSendHook(SessionManagerClass: SessionManager): void {
+    const registration = {};
+    const beforeSendHook: BeforeSendHook = (item: TransportItem) => {
+      const sessionManager = this.sessionManagerInstance;
+      // Keep a detached hook inert even if the transport cannot remove it.
+      if (this.beforeSendHookRegistration !== registration || sessionManager == null) {
+        return item;
+      }
+
       const storedSession = SessionManagerClass.fetchUserSession();
       const recoveredCrash = isRecoveredCrashItem(item, storedSession?.sessionId);
       // Ending an active action can send telemetry synchronously. Keep that
@@ -226,7 +252,11 @@ export class SessionInstrumentation extends BaseInstrumentation {
 
       // No isSampled attribute or other value - pass through unchanged
       return nextItem;
-    });
+    };
+
+    this.beforeSendHook = beforeSendHook;
+    this.beforeSendHookRegistration = registration;
+    this.transports.addBeforeSendHooks(beforeSendHook);
   }
 
   initialize(): void {
@@ -237,7 +267,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     clearDirectSessionActivityHandler();
 
     if (!sessionTrackingConfig?.enabled) {
-      this.metas.addListener(this.sendSessionStartEvent.bind(this));
+      this.registerSessionMetaListener();
       return;
     }
 
@@ -248,7 +278,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     // instance `unpatch()` cleans up.
     this.sessionManagerInstance = new SessionManagerClass();
 
-    this.registerBeforeSendHook(this.sessionManagerInstance, SessionManagerClass);
+    this.registerBeforeSendHook(SessionManagerClass);
 
     const { initialSession, emitSessionStartOnInit } = this.createInitialSession(
       SessionManagerClass,
@@ -268,7 +298,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
       this.sessionManagerInstance?.checkSession(SessionActivityKind.Meaningful);
     });
 
-    this.metas.addListener(this.sendSessionStartEvent.bind(this));
+    this.registerSessionMetaListener();
   }
 
   /** Starts a new linked session immediately. */
@@ -298,7 +328,24 @@ export class SessionInstrumentation extends BaseInstrumentation {
   unpatch(): void {
     this.unregisterDirectSessionActivity?.();
     this.unregisterDirectSessionActivity = undefined;
+
+    const beforeSendHook = this.beforeSendHook;
+    this.beforeSendHook = undefined;
+    this.beforeSendHookRegistration = undefined;
+    if (beforeSendHook) {
+      this.transports.removeBeforeSendHooks(beforeSendHook);
+    }
+
     this.sessionManagerInstance?.unpatch();
     this.sessionManagerInstance = undefined;
+
+    if (this.sessionMetaListenerRegistered) {
+      this.sessionMetaListenerRegistered = false;
+      this.metas.removeListener(this.sendSessionStartEvent);
+    }
+  }
+
+  destroy(): void {
+    this.unpatch();
   }
 }

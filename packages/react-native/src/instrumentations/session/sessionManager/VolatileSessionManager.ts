@@ -1,6 +1,7 @@
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { faro } from '@grafana/faro-core';
+import type { Metas } from '@grafana/faro-core';
 
 import { SessionActivityKind } from '../sessionActivity';
 
@@ -13,7 +14,8 @@ export class VolatileSessionsManager {
   private updateUserSession: ReturnType<typeof getUserSessionUpdater>;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
   private wasBackgrounded = AppState.currentState === 'background';
-  private metaUnsubscribe: (() => void) | null = null;
+  private metaUpdateHandler: ReturnType<typeof getSessionMetaUpdateHandler> | null = null;
+  private registeredMetas: Metas | null = null;
 
   constructor() {
     this.updateUserSession = getUserSessionUpdater({
@@ -65,13 +67,14 @@ export class VolatileSessionsManager {
     this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
 
     // Users can call the setSession() method, so we need to sync this with the in-memory session
-    const unsubscribe = faro.metas.addListener(
-      getSessionMetaUpdateHandler({
-        fetchUserSession: VolatileSessionsManager.fetchUserSession,
-        storeUserSession: VolatileSessionsManager.storeUserSession,
-      })
-    );
-    this.metaUnsubscribe = typeof unsubscribe === 'function' ? unsubscribe : null;
+    const metaUpdateHandler = getSessionMetaUpdateHandler({
+      fetchUserSession: VolatileSessionsManager.fetchUserSession,
+      storeUserSession: VolatileSessionsManager.storeUserSession,
+    });
+    const registeredMetas = faro.metas;
+    registeredMetas.addListener(metaUpdateHandler);
+    this.metaUpdateHandler = metaUpdateHandler;
+    this.registeredMetas = registeredMetas;
   }
 
   /**
@@ -83,9 +86,12 @@ export class VolatileSessionsManager {
       this.appStateSubscription = null;
     }
 
-    if (this.metaUnsubscribe) {
-      this.metaUnsubscribe();
-      this.metaUnsubscribe = null;
+    const metaUpdateHandler = this.metaUpdateHandler;
+    const registeredMetas = this.registeredMetas;
+    this.metaUpdateHandler = null;
+    this.registeredMetas = null;
+    if (metaUpdateHandler && registeredMetas) {
+      registeredMetas.removeListener(metaUpdateHandler);
     }
   }
 }
