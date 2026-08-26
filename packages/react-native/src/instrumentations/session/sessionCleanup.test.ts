@@ -1,6 +1,8 @@
-import { EVENT_SESSION_START, initializeFaro, TransportItemType } from '@grafana/faro-core';
+import { EVENT_SESSION_START, EVENT_VIEW_CHANGED, initializeFaro, TransportItemType } from '@grafana/faro-core';
 import type { TransportItem } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
+
+import { ViewInstrumentation } from '../view';
 
 import { SessionInstrumentation } from './index';
 import { MmkvPersistentSessionsManager } from './sessionManager/MmkvPersistentSessionsManager';
@@ -184,6 +186,80 @@ describe('session cleanup', () => {
 
     instrumentation.destroy();
     expect(removeListenerSpy).toHaveBeenCalledTimes(2);
+    expect(removeBeforeSendHooksSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['sampled', 1, 1],
+    ['unsampled', 0, 0],
+  ] as const)('keeps teardown listener telemetry attributed for a %s session', async (_name, rate, expectedCount) => {
+    const transport = new MockTransport();
+    const faro = initializeFaro(
+      mockConfig({
+        instrumentations: [],
+        transports: [transport],
+        url: 'http://localhost:12345/collect',
+        view: { name: 'configured-view' },
+        sessionTracking: {
+          enabled: true,
+          persistent: false,
+          sampling: { resolve: () => rate },
+        },
+      })
+    );
+    const instrumentation = new SessionInstrumentation();
+    const checkSessionSpy = jest.spyOn(VolatileSessionsManager.prototype, 'checkSession');
+    faro.instrumentations.add(instrumentation);
+    faro.instrumentations.add(new ViewInstrumentation());
+    const storedSession = VolatileSessionsManager.fetchUserSession();
+    if (storedSession == null) {
+      throw new Error('Expected an active volatile session before cleanup.');
+    }
+    expect(storedSession.isSampled).toBe(rate === 1);
+    checkSessionSpy.mockClear();
+    const itemsBeforeDestroy = transport.items.length;
+
+    instrumentation.destroy();
+
+    expect(checkSessionSpy).not.toHaveBeenCalled();
+    const teardownItems = transport.items.slice(itemsBeforeDestroy);
+    const viewChangedItems = teardownItems.filter(
+      (item) => item.type === TransportItemType.EVENT && item.payload.name === EVENT_VIEW_CHANGED
+    );
+    expect(viewChangedItems).toHaveLength(expectedCount);
+    if (expectedCount === 1) {
+      expect(viewChangedItems[0]?.meta.session?.id).toBe(storedSession.sessionId);
+      expect(viewChangedItems[0]?.meta.session?.attributes?.['isSampled']).toBeUndefined();
+    }
+  });
+
+  it('finishes cleanup when a metas listener throws during the sampling scrub', async () => {
+    const faro = await initializeWithoutInstrumentations();
+    const instrumentation = new SessionInstrumentation();
+    const removeBeforeSendHooksSpy = jest.spyOn(faro.transports, 'removeBeforeSendHooks');
+    const checkSessionSpy = jest.spyOn(VolatileSessionsManager.prototype, 'checkSession');
+    faro.instrumentations.add(instrumentation);
+    const beforeSendHook = faro.transports.getBeforeSendHooks().at(-1);
+    if (beforeSendHook == null) {
+      throw new Error('Expected a session before-send hook before cleanup.');
+    }
+    const throwingListener = jest.fn((meta) => {
+      if (meta.session == null) {
+        throw new Error('metas listener failed');
+      }
+    });
+    faro.metas.addListener(throwingListener);
+
+    expect(() => instrumentation.destroy()).toThrow('metas listener failed');
+    expect(removeBeforeSendHooksSpy).toHaveBeenCalledTimes(1);
+    expect(removeBeforeSendHooksSpy).toHaveBeenCalledWith(beforeSendHook);
+
+    faro.metas.removeListener(throwingListener);
+    checkSessionSpy.mockClear();
+    faro.api.pushEvent('after-failed-cleanup');
+    expect(checkSessionSpy).not.toHaveBeenCalled();
+
+    expect(() => instrumentation.destroy()).not.toThrow();
     expect(removeBeforeSendHooksSpy).toHaveBeenCalledTimes(1);
   });
 

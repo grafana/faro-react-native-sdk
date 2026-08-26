@@ -379,35 +379,48 @@ export class SessionInstrumentation extends BaseInstrumentation {
       beforeSendHook != null &&
       beforeSendHookTransports != null &&
       activeSessionBeforeSendHooks.get(beforeSendHookTransports) === beforeSendHook;
-    this.beforeSendHook = undefined;
-    this.beforeSendHookApi = undefined;
-    this.beforeSendHookTransports = undefined;
-    if (beforeSendHook && beforeSendHookTransports) {
-      if (ownedActiveHook) {
-        activeSessionBeforeSendHooks.delete(beforeSendHookTransports);
-      }
-      beforeSendHookTransports.removeBeforeSendHooks(beforeSendHook);
-    }
 
+    // Stop the manager's metas synchronization before removing the internal
+    // sampling marker. Keep the session hook active during that update so any
+    // surviving metas listener that emits telemetry is still attributed and
+    // filtered with the current session.
     this.sessionManagerInstance?.unpatch();
-    this.sessionManagerInstance = undefined;
 
-    const sessionMetaListenerMetas = this.sessionMetaListenerMetas;
-    this.sessionMetaListenerMetas = undefined;
-    if (sessionMetaListenerMetas) {
-      sessionMetaListenerMetas.removeListener(this.sendSessionStartEvent);
-    }
-
-    if (ownedActiveHook && beforeSendHookApi) {
-      const session = beforeSendHookApi.getSession();
-      const sessionWithoutSamplingAttribute = removeInternalSamplingAttribute(session);
-      if (sessionWithoutSamplingAttribute !== session) {
-        beforeSendHookApi.setSession(sessionWithoutSamplingAttribute);
+    try {
+      if (ownedActiveHook && beforeSendHookApi) {
+        const session = beforeSendHookApi.getSession();
+        const sessionWithoutSamplingAttribute = removeInternalSamplingAttribute(session);
+        if (sessionWithoutSamplingAttribute !== session) {
+          this.isResettingSession = true;
+          try {
+            beforeSendHookApi.setSession(sessionWithoutSamplingAttribute);
+          } finally {
+            this.isResettingSession = false;
+          }
+        }
       }
-    }
+    } finally {
+      this.beforeSendHook = undefined;
+      this.beforeSendHookApi = undefined;
+      this.beforeSendHookTransports = undefined;
+      if (beforeSendHook && beforeSendHookTransports) {
+        if (ownedActiveHook) {
+          activeSessionBeforeSendHooks.delete(beforeSendHookTransports);
+        }
+        beforeSendHookTransports.removeBeforeSendHooks(beforeSendHook);
+      }
 
-    this.notifiedSession = undefined;
-    this.isResettingSession = false;
+      this.sessionManagerInstance = undefined;
+
+      const sessionMetaListenerMetas = this.sessionMetaListenerMetas;
+      this.sessionMetaListenerMetas = undefined;
+      if (sessionMetaListenerMetas) {
+        sessionMetaListenerMetas.removeListener(this.sendSessionStartEvent);
+      }
+
+      this.notifiedSession = undefined;
+      this.isResettingSession = false;
+    }
   }
 
   destroy(): void {
