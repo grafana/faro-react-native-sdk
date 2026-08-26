@@ -151,9 +151,10 @@ export class MmkvPersistentSessionsManager {
   private lastActivityWrite = 0;
   private wasBackgrounded = AppState.currentState === 'background';
   private metaUpdateHandler: ReturnType<typeof getSessionMetaUpdateHandler> | null = null;
-  private registeredMetas: Metas | null = null;
+  private readonly metas: Metas;
 
-  constructor() {
+  constructor(metas: Metas = faro.metas) {
+    this.metas = metas;
     this.updateUserSession = getUserSessionUpdater({
       fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
       recordUserSessionActivity: this.recordUserSessionActivity,
@@ -309,10 +310,8 @@ export class MmkvPersistentSessionsManager {
       fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
       storeUserSession: MmkvPersistentSessionsManager.storeUserSession,
     });
-    const registeredMetas = faro.metas;
-    registeredMetas.addListener(metaUpdateHandler);
+    this.metas.addListener(metaUpdateHandler);
     this.metaUpdateHandler = metaUpdateHandler;
-    this.registeredMetas = registeredMetas;
   }
 
   unpatch(): void {
@@ -324,11 +323,9 @@ export class MmkvPersistentSessionsManager {
     }
 
     const metaUpdateHandler = this.metaUpdateHandler;
-    const registeredMetas = this.registeredMetas;
     this.metaUpdateHandler = null;
-    this.registeredMetas = null;
-    if (metaUpdateHandler && registeredMetas) {
-      registeredMetas.removeListener(metaUpdateHandler);
+    if (metaUpdateHandler) {
+      this.metas.removeListener(metaUpdateHandler);
     }
   }
 }

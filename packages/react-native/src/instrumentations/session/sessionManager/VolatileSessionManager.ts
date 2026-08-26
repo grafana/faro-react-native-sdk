@@ -15,9 +15,10 @@ export class VolatileSessionsManager {
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
   private wasBackgrounded = AppState.currentState === 'background';
   private metaUpdateHandler: ReturnType<typeof getSessionMetaUpdateHandler> | null = null;
-  private registeredMetas: Metas | null = null;
+  private readonly metas: Metas;
 
-  constructor() {
+  constructor(metas: Metas = faro.metas) {
+    this.metas = metas;
     this.updateUserSession = getUserSessionUpdater({
       fetchUserSession: VolatileSessionsManager.fetchUserSession,
       storeUserSession: VolatileSessionsManager.storeUserSession,
@@ -71,10 +72,8 @@ export class VolatileSessionsManager {
       fetchUserSession: VolatileSessionsManager.fetchUserSession,
       storeUserSession: VolatileSessionsManager.storeUserSession,
     });
-    const registeredMetas = faro.metas;
-    registeredMetas.addListener(metaUpdateHandler);
+    this.metas.addListener(metaUpdateHandler);
     this.metaUpdateHandler = metaUpdateHandler;
-    this.registeredMetas = registeredMetas;
   }
 
   /**
@@ -87,11 +86,9 @@ export class VolatileSessionsManager {
     }
 
     const metaUpdateHandler = this.metaUpdateHandler;
-    const registeredMetas = this.registeredMetas;
     this.metaUpdateHandler = null;
-    this.registeredMetas = null;
-    if (metaUpdateHandler && registeredMetas) {
-      registeredMetas.removeListener(metaUpdateHandler);
+    if (metaUpdateHandler) {
+      this.metas.removeListener(metaUpdateHandler);
     }
   }
 }
