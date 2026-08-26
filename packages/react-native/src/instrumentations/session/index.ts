@@ -22,6 +22,11 @@ import type { SessionManager, SessionManagerInstance } from './sessionManager/ty
 
 const SESSION_INSTRUMENTATION_NAME = '@grafana/faro-react-native:instrumentation-session';
 
+// faro-core <2.10 retains removed hooks. Track the current hook per transport so
+// a superseded hook cannot veto its replacement; a detached hook with no
+// replacement still enforces its original sampling decision.
+const activeSessionBeforeSendHooks = new WeakMap<Transports, BeforeSendHook>();
+
 /**
  * Starts a new linked session at an application-defined boundary.
  *
@@ -82,11 +87,6 @@ export class SessionInstrumentation extends BaseInstrumentation {
   };
 
   private registerSessionMetaListener(): void {
-    if (this.sessionMetaListenerMetas === this.metas) {
-      return;
-    }
-
-    this.sessionMetaListenerMetas?.removeListener(this.sendSessionStartEvent);
     this.metas.addListener(this.sendSessionStartEvent);
     this.sessionMetaListenerMetas = this.metas;
   }
@@ -184,7 +184,13 @@ export class SessionInstrumentation extends BaseInstrumentation {
   }
 
   private registerBeforeSendHook(SessionManagerClass: SessionManager): void {
+    const registeredTransports = this.transports;
     const beforeSendHook: BeforeSendHook = (item: TransportItem) => {
+      const activeBeforeSendHook = activeSessionBeforeSendHooks.get(registeredTransports);
+      if (activeBeforeSendHook != null && activeBeforeSendHook !== beforeSendHook) {
+        return item;
+      }
+
       let nextItem = item;
       let fallbackSamplingDecision: boolean | undefined;
       const sessionManager = this.beforeSendHook === beforeSendHook ? this.sessionManagerInstance : undefined;
@@ -257,8 +263,9 @@ export class SessionInstrumentation extends BaseInstrumentation {
     };
 
     this.beforeSendHook = beforeSendHook;
-    this.beforeSendHookTransports = this.transports;
-    this.transports.addBeforeSendHooks(beforeSendHook);
+    this.beforeSendHookTransports = registeredTransports;
+    registeredTransports.addBeforeSendHooks(beforeSendHook);
+    activeSessionBeforeSendHooks.set(registeredTransports, beforeSendHook);
   }
 
   initialize(): void {
@@ -340,6 +347,9 @@ export class SessionInstrumentation extends BaseInstrumentation {
     this.beforeSendHook = undefined;
     this.beforeSendHookTransports = undefined;
     if (beforeSendHook && beforeSendHookTransports) {
+      if (activeSessionBeforeSendHooks.get(beforeSendHookTransports) === beforeSendHook) {
+        activeSessionBeforeSendHooks.delete(beforeSendHookTransports);
+      }
       beforeSendHookTransports.removeBeforeSendHooks(beforeSendHook);
     }
 
