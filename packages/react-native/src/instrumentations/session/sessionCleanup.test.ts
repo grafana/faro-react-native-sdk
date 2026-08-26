@@ -127,9 +127,9 @@ describe('session cleanup', () => {
 
     const beforeSendHooks = faro.transports.getBeforeSendHooks();
     expect(beforeSendHooks).toHaveLength(2);
-    const beforeSendHook = beforeSendHooks.at(-1);
-    if (beforeSendHook == null) {
-      throw new Error('Expected the session before-send hook to be registered.');
+    const [fallbackHook, beforeSendHook] = beforeSendHooks;
+    if (fallbackHook == null || beforeSendHook == null) {
+      throw new Error('Expected the sampling fallback and session before-send hooks to be registered.');
     }
     expectSampledItem(beforeSendHook(sessionItem(true)));
 
@@ -164,6 +164,8 @@ describe('session cleanup', () => {
     // item still carries the sampling decision that the hook must enforce.
     expect(beforeSendHook(sessionItem(false))).toBeNull();
     expectSampledItem(beforeSendHook(sessionItem(true)));
+    expect(fallbackHook(sessionItem(false))).toBeNull();
+    expectSampledItem(fallbackHook(sessionItem(true)));
 
     expect(faro.api.getSession()?.attributes?.['isSampled']).toBeUndefined();
     const itemsAfterDestroy = transport.items.length;
@@ -193,6 +195,26 @@ describe('session cleanup', () => {
     const addReplacementListenerSpy = jest.spyOn(replacementFaro.metas, 'addListener');
     const removeReplacementListenerSpy = jest.spyOn(replacementFaro.metas, 'removeListener');
     const manager = new VolatileSessionsManager(registeredFaro.metas);
+    const handler = addListenerSpy.mock.calls[0]?.[0];
+
+    manager.unpatch();
+
+    expect(addListenerSpy).toHaveBeenCalledWith(handler);
+    expect(addReplacementListenerSpy).not.toHaveBeenCalled();
+    expect(removeRegisteredListenerSpy).toHaveBeenCalledWith(handler);
+    expect(removeReplacementListenerSpy).not.toHaveBeenCalled();
+  });
+
+  it('binds a persistent manager listener to the supplied metas instance', async () => {
+    const registeredFaro = await initializeWithoutInstrumentations();
+    const addListenerSpy = jest.spyOn(registeredFaro.metas, 'addListener');
+    const removeRegisteredListenerSpy = jest.spyOn(registeredFaro.metas, 'removeListener');
+    const replacementFaro = await initializeWithoutInstrumentations();
+    const addReplacementListenerSpy = jest.spyOn(replacementFaro.metas, 'addListener');
+    const removeReplacementListenerSpy = jest.spyOn(replacementFaro.metas, 'removeListener');
+    jest.spyOn(MmkvPersistentSessionsManager, 'fetchUserSession').mockReturnValue(null);
+    jest.spyOn(MmkvPersistentSessionsManager, 'storeUserSession').mockImplementation();
+    const manager = new MmkvPersistentSessionsManager(registeredFaro.metas);
     const handler = addListenerSpy.mock.calls[0]?.[0];
 
     manager.unpatch();

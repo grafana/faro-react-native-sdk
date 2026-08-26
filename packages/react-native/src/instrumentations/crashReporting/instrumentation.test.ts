@@ -177,6 +177,48 @@ describe('CrashReportingInstrumentation', () => {
     );
   });
 
+  it('retains the crash-time sampling decision across same-session metadata updates', () => {
+    const setup = setupAndroidReplay([]);
+    androidInstrumentations.push(setup.instrumentation);
+
+    setup.faro.api.setSession({
+      id: 'session-b',
+      attributes: { isSampled: 'false' },
+    });
+    const callsBeforeMetadataUpdate = setup.nativeModule.recordCrashSessionContext.mock.calls.length;
+    expect(setup.nativeModule.recordCrashSessionContext).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: 'session-b', isSampled: false })
+    );
+
+    setup.faro.api.setSession({
+      id: 'session-b',
+      attributes: { custom: 'value' },
+    });
+
+    expect(setup.nativeModule.recordCrashSessionContext).toHaveBeenCalledTimes(callsBeforeMetadataUpdate);
+  });
+
+  it('does not carry a sampling decision into a different session', () => {
+    const setup = setupAndroidReplay([]);
+    androidInstrumentations.push(setup.instrumentation);
+
+    setup.faro.api.setSession({
+      id: 'session-b',
+      attributes: { isSampled: 'false' },
+    });
+
+    setup.faro.api.setSession({ id: 'session-c' });
+
+    const recordedContext = setup.nativeModule.recordCrashSessionContext.mock.lastCall?.[0];
+    expect(recordedContext).toEqual(
+      expect.objectContaining({
+        sessionId: 'session-c',
+        activatedAt: expect.any(Number),
+      })
+    );
+    expect(recordedContext).not.toHaveProperty('isSampled');
+  });
+
   it('replays an iOS crash with its original session and acknowledges it after delivery', async () => {
     const crashTimestamp = Date.now() - 1000;
     const setup = setupIosReplay([

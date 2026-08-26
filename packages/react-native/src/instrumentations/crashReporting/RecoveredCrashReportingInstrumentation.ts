@@ -30,6 +30,7 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
   private lastRecordedSessionSignature: string | null = null;
   private activeSessionId: string | null = null;
   private activeSessionActivatedAtMs = 0;
+  private activeSessionIsSampled: boolean | undefined;
 
   private readonly recordSessionContextListener = (meta: Meta): void => {
     this.recordSessionContext(meta);
@@ -140,10 +141,15 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
     if (this.activeSessionId !== sessionId) {
       this.activeSessionId = sessionId;
       this.activeSessionActivatedAtMs = Date.now();
+      this.activeSessionIsSampled = undefined;
     }
 
     const sampledValue = meta.session?.attributes?.['isSampled'];
-    const isSampled = sampledValue === 'true' ? true : sampledValue === 'false' ? false : undefined;
+    const incomingIsSampled = sampledValue === 'true' ? true : sampledValue === 'false' ? false : undefined;
+    if (incomingIsSampled !== undefined) {
+      this.activeSessionIsSampled = incomingIsSampled;
+    }
+    const isSampled = incomingIsSampled ?? this.activeSessionIsSampled;
     const sessionContext = {
       sessionId,
       activatedAt: this.activeSessionActivatedAtMs,
@@ -265,6 +271,7 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
     this.lastRecordedSessionSignature = null;
     this.activeSessionId = null;
     this.activeSessionActivatedAtMs = 0;
+    this.activeSessionIsSampled = undefined;
     super.unpatch();
   }
 }
