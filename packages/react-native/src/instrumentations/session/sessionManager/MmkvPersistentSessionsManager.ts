@@ -2,6 +2,7 @@ import { AppState, type AppStateStatus, Platform } from 'react-native';
 import type { MMKV } from 'react-native-mmkv';
 
 import { dateNow, faro } from '@grafana/faro-core';
+import type { Metas } from '@grafana/faro-core';
 
 import { SessionActivityKind } from '../sessionActivity';
 import {
@@ -149,9 +150,11 @@ export class MmkvPersistentSessionsManager {
   private hasPendingActivityWrite = false;
   private lastActivityWrite = 0;
   private wasBackgrounded = AppState.currentState === 'background';
-  private metaUnsubscribe: (() => void) | null = null;
+  private metaUpdateHandler: ReturnType<typeof getSessionMetaUpdateHandler> | null = null;
+  private readonly metas: Metas;
 
-  constructor() {
+  constructor(metas: Metas = faro.metas) {
+    this.metas = metas;
     this.updateUserSession = getUserSessionUpdater({
       fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
       recordUserSessionActivity: this.recordUserSessionActivity,
@@ -303,13 +306,12 @@ export class MmkvPersistentSessionsManager {
   private init(): void {
     this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
 
-    const unsubscribe = faro.metas.addListener(
-      getSessionMetaUpdateHandler({
-        fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
-        storeUserSession: MmkvPersistentSessionsManager.storeUserSession,
-      })
-    );
-    this.metaUnsubscribe = typeof unsubscribe === 'function' ? unsubscribe : null;
+    const metaUpdateHandler = getSessionMetaUpdateHandler({
+      fetchUserSession: MmkvPersistentSessionsManager.fetchUserSession,
+      storeUserSession: MmkvPersistentSessionsManager.storeUserSession,
+    });
+    this.metas.addListener(metaUpdateHandler);
+    this.metaUpdateHandler = metaUpdateHandler;
   }
 
   unpatch(): void {
@@ -320,9 +322,10 @@ export class MmkvPersistentSessionsManager {
       this.appStateSubscription = null;
     }
 
-    if (this.metaUnsubscribe) {
-      this.metaUnsubscribe();
-      this.metaUnsubscribe = null;
+    const metaUpdateHandler = this.metaUpdateHandler;
+    this.metaUpdateHandler = null;
+    if (metaUpdateHandler) {
+      this.metas.removeListener(metaUpdateHandler);
     }
   }
 }

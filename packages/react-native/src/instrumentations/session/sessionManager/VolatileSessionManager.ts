@@ -1,6 +1,7 @@
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { faro } from '@grafana/faro-core';
+import type { Metas } from '@grafana/faro-core';
 
 import { SessionActivityKind } from '../sessionActivity';
 
@@ -13,9 +14,11 @@ export class VolatileSessionsManager {
   private updateUserSession: ReturnType<typeof getUserSessionUpdater>;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
   private wasBackgrounded = AppState.currentState === 'background';
-  private metaUnsubscribe: (() => void) | null = null;
+  private metaUpdateHandler: ReturnType<typeof getSessionMetaUpdateHandler> | null = null;
+  private readonly metas: Metas;
 
-  constructor() {
+  constructor(metas: Metas = faro.metas) {
+    this.metas = metas;
     this.updateUserSession = getUserSessionUpdater({
       fetchUserSession: VolatileSessionsManager.fetchUserSession,
       storeUserSession: VolatileSessionsManager.storeUserSession,
@@ -65,13 +68,12 @@ export class VolatileSessionsManager {
     this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
 
     // Users can call the setSession() method, so we need to sync this with the in-memory session
-    const unsubscribe = faro.metas.addListener(
-      getSessionMetaUpdateHandler({
-        fetchUserSession: VolatileSessionsManager.fetchUserSession,
-        storeUserSession: VolatileSessionsManager.storeUserSession,
-      })
-    );
-    this.metaUnsubscribe = typeof unsubscribe === 'function' ? unsubscribe : null;
+    const metaUpdateHandler = getSessionMetaUpdateHandler({
+      fetchUserSession: VolatileSessionsManager.fetchUserSession,
+      storeUserSession: VolatileSessionsManager.storeUserSession,
+    });
+    this.metas.addListener(metaUpdateHandler);
+    this.metaUpdateHandler = metaUpdateHandler;
   }
 
   /**
@@ -83,9 +85,10 @@ export class VolatileSessionsManager {
       this.appStateSubscription = null;
     }
 
-    if (this.metaUnsubscribe) {
-      this.metaUnsubscribe();
-      this.metaUnsubscribe = null;
+    const metaUpdateHandler = this.metaUpdateHandler;
+    this.metaUpdateHandler = null;
+    if (metaUpdateHandler) {
+      this.metas.removeListener(metaUpdateHandler);
     }
   }
 }

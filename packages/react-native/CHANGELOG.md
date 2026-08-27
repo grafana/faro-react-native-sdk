@@ -114,6 +114,13 @@
 
 ### Fixed
 
+- Calling `SessionInstrumentation.destroy()` or `unpatch()` now removes its
+  metadata listeners and stops further session rotation or activity processing.
+  New telemetry created after teardown is no longer filtered by the removed
+  instrumentation. With no replacement active, queued items still apply their
+  captured sampling decision and strip internal sampling metadata. Any retained
+  hook yields to a replacement session hook on the same Faro instance.
+  ([#162](https://github.com/grafana/faro-react-native-sdk/issues/162))
 - Session expiry is checked before attribution, so telemetry that triggers a
   rotation carries the new linked session ID instead of the expired one.
 - Recovered crashes retain their crash-time session without rotating or

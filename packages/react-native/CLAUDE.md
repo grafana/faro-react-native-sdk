@@ -94,6 +94,10 @@ export class MyInstrumentation extends BaseInstrumentation {
     // Optional cleanup
     // Restore original APIs, remove listeners
   }
+
+  destroy(): void {
+    this.unpatch();
+  }
 }
 ```
 
@@ -103,6 +107,8 @@ export class MyInstrumentation extends BaseInstrumentation {
 2. Use `this.api` to access Faro API (pushEvent, pushLog, pushError, etc.)
 3. Use `this.logDebug()` / `this.logInfo()` for internal logging (never console.log)
 4. Handle missing globals gracefully (check if API exists before patching)
+5. Keep `unpatch()` idempotent and forward `destroy()` to it; Faro Core's
+   instrumentation lifecycle invokes `destroy()`
 
 ### Session Management
 
@@ -410,7 +416,8 @@ try {
 - Coalesce high-frequency native writes while keeping runtime state current
 - Batch telemetry items when possible
 - Avoid synchronous heavy operations in hot paths
-- Clean up listeners and timers in `unpatch()`
+- Clean up listeners and timers in an idempotent `unpatch()`, and call it from
+  `destroy()`
 
 ## Common Maintenance Tasks
 
@@ -422,10 +429,12 @@ try {
 4. Export from `src/index.ts`
 5. Add to `getRNInstrumentations()` if it should be included by default
 6. Document in main README.md
+7. Implement `destroy()` as the Faro lifecycle bridge to `unpatch()`
 
 ### Updating @grafana/faro-core
 
-**Be very careful** - we're pinned to 2.0.2 for stability:
+**Be very careful** - `@grafana/faro-core` is declared with a caret range. Check
+both `package.json` and the lockfile before relying on lifecycle behavior:
 
 1. Check changelog for breaking changes
 2. Update version in package.json

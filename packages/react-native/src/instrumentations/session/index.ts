@@ -1,5 +1,15 @@
 import { BaseInstrumentation, dateNow, EVENT_SESSION_START, faro, VERSION } from '@grafana/faro-core';
-import type { Config, Meta, MetaSession, TransportItem, UserActionInternalInterface } from '@grafana/faro-core';
+import type {
+  API,
+  BeforeSendHook,
+  Config,
+  Meta,
+  Metas,
+  MetaSession,
+  TransportItem,
+  Transports,
+  UserActionInternalInterface,
+} from '@grafana/faro-core';
 
 import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '../../config/types';
 
@@ -12,6 +22,73 @@ import { createUserSessionObject, isUserSessionValid } from './sessionManager/se
 import type { SessionManager, SessionManagerInstance } from './sessionManager/types';
 
 const SESSION_INSTRUMENTATION_NAME = '@grafana/faro-react-native:instrumentation-session';
+
+// Track the current session hook per transport so superseded hooks yield to a
+// replacement. The shared fallback preserves sampling decisions captured on
+// queued items after the owning instrumentation has detached.
+const activeSessionBeforeSendHooks = new WeakMap<Transports, BeforeSendHook>();
+const sessionSamplingFallbackHooks = new WeakMap<Transports, BeforeSendHook>();
+
+function applySessionSampling(item: TransportItem, fallbackSamplingDecision?: boolean): TransportItem | null {
+  const attributes = item.meta.session?.attributes;
+  const samplingAttribute = attributes?.['isSampled'] ?? fallbackSamplingDecision?.toString();
+
+  if (samplingAttribute === 'false') {
+    return null;
+  }
+
+  if (samplingAttribute !== 'true') {
+    return item;
+  }
+
+  const sampledItem: TransportItem = {
+    ...item,
+    meta: {
+      ...item.meta,
+      session: item.meta.session
+        ? {
+            ...item.meta.session,
+            attributes: item.meta.session.attributes ? { ...item.meta.session.attributes } : undefined,
+          }
+        : undefined,
+    },
+  };
+
+  const sampledAttributes = sampledItem.meta.session?.attributes;
+  delete sampledAttributes?.['isSampled'];
+
+  if (Object.keys(sampledAttributes ?? {}).length === 0) {
+    delete sampledItem.meta.session?.attributes;
+  }
+
+  return sampledItem;
+}
+
+function ensureSessionSamplingFallback(transports: Transports): void {
+  if (sessionSamplingFallbackHooks.has(transports)) {
+    return;
+  }
+
+  const fallbackHook: BeforeSendHook = (item) =>
+    activeSessionBeforeSendHooks.has(transports) ? item : applySessionSampling(item);
+
+  transports.addBeforeSendHooks(fallbackHook);
+  sessionSamplingFallbackHooks.set(transports, fallbackHook);
+}
+
+function removeInternalSamplingAttribute(session: MetaSession | undefined): MetaSession | undefined {
+  if (session?.attributes?.['isSampled'] == null) {
+    return session;
+  }
+
+  const attributes = { ...session.attributes };
+  delete attributes['isSampled'];
+
+  return {
+    ...session,
+    attributes: Object.keys(attributes).length === 0 ? undefined : attributes,
+  };
+}
 
 /**
  * Starts a new linked session at an application-defined boundary.
@@ -46,9 +123,13 @@ export class SessionInstrumentation extends BaseInstrumentation {
   // previously notified session, to ensure we don't send session start
   // event twice for the same session
   private notifiedSession: MetaSession | undefined;
-  private sessionManagerInstance: InstanceType<SessionManager> | undefined;
+  private sessionManagerInstance: SessionManagerInstance | undefined;
   private isResettingSession = false;
   private unregisterDirectSessionActivity: (() => void) | undefined;
+  private sessionMetaListenerMetas: Metas | undefined;
+  private beforeSendHookApi: API | undefined;
+  private beforeSendHook: BeforeSendHook | undefined;
+  private beforeSendHookTransports: Transports | undefined;
 
   private getDefaultSessionDeviceAttributes(): SessionAttributes {
     const cfg = this.config as ReactNativeFullConfig;
@@ -58,7 +139,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     return minimalSessionDeviceAttributes();
   }
 
-  private sendSessionStartEvent(meta: Meta): void {
+  private readonly sendSessionStartEvent = (meta: Meta): void => {
     const session = meta.session;
 
     if (session && session.id !== this.notifiedSession?.id) {
@@ -67,6 +148,11 @@ export class SessionInstrumentation extends BaseInstrumentation {
       // automatically
       this.api.pushEvent(EVENT_SESSION_START, {}, undefined, { skipDedupe: true });
     }
+  };
+
+  private registerSessionMetaListener(): void {
+    this.metas.addListener(this.sendSessionStartEvent);
+    this.sessionMetaListenerMetas = this.metas;
   }
 
   private createInitialSession(
@@ -161,75 +247,62 @@ export class SessionInstrumentation extends BaseInstrumentation {
     return { initialSession, emitSessionStartOnInit };
   }
 
-  private registerBeforeSendHook(sessionManager: SessionManagerInstance, SessionManagerClass: SessionManager): void {
-    this.transports?.addBeforeSendHooks((item: TransportItem) => {
-      const storedSession = SessionManagerClass.fetchUserSession();
-      const recoveredCrash = isRecoveredCrashItem(item, storedSession?.sessionId);
-      // Ending an active action can send telemetry synchronously. Keep that
-      // telemetry on the current session until the explicit reset completes.
-      const checkedSession = recoveredCrash
-        ? null
-        : this.isResettingSession
-          ? storedSession
-          : sessionManager.checkSession(classifySessionActivity(item), storedSession);
+  private registerBeforeSendHook(SessionManagerClass: SessionManager): void {
+    const registeredTransports = this.transports;
+    ensureSessionSamplingFallback(registeredTransports);
+
+    const beforeSendHook: BeforeSendHook = (item: TransportItem) => {
+      const activeBeforeSendHook = activeSessionBeforeSendHooks.get(registeredTransports);
+      if (activeBeforeSendHook != null && activeBeforeSendHook !== beforeSendHook) {
+        return item;
+      }
 
       let nextItem = item;
-      if (checkedSession?.sessionMeta != null && item.meta.session?.id !== checkedSession.sessionId) {
-        nextItem = {
-          ...item,
-          meta: {
-            ...item.meta,
-            session: checkedSession.sessionMeta,
-          },
-        };
-      }
+      let fallbackSamplingDecision: boolean | undefined;
+      const sessionManager = this.beforeSendHook === beforeSendHook ? this.sessionManagerInstance : undefined;
 
-      const attributes = nextItem.meta.session?.attributes;
-      // New crash records carry the crash-time decision. Older records may not,
-      // so retain the previous behavior and use the live session's stable
-      // decision rather than implicitly sampling every recovered crash.
-      const fallbackSamplingDecision = recoveredCrash ? storedSession?.isSampled : checkedSession?.isSampled;
-      const samplingAttribute = attributes?.['isSampled'] ?? fallbackSamplingDecision?.toString();
+      if (sessionManager != null) {
+        const storedSession = SessionManagerClass.fetchUserSession();
+        const recoveredCrash = isRecoveredCrashItem(item, storedSession?.sessionId);
+        // Ending an active action can send telemetry synchronously. Keep that
+        // telemetry on the current session until the explicit reset completes.
+        const checkedSession = recoveredCrash
+          ? null
+          : this.isResettingSession
+            ? storedSession
+            : sessionManager.checkSession(classifySessionActivity(item), storedSession);
 
-      // Only filter out items when session is explicitly NOT sampled (isSampled='false')
-      // If isSampled='true', remove the attribute before sending (it's internal)
-      // Fall back to the manager's stable decision when item metadata omits it.
-      if (samplingAttribute === 'false') {
-        // Session is not sampled - drop this item
-        return null;
-      }
-
-      if (samplingAttribute === 'true') {
-        // Session is sampled - remove internal isSampled attribute before sending
-        const newItem: TransportItem = {
-          ...nextItem,
-          meta: {
-            ...nextItem.meta,
-            session: nextItem.meta.session
-              ? {
-                  ...nextItem.meta.session,
-                  attributes: nextItem.meta.session.attributes ? { ...nextItem.meta.session.attributes } : undefined,
-                }
-              : undefined,
-          },
-        };
-
-        const newAttributes = newItem.meta.session?.attributes;
-        delete newAttributes?.['isSampled'];
-
-        if (Object.keys(newAttributes ?? {}).length === 0) {
-          delete newItem.meta.session?.attributes;
+        if (checkedSession?.sessionMeta != null && item.meta.session?.id !== checkedSession.sessionId) {
+          nextItem = {
+            ...item,
+            meta: {
+              ...item.meta,
+              session: checkedSession.sessionMeta,
+            },
+          };
         }
 
-        return newItem;
+        // New crash records carry the crash-time decision. Older records may not,
+        // so retain the previous behavior and use the live session's stable
+        // decision rather than implicitly sampling every recovered crash.
+        fallbackSamplingDecision = recoveredCrash ? storedSession?.isSampled : checkedSession?.isSampled;
       }
 
-      // No isSampled attribute or other value - pass through unchanged
-      return nextItem;
-    });
+      return applySessionSampling(nextItem, fallbackSamplingDecision);
+    };
+
+    this.beforeSendHook = beforeSendHook;
+    this.beforeSendHookApi = this.api;
+    this.beforeSendHookTransports = registeredTransports;
+    registeredTransports.addBeforeSendHooks(beforeSendHook);
+    activeSessionBeforeSendHooks.set(registeredTransports, beforeSendHook);
   }
 
   initialize(): void {
+    // BaseInstrumentation instances can be registered more than once. Detach
+    // every resource from the previous Faro instance before binding the next.
+    this.unpatch();
+
     const sessionTrackingConfig = this.config.sessionTracking;
 
     // A new initialization owns direct-activity routing, including when
@@ -237,7 +310,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     clearDirectSessionActivityHandler();
 
     if (!sessionTrackingConfig?.enabled) {
-      this.metas.addListener(this.sendSessionStartEvent.bind(this));
+      this.registerSessionMetaListener();
       return;
     }
 
@@ -246,9 +319,9 @@ export class SessionInstrumentation extends BaseInstrumentation {
     // Constructing a manager registers an AppState subscription and a metas
     // listener, so exactly one instance is created and reused. It is also the
     // instance `unpatch()` cleans up.
-    this.sessionManagerInstance = new SessionManagerClass();
+    this.sessionManagerInstance = new SessionManagerClass(this.metas);
 
-    this.registerBeforeSendHook(this.sessionManagerInstance, SessionManagerClass);
+    this.registerBeforeSendHook(SessionManagerClass);
 
     const { initialSession, emitSessionStartOnInit } = this.createInitialSession(
       SessionManagerClass,
@@ -268,7 +341,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
       this.sessionManagerInstance?.checkSession(SessionActivityKind.Meaningful);
     });
 
-    this.metas.addListener(this.sendSessionStartEvent.bind(this));
+    this.registerSessionMetaListener();
   }
 
   /** Starts a new linked session immediately. */
@@ -298,7 +371,59 @@ export class SessionInstrumentation extends BaseInstrumentation {
   unpatch(): void {
     this.unregisterDirectSessionActivity?.();
     this.unregisterDirectSessionActivity = undefined;
+
+    const beforeSendHook = this.beforeSendHook;
+    const beforeSendHookApi = this.beforeSendHookApi;
+    const beforeSendHookTransports = this.beforeSendHookTransports;
+    const ownedActiveHook =
+      beforeSendHook != null &&
+      beforeSendHookTransports != null &&
+      activeSessionBeforeSendHooks.get(beforeSendHookTransports) === beforeSendHook;
+
+    // Stop the manager's metas synchronization before removing the internal
+    // sampling marker. Keep the session hook active during that update so any
+    // surviving metas listener that emits telemetry is still attributed and
+    // filtered with the current session.
     this.sessionManagerInstance?.unpatch();
-    this.sessionManagerInstance = undefined;
+
+    try {
+      if (ownedActiveHook && beforeSendHookApi) {
+        const session = beforeSendHookApi.getSession();
+        const sessionWithoutSamplingAttribute = removeInternalSamplingAttribute(session);
+        if (sessionWithoutSamplingAttribute !== session) {
+          this.isResettingSession = true;
+          try {
+            beforeSendHookApi.setSession(sessionWithoutSamplingAttribute);
+          } finally {
+            this.isResettingSession = false;
+          }
+        }
+      }
+    } finally {
+      this.beforeSendHook = undefined;
+      this.beforeSendHookApi = undefined;
+      this.beforeSendHookTransports = undefined;
+      if (beforeSendHook && beforeSendHookTransports) {
+        if (ownedActiveHook) {
+          activeSessionBeforeSendHooks.delete(beforeSendHookTransports);
+        }
+        beforeSendHookTransports.removeBeforeSendHooks(beforeSendHook);
+      }
+
+      this.sessionManagerInstance = undefined;
+
+      const sessionMetaListenerMetas = this.sessionMetaListenerMetas;
+      this.sessionMetaListenerMetas = undefined;
+      if (sessionMetaListenerMetas) {
+        sessionMetaListenerMetas.removeListener(this.sendSessionStartEvent);
+      }
+
+      this.notifiedSession = undefined;
+      this.isResettingSession = false;
+    }
+  }
+
+  destroy(): void {
+    this.unpatch();
   }
 }
