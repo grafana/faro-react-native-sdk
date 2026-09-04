@@ -209,6 +209,10 @@ new TracingInstrumentation({
 });
 ```
 
+A custom span processor remains reusable when Faro removes and later re-adds the tracing instrumentation. Removal
+flushes the processor without shutting it down. Calling `TracingInstrumentation.shutdown()` shuts it down and is
+terminal for that processor; use a new processor before initializing the instrumentation again.
+
 ## Usage Examples
 
 ### Automatic HTTP Tracing

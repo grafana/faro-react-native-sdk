@@ -1,8 +1,9 @@
-import { context, propagation, trace } from '@opentelemetry/api';
-import type { MeterProvider, TracerProvider } from '@opentelemetry/api';
+import { context, propagation, ROOT_CONTEXT, trace } from '@opentelemetry/api';
+import type { Context, ContextManager, MeterProvider, TracerProvider } from '@opentelemetry/api';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import type { Instrumentation, InstrumentationConfig } from '@opentelemetry/instrumentation';
-import { BasicTracerProvider } from '@opentelemetry/sdk-trace-base';
+import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import type { SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { StackContextManager } from '@opentelemetry/sdk-trace-web';
 
@@ -10,6 +11,7 @@ import { getInternalFaroFromGlobalObject, initializeFaro } from '@grafana/faro-c
 import type { Faro } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
+import { FaroTraceExporter } from './exporters/faroTraceExporter';
 import { TracingInstrumentation } from './instrumentation';
 import type { TracingInstrumentationOptions } from './types';
 
@@ -105,10 +107,49 @@ class ThrowingEnableInstrumentation extends FetchTestInstrumentation {
   }
 }
 
-function createSpanProcessor(shutdown: () => Promise<void> = async () => {}): SpanProcessor {
+class StatefulContextManager implements ContextManager {
+  disableCalls = 0;
+  enableCalls = 0;
+  enabled = false;
+
+  active(): Context {
+    return ROOT_CONTEXT;
+  }
+
+  bind<T>(_context: Context, target: T): T {
+    return target;
+  }
+
+  disable(): this {
+    this.disableCalls += 1;
+    this.enabled = false;
+    return this;
+  }
+
+  enable(): this {
+    this.enableCalls += 1;
+    this.enabled = true;
+    return this;
+  }
+
+  with<A extends unknown[], F extends (...args: A) => ReturnType<F>>(
+    _context: Context,
+    fn: F,
+    thisArg?: ThisParameterType<F>,
+    ...args: A
+  ): ReturnType<F> {
+    return fn.call(thisArg, ...args);
+  }
+}
+
+function createSpanProcessor(
+  shutdown: () => Promise<void> = async () => {},
+  forceFlush: () => Promise<void> = async () => {}
+): SpanProcessor {
   return {
-    forceFlush: jest.fn().mockResolvedValue(undefined),
+    forceFlush: jest.fn(forceFlush),
     onEnd: jest.fn(),
+    onEnding: jest.fn(),
     onStart: jest.fn(),
     shutdown: jest.fn(shutdown),
   };
@@ -145,6 +186,24 @@ describe('TracingInstrumentation teardown', () => {
     return { faro, tracingInstrumentation };
   }
 
+  function addDefaultTracingInstrumentation(): {
+    faro: FaroWithOtel;
+    tracingInstrumentation: TracingInstrumentation;
+  } {
+    const faro = initializeFaro(
+      mockConfig({
+        instrumentations: [],
+        transports: [new MockTransport()],
+      })
+    ) as FaroWithOtel;
+    getInternalFaroMock.mockReturnValue(faro);
+    const tracingInstrumentation = new TracingInstrumentation({ instrumentations: [] });
+    tracingInstrumentations.push(tracingInstrumentation);
+    faro.instrumentations.add(tracingInstrumentation);
+
+    return { faro, tracingInstrumentation };
+  }
+
   beforeEach(() => {
     trace.disable();
     context.disable();
@@ -152,7 +211,12 @@ describe('TracingInstrumentation teardown', () => {
     getInternalFaroMock.mockReset();
 
     originalFetch = globalThis.fetch;
-    globalThis.fetch = jest.fn().mockResolvedValue({ ok: true }) as unknown as typeof fetch;
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      clone: () => ({ body: null }),
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+    }) as unknown as typeof fetch;
   });
 
   afterEach(async () => {
@@ -181,6 +245,7 @@ describe('TracingInstrumentation teardown', () => {
     const { faro, tracingInstrumentation } = addTracingInstrumentation(otelInstrumentation, spanProcessor);
 
     expect(faro.otel).toEqual({ trace, context });
+    expect(otelInstrumentation.enableCalls).toBe(1);
     await globalThis.fetch('https://example.com');
     expect(otelInstrumentation.requestCount).toBe(1);
 
@@ -251,29 +316,32 @@ describe('TracingInstrumentation teardown', () => {
     expect(defaultDisableSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('detaches synchronously during Faro removal and handles shutdown rejection', async () => {
-    const shutdownError = new Error('provider shutdown failed');
+  it('detaches synchronously during Faro removal and handles flush rejection', async () => {
+    const flushError = new Error('provider flush failed');
     const otelInstrumentation = new FetchTestInstrumentation();
-    const spanProcessor = createSpanProcessor(async () => {
-      throw shutdownError;
-    });
+    const spanProcessor = createSpanProcessor(
+      async () => {},
+      async () => {
+        throw flushError;
+      }
+    );
     const { faro, tracingInstrumentation } = addTracingInstrumentation(otelInstrumentation, spanProcessor);
     const loggerSpy = jest.spyOn(faro.internalLogger, 'error').mockImplementation(() => {});
 
     faro.instrumentations.remove(tracingInstrumentation);
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(otelInstrumentation.disableCalls).toBe(1);
     expect(faro.otel).toBeUndefined();
     expect(faro.instrumentations.instrumentations).not.toContain(tracingInstrumentation);
-
-    await expect(tracingInstrumentation.shutdown()).rejects.toBe(shutdownError);
     expect(loggerSpy).toHaveBeenCalledWith(
       expect.stringContaining('@grafana/faro-react-native-tracing'),
-      expect.stringContaining('Failed to shut down the OpenTelemetry tracer provider'),
-      shutdownError
+      expect.stringContaining('Failed to flush the OpenTelemetry tracer provider'),
+      expect.arrayContaining([flushError])
     );
+    expect(spanProcessor.shutdown).not.toHaveBeenCalled();
 
-    tracingInstrumentation.destroy();
+    await tracingInstrumentation.shutdown();
     expect(otelInstrumentation.disableCalls).toBe(1);
     expect(spanProcessor.shutdown).toHaveBeenCalledTimes(1);
   });
@@ -319,24 +387,18 @@ describe('TracingInstrumentation teardown', () => {
     expect(otelInstrumentation.requestCount).toBe(0);
   });
 
-  it('handles a synchronous provider shutdown failure during Faro removal', async () => {
+  it('releases a supplied processor after removal when its shutdown throws synchronously', async () => {
     const shutdownError = new Error('provider shutdown threw');
     const otelInstrumentation = new FetchTestInstrumentation();
     const spanProcessor = createSpanProcessor(() => {
       throw shutdownError;
     });
     const { faro, tracingInstrumentation } = addTracingInstrumentation(otelInstrumentation, spanProcessor);
-    const loggerSpy = jest.spyOn(faro.internalLogger, 'error').mockImplementation(() => {});
-
     faro.instrumentations.remove(tracingInstrumentation);
 
     expect(otelInstrumentation.disableCalls).toBe(1);
     await expect(tracingInstrumentation.shutdown()).rejects.toBe(shutdownError);
-    expect(loggerSpy).toHaveBeenCalledWith(
-      expect.stringContaining('@grafana/faro-react-native-tracing'),
-      expect.stringContaining('Failed to shut down the OpenTelemetry tracer provider'),
-      shutdownError
-    );
+    expect(spanProcessor.shutdown).toHaveBeenCalledTimes(1);
   });
 
   it('does not replace a newer faro.otel owner during cleanup', async () => {
@@ -351,21 +413,19 @@ describe('TracingInstrumentation teardown', () => {
     expect(faro.otel).toBe(replacementOtel);
   });
 
-  it('waits for every provider shutdown before reporting a failure', async () => {
-    let rejectFirstShutdown: (error: Error) => void = () => {};
-    let resolveSecondShutdown: () => void = () => {};
-    const firstShutdown = new Promise<void>((_resolve, reject) => {
-      rejectFirstShutdown = reject;
+  it('waits for every provider cleanup before shutting down a supplied processor', async () => {
+    let resolveFirstFlush: () => void = () => {};
+    let resolveSecondFlush: () => void = () => {};
+    const firstFlush = new Promise<void>((resolve) => {
+      resolveFirstFlush = resolve;
     });
-    const secondShutdown = new Promise<void>((resolve) => {
-      resolveSecondShutdown = resolve;
+    const secondFlush = new Promise<void>((resolve) => {
+      resolveSecondFlush = resolve;
     });
-    const shutdownError = new Error('first provider failed');
-    const shutdown = jest.fn().mockReturnValueOnce(firstShutdown).mockReturnValueOnce(secondShutdown);
+    const forceFlush = jest.fn().mockReturnValueOnce(firstFlush).mockReturnValueOnce(secondFlush);
     const otelInstrumentation = new FetchTestInstrumentation();
-    const spanProcessor = createSpanProcessor(shutdown);
-    const { faro, tracingInstrumentation } = addTracingInstrumentation(otelInstrumentation, spanProcessor);
-    jest.spyOn(faro.internalLogger, 'error').mockImplementation(() => {});
+    const spanProcessor = createSpanProcessor(async () => {}, forceFlush);
+    const { tracingInstrumentation } = addTracingInstrumentation(otelInstrumentation, spanProcessor);
 
     tracingInstrumentation.initialize();
     const finalShutdown = tracingInstrumentation.shutdown();
@@ -379,13 +439,14 @@ describe('TracingInstrumentation teardown', () => {
       }
     );
 
-    rejectFirstShutdown(shutdownError);
+    resolveFirstFlush();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(finalShutdownSettled).toBe(false);
+    expect(spanProcessor.shutdown).not.toHaveBeenCalled();
 
-    resolveSecondShutdown();
-    await expect(finalShutdown).rejects.toBe(shutdownError);
-    expect(spanProcessor.shutdown).toHaveBeenCalledTimes(2);
+    resolveSecondFlush();
+    await expect(finalShutdown).resolves.toBeUndefined();
+    expect(spanProcessor.shutdown).toHaveBeenCalledTimes(1);
   });
 
   it('rolls back registrations when initialization fails', async () => {
@@ -416,7 +477,173 @@ describe('TracingInstrumentation teardown', () => {
     expect(contextDisableSpy).toHaveBeenCalledTimes(1);
     expect(propagationDisableSpy).toHaveBeenCalledTimes(1);
     expect(faro.otel).toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(spanProcessor.forceFlush).toHaveBeenCalledTimes(1);
+    expect(spanProcessor.shutdown).not.toHaveBeenCalled();
+
+    await tracingInstrumentation.shutdown();
     expect(spanProcessor.shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a supplied processor active across Faro remove and re-add', async () => {
+    const exporter = new InMemorySpanExporter();
+    const exporterShutdownSpy = jest.spyOn(exporter, 'shutdown');
+    const spanProcessor = new SimpleSpanProcessor(exporter);
+    const processorShutdownSpy = jest.spyOn(spanProcessor, 'shutdown');
+    const { faro, tracingInstrumentation } = addTracingInstrumentation([], spanProcessor);
+    faro.api.setSession({ id: 'sampled-session', attributes: { isSampled: 'true' } });
+
+    trace.getTracer('processor-reuse').startSpan('before-remove').end();
+    await spanProcessor.forceFlush();
+    faro.instrumentations.remove(tracingInstrumentation);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(processorShutdownSpy).not.toHaveBeenCalled();
+    expect(exporterShutdownSpy).not.toHaveBeenCalled();
+
+    const replacementTracingInstrumentation = new TracingInstrumentation({
+      instrumentations: [],
+      spanProcessor,
+    });
+    tracingInstrumentations.push(replacementTracingInstrumentation);
+    faro.instrumentations.add(replacementTracingInstrumentation);
+    trace.getTracer('processor-reuse').startSpan('after-readd').end();
+    await spanProcessor.forceFlush();
+
+    expect(exporter.getFinishedSpans().map((span) => span.name)).toEqual(['before-remove', 'after-readd']);
+
+    await replacementTracingInstrumentation.shutdown();
+    expect(processorShutdownSpy).toHaveBeenCalledTimes(1);
+    expect(exporterShutdownSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-enables a real fetch instrumentation when a new tracing instance reuses it', async () => {
+    const fetchInstrumentation = new FetchInstrumentation({
+      ignoreNetworkEvents: true,
+      propagateTraceHeaderCorsUrls: [/.*/],
+    });
+    const enableSpy = jest.spyOn(fetchInstrumentation, 'enable');
+    const patchedFetch = globalThis.fetch;
+    const spanProcessor = createSpanProcessor();
+    const { faro, tracingInstrumentation } = addTracingInstrumentation(fetchInstrumentation, spanProcessor);
+    faro.api.setSession({ id: 'sampled-session', attributes: { isSampled: 'true' } });
+
+    await globalThis.fetch('https://example.com/first');
+    expect(spanProcessor.onStart).toHaveBeenCalledTimes(1);
+    faro.instrumentations.remove(tracingInstrumentation);
+
+    const replacementTracingInstrumentation = new TracingInstrumentation({
+      instrumentations: [fetchInstrumentation],
+      spanProcessor,
+    });
+    tracingInstrumentations.push(replacementTracingInstrumentation);
+    faro.instrumentations.add(replacementTracingInstrumentation);
+    expect(globalThis.fetch).toBe(patchedFetch);
+    expect(enableSpy).toHaveBeenCalledTimes(1);
+    await globalThis.fetch('https://example.com/second');
+
+    expect(spanProcessor.onStart).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not double-enable an instrumentation that the OpenTelemetry registry re-enables', () => {
+    const fetchInstrumentation = new FetchInstrumentation({
+      enabled: false,
+      ignoreNetworkEvents: true,
+      propagateTraceHeaderCorsUrls: [/.*/],
+    });
+    const enableSpy = jest.spyOn(fetchInstrumentation, 'enable');
+    const spanProcessor = createSpanProcessor();
+    const { faro, tracingInstrumentation } = addTracingInstrumentation(fetchInstrumentation, spanProcessor);
+
+    expect(enableSpy).toHaveBeenCalledTimes(1);
+    faro.instrumentations.remove(tracingInstrumentation);
+
+    const replacementTracingInstrumentation = new TracingInstrumentation({
+      instrumentations: [fetchInstrumentation],
+      spanProcessor,
+    });
+    tracingInstrumentations.push(replacementTracingInstrumentation);
+    faro.instrumentations.add(replacementTracingInstrumentation);
+
+    expect(enableSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-enables a supplied context manager when tracing is re-added', async () => {
+    const contextManager = new StatefulContextManager();
+    const spanProcessor = createSpanProcessor();
+    const { faro, tracingInstrumentation } = addTracingInstrumentation([], spanProcessor, { contextManager });
+
+    expect(contextManager.enabled).toBe(true);
+    expect(contextManager.enableCalls).toBe(1);
+
+    faro.instrumentations.remove(tracingInstrumentation);
+    expect(contextManager.enabled).toBe(false);
+    expect(contextManager.disableCalls).toBe(1);
+
+    const replacementTracingInstrumentation = new TracingInstrumentation({
+      contextManager,
+      instrumentations: [],
+      spanProcessor,
+    });
+    tracingInstrumentations.push(replacementTracingInstrumentation);
+    faro.instrumentations.add(replacementTracingInstrumentation);
+    expect(contextManager.enabled).toBe(true);
+    expect(contextManager.enableCalls).toBe(2);
+  });
+
+  it('forwards onEnding to a supplied span processor when it is implemented', () => {
+    const spanProcessor = createSpanProcessor();
+    const { faro } = addTracingInstrumentation([], spanProcessor);
+    faro.api.setSession({ id: 'sampled-session', attributes: { isSampled: 'true' } });
+
+    trace.getTracer('on-ending').startSpan('span').end();
+
+    expect(spanProcessor.onEnding).toHaveBeenCalledTimes(1);
+  });
+
+  it('supports a supplied span processor without onEnding', () => {
+    const spanProcessor = createSpanProcessor();
+    delete spanProcessor.onEnding;
+    const { faro } = addTracingInstrumentation([], spanProcessor);
+    faro.api.setSession({ id: 'sampled-session', attributes: { isSampled: 'true' } });
+
+    expect(() => trace.getTracer('without-on-ending').startSpan('span').end()).not.toThrow();
+  });
+
+  it('shuts down the SDK-owned processor during Faro removal', async () => {
+    const exporterShutdownSpy = jest.spyOn(FaroTraceExporter.prototype, 'shutdown');
+    const { faro, tracingInstrumentation } = addDefaultTracingInstrumentation();
+
+    faro.instrumentations.remove(tracingInstrumentation);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(exporterShutdownSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an SDK-owned provider failure during explicit shutdown', async () => {
+    const shutdownError = new Error('exporter shutdown failed');
+    jest.spyOn(FaroTraceExporter.prototype, 'shutdown').mockRejectedValue(shutdownError);
+    const { faro, tracingInstrumentation } = addDefaultTracingInstrumentation();
+
+    await expect(tracingInstrumentation.shutdown()).rejects.toBe(shutdownError);
+
+    expect(faro.otel).toBeUndefined();
+  });
+
+  it('logs an SDK-owned provider failure during Faro removal', async () => {
+    const shutdownError = new Error('exporter shutdown failed');
+    jest.spyOn(FaroTraceExporter.prototype, 'shutdown').mockRejectedValue(shutdownError);
+    const { faro, tracingInstrumentation } = addDefaultTracingInstrumentation();
+    const loggerSpy = jest.spyOn(faro.internalLogger, 'error').mockImplementation(() => {});
+
+    faro.instrumentations.remove(tracingInstrumentation);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(loggerSpy).toHaveBeenCalledWith(
+      expect.stringContaining('@grafana/faro-react-native-tracing'),
+      expect.stringContaining('Failed to shut down the OpenTelemetry tracer provider'),
+      shutdownError
+    );
   });
 
   it('reinitializes with one active request span', async () => {

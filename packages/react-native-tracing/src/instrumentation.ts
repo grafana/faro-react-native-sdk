@@ -1,11 +1,11 @@
 import { context, propagation, trace } from '@opentelemetry/api';
-import type { Attributes, ContextManager } from '@opentelemetry/api';
+import type { Attributes, Context, ContextManager } from '@opentelemetry/api';
 import { CompositePropagator, W3CBaggagePropagator, W3CTraceContextPropagator } from '@opentelemetry/core';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import type { Instrumentation } from '@opentelemetry/instrumentation';
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
 import { BatchSpanProcessor, BasicTracerProvider as ReactNativeTracerProvider } from '@opentelemetry/sdk-trace-base';
-import type { BasicTracerProvider } from '@opentelemetry/sdk-trace-base';
+import type { BasicTracerProvider, ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { StackContextManager } from '@opentelemetry/sdk-trace-web';
 import {
   ATTR_SERVICE_NAME,
@@ -42,6 +42,36 @@ import { getSamplingDecision } from './utils/sampler';
 // Note: We use the base provider since React Native doesn't have a specific one
 
 type FaroWithOtel = Faro & { otel?: unknown };
+const detachedInstrumentations = new WeakSet<Instrumentation>();
+
+/**
+ * Keeps a caller-supplied processor reusable across Faro remove/add cycles.
+ * Explicit TracingInstrumentation.shutdown() remains responsible for the
+ * processor's terminal shutdown.
+ */
+class BorrowedSpanProcessor implements SpanProcessor {
+  constructor(private readonly processor: SpanProcessor) {}
+
+  forceFlush(): Promise<void> {
+    return this.processor.forceFlush();
+  }
+
+  onStart(span: Span, parentContext: Context): void {
+    this.processor.onStart(span, parentContext);
+  }
+
+  onEnding(span: Span): void {
+    this.processor.onEnding?.(span);
+  }
+
+  onEnd(span: ReadableSpan): void {
+    this.processor.onEnd(span);
+  }
+
+  shutdown(): Promise<void> {
+    return Promise.resolve();
+  }
+}
 
 interface TracingRegistration {
   contextManager?: ContextManager;
@@ -92,6 +122,7 @@ export class TracingInstrumentation extends BaseInstrumentation {
 
   private activeRegistration?: TracingRegistration;
   private pendingShutdowns = new Set<Promise<void>>();
+  private suppliedSpanProcessorShutdown?: Promise<void>;
 
   constructor(private options: TracingInstrumentationOptions = {}) {
     super();
@@ -182,7 +213,7 @@ export class TracingInstrumentation extends BaseInstrumentation {
         },
       },
       spanProcessors: [
-        options.spanProcessor ??
+        (options.spanProcessor && new BorrowedSpanProcessor(options.spanProcessor)) ??
           new HttpRequestMonitorSpanProcessor(
             new FaroMetaAttributesSpanProcessor(
               new BatchSpanProcessor(new FaroTraceExporter({ api: this.api }), {
@@ -215,7 +246,7 @@ export class TracingInstrumentation extends BaseInstrumentation {
       // `context.with(setSpan(active(), createdSpan), () => _addHeaders(...))` the span set on the
       // wrapped context is invisible inside `_addHeaders` and `propagation.inject` writes nothing.
       // `StackContextManager` is pure JS (no DOM/Zone deps) and works in React Native.
-      const contextManager = options.contextManager ?? new StackContextManager().enable();
+      const contextManager = (options.contextManager ?? new StackContextManager()).enable();
       registration.contextManager = contextManager;
       registration.ownsContextManagerInstance = options.contextManager == null;
       registration.ownsContextManager = context.setGlobalContextManager(contextManager);
@@ -254,9 +285,17 @@ export class TracingInstrumentation extends BaseInstrumentation {
         })
       ).flat();
 
+      const instrumentationsNeedingExplicitEnable = registration.instrumentations.filter(
+        (instrumentation) =>
+          detachedInstrumentations.has(instrumentation) && instrumentation.getConfig().enabled === true
+      );
       registration.unregisterInstrumentations = registerInstrumentations({
         instrumentations: registration.instrumentations,
       });
+      registration.instrumentations.forEach((instrumentation) => {
+        detachedInstrumentations.delete(instrumentation);
+      });
+      instrumentationsNeedingExplicitEnable.forEach((instrumentation) => instrumentation.enable());
 
       // Expose OTEL API on the global Faro instance for manual span creation
       // This allows users to access trace and context APIs via faro.otel
@@ -305,6 +344,7 @@ export class TracingInstrumentation extends BaseInstrumentation {
       return undefined;
     }
     this.activeRegistration = undefined;
+    registration.instrumentations.forEach((instrumentation) => detachedInstrumentations.add(instrumentation));
 
     let unregistered = false;
     if (registration.unregisterInstrumentations) {
@@ -365,12 +405,12 @@ export class TracingInstrumentation extends BaseInstrumentation {
 
   private startProviderShutdown(registration: TracingRegistration): Promise<void> {
     if (!registration.shutdownPromise) {
-      let shutdownPromise: Promise<void>;
-      try {
-        shutdownPromise = registration.provider.shutdown();
-      } catch (error) {
-        shutdownPromise = Promise.reject(error);
-      }
+      const shutdownPromise = Promise.resolve()
+        .then(() => registration.provider.forceFlush())
+        .catch((error) => {
+          this.logCleanupError('flush the OpenTelemetry tracer provider', error);
+        })
+        .then(() => registration.provider.shutdown());
       registration.shutdownPromise = shutdownPromise;
       this.pendingShutdowns.add(shutdownPromise);
       void shutdownPromise.then(
@@ -379,6 +419,21 @@ export class TracingInstrumentation extends BaseInstrumentation {
       );
     }
     return registration.shutdownPromise;
+  }
+
+  private startSuppliedSpanProcessorShutdown(): Promise<void> | undefined {
+    const spanProcessor = this.options.spanProcessor;
+    if (!spanProcessor) {
+      return undefined;
+    }
+    if (!this.suppliedSpanProcessorShutdown) {
+      try {
+        this.suppliedSpanProcessorShutdown = spanProcessor.shutdown();
+      } catch (error) {
+        this.suppliedSpanProcessorShutdown = Promise.reject(error);
+      }
+    }
+    return this.suppliedSpanProcessorShutdown;
   }
 
   /** Detach request instrumentations and wait for the tracer provider to flush. */
@@ -394,6 +449,17 @@ export class TracingInstrumentation extends BaseInstrumentation {
     for (const shutdownPromise of pendingShutdowns) {
       try {
         await shutdownPromise;
+      } catch (error) {
+        if (!shutdownFailed) {
+          firstError = error;
+          shutdownFailed = true;
+        }
+      }
+    }
+    const spanProcessorShutdown = this.startSuppliedSpanProcessorShutdown();
+    if (spanProcessorShutdown) {
+      try {
+        await spanProcessorShutdown;
       } catch (error) {
         if (!shutdownFailed) {
           firstError = error;
