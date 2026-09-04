@@ -727,8 +727,13 @@ class TracingInstrumentation extends BaseInstrumentation {
   constructor(options?: TracingInstrumentationOptions);
   initialize(): void;
   shutdown(): Promise<void>;
+  destroy(): void;
 }
 ```
+
+`shutdown()` detaches HTTP instrumentation before waiting for the tracer provider to flush. Faro calls `destroy()`
+when the instrumentation is removed; it detaches immediately and completes provider shutdown in the background.
+Both methods are safe to call more than once.
 
 **Options:**
 
