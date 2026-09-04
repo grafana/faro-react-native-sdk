@@ -1,4 +1,5 @@
 import type { Span } from '@opentelemetry/api';
+import type { Instrumentation } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
 
@@ -27,6 +28,38 @@ import {
  * @returns Array of OTEL instrumentations
  */
 export function getDefaultOTELInstrumentations(options: DefaultInstrumentationsOptions = {}): InstrumentationOption[] {
+  const { enableFetchInstrumentation, enableXhrInstrumentation, fetchConfig, xhrConfig } =
+    resolveDefaultInstrumentationOptions(options);
+
+  const instrumentations: InstrumentationOption[] = [];
+
+  if (enableFetchInstrumentation) {
+    instrumentations.push(new FetchInstrumentation(fetchConfig));
+  }
+
+  if (enableXhrInstrumentation) {
+    instrumentations.push(new XMLHttpRequestInstrumentation(xhrConfig));
+  }
+
+  return instrumentations;
+}
+
+export function updateDefaultOTELInstrumentations(
+  instrumentations: Instrumentation[],
+  options: DefaultInstrumentationsOptions = {}
+): void {
+  const { fetchConfig, xhrConfig } = resolveDefaultInstrumentationOptions(options);
+
+  instrumentations.forEach((instrumentation) => {
+    if (instrumentation instanceof FetchInstrumentation) {
+      instrumentation.setConfig(fetchConfig);
+    } else if (instrumentation instanceof XMLHttpRequestInstrumentation) {
+      instrumentation.setConfig(xhrConfig);
+    }
+  });
+}
+
+function resolveDefaultInstrumentationOptions(options: DefaultInstrumentationsOptions) {
   const {
     enableFetchInstrumentation = true,
     enableXhrInstrumentation = false,
@@ -35,21 +68,12 @@ export function getDefaultOTELInstrumentations(options: DefaultInstrumentationsO
     ...sharedOptions
   } = options;
 
-  const instrumentations: InstrumentationOption[] = [];
-
-  if (enableFetchInstrumentation) {
-    instrumentations.push(
-      new FetchInstrumentation(createFetchInstrumentationOptions(fetchInstrumentationOptions, sharedOptions))
-    );
-  }
-
-  if (enableXhrInstrumentation) {
-    instrumentations.push(
-      new XMLHttpRequestInstrumentation(createXhrInstrumentationOptions(xhrInstrumentationOptions, sharedOptions))
-    );
-  }
-
-  return instrumentations;
+  return {
+    enableFetchInstrumentation,
+    enableXhrInstrumentation,
+    fetchConfig: createFetchInstrumentationOptions(fetchInstrumentationOptions, sharedOptions),
+    xhrConfig: createXhrInstrumentationOptions(xhrInstrumentationOptions, sharedOptions),
+  };
 }
 
 function createFetchInstrumentationOptions(

@@ -209,6 +209,10 @@ new TracingInstrumentation({
 });
 ```
 
+A custom span processor remains reusable when Faro removes and later re-adds the tracing instrumentation. Removal
+flushes the processor without shutting it down. Calling `TracingInstrumentation.shutdown()` shuts it down and is
+terminal for that processor; use a new processor before initializing the instrumentation again.
+
 ## Usage Examples
 
 ### Automatic HTTP Tracing
@@ -665,6 +669,10 @@ const { trace } = faro.otel; // Error!
 
 **Solution:** This should be automatic. If you're using a custom span processor or custom instrumentations, ensure you're not overriding the tracer provider registration.
 
+If another global OpenTelemetry tracer provider is already registered, tracing initialization fails with a clear
+error instead of installing request instrumentation that cannot export through Faro. Remove the duplicate provider
+registration before initializing `TracingInstrumentation`.
+
 ### Spans missing user/session/device context
 
 **Cause:** FaroMetaAttributesSpanProcessor is not wrapping your span processor.
@@ -727,8 +735,16 @@ class TracingInstrumentation extends BaseInstrumentation {
   constructor(options?: TracingInstrumentationOptions);
   initialize(): void;
   shutdown(): Promise<void>;
+  destroy(): void;
 }
 ```
+
+`shutdown()` detaches HTTP instrumentation before waiting for the tracer provider to flush. Faro calls `destroy()`
+when the instrumentation is removed; it detaches immediately and completes provider shutdown in the background.
+Both methods are safe to call more than once.
+
+When tracing is removed and later re-added, reuse the same `TracingInstrumentation` instance so the default fetch
+and XHR patches are reused as well.
 
 **Options:**
 
