@@ -267,7 +267,7 @@ describe('TracingInstrumentation teardown', () => {
     expect(spanProcessor.shutdown).toHaveBeenCalledTimes(1);
   });
 
-  it('does not clear global registrations owned by another provider', async () => {
+  it('fails without clearing global registrations owned by another provider', async () => {
     const externalProvider = new BasicTracerProvider();
     const externalContextManager = new StackContextManager().enable();
     const externalPropagator = new W3CTraceContextPropagator();
@@ -282,18 +282,29 @@ describe('TracingInstrumentation teardown', () => {
     const previousFaroOtel = { owner: 'existing' };
     const otelInstrumentation = new FetchTestInstrumentation();
     const spanProcessor = createSpanProcessor();
-    const { faro, tracingInstrumentation } = addTracingInstrumentation(
-      otelInstrumentation,
+    const faro = initializeFaro(
+      mockConfig({
+        instrumentations: [],
+        transports: [new MockTransport()],
+      })
+    ) as FaroWithOtel;
+    faro.otel = previousFaroOtel;
+    getInternalFaroMock.mockReturnValue(faro);
+    const tracingInstrumentation = new TracingInstrumentation({
+      instrumentations: [otelInstrumentation],
       spanProcessor,
-      {
-        contextManager: externalContextManager,
-        propagator: externalPropagator,
-      },
-      previousFaroOtel
+      contextManager: externalContextManager,
+      propagator: externalPropagator,
+    });
+    tracingInstrumentations.push(tracingInstrumentation);
+
+    expect(() => faro.instrumentations.add(tracingInstrumentation)).toThrow(
+      'Unable to register the Faro OpenTelemetry tracer provider'
     );
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    await tracingInstrumentation.shutdown();
-
+    expect(otelInstrumentation.enableCalls).toBe(0);
+    expect(spanProcessor.forceFlush).toHaveBeenCalledTimes(1);
     expect(traceDisableSpy).not.toHaveBeenCalled();
     expect(contextDisableSpy).not.toHaveBeenCalled();
     expect(propagationDisableSpy).not.toHaveBeenCalled();

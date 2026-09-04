@@ -669,6 +669,10 @@ const { trace } = faro.otel; // Error!
 
 **Solution:** This should be automatic. If you're using a custom span processor or custom instrumentations, ensure you're not overriding the tracer provider registration.
 
+If another global OpenTelemetry tracer provider is already registered, tracing initialization fails with a clear
+error instead of installing request instrumentation that cannot export through Faro. Remove the duplicate provider
+registration before initializing `TracingInstrumentation`.
+
 ### Spans missing user/session/device context
 
 **Cause:** FaroMetaAttributesSpanProcessor is not wrapping your span processor.

@@ -243,7 +243,12 @@ export class TracingInstrumentation extends BaseInstrumentation {
     try {
       // Register the provider as the global tracer provider
       // This is CRITICAL for the tracer to generate real trace IDs instead of all zeros
-      registration.ownsTracerProvider = trace.setGlobalTracerProvider(provider);
+      if (!trace.setGlobalTracerProvider(provider)) {
+        throw new Error(
+          'Unable to register the Faro OpenTelemetry tracer provider. Remove the existing global tracer provider before initializing Faro tracing.'
+        );
+      }
+      registration.ownsTracerProvider = true;
 
       // Register a global ContextManager. Without one, OTel falls back to the NoopContextManager,
       // which always returns ROOT_CONTEXT — so when `@opentelemetry/instrumentation-fetch` does
