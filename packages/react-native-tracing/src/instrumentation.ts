@@ -18,7 +18,10 @@ import type { Faro, OTELApi, Transport } from '@grafana/faro-core';
 
 import { FaroTraceExporter } from './exporters/faroTraceExporter';
 import { getReactNativeDevServerIgnoreUrls } from './instrumentations/devServerIgnoreUrls';
-import { getDefaultOTELInstrumentations } from './instrumentations/getDefaultOTELInstrumentations';
+import {
+  getDefaultOTELInstrumentations,
+  updateDefaultOTELInstrumentations,
+} from './instrumentations/getDefaultOTELInstrumentations';
 import { FaroMetaAttributesSpanProcessor } from './processors/faroMetaAttributesSpanProcessor';
 import { HttpRequestMonitorSpanProcessor } from './processors/httpRequestMonitorSpanProcessor';
 import {
@@ -121,6 +124,7 @@ export class TracingInstrumentation extends BaseInstrumentation {
   static SCHEDULED_BATCH_DELAY_MS = 1000;
 
   private activeRegistration?: TracingRegistration;
+  private defaultInstrumentations?: Instrumentation[];
   private pendingShutdowns = new Set<Promise<void>>();
   private suppliedSpanProcessorShutdown?: Promise<void>;
 
@@ -273,17 +277,24 @@ export class TracingInstrumentation extends BaseInstrumentation {
       // Get ignore URLs from transports to prevent infinite loops
       const ignoreUrls = this.getIgnoreUrls();
 
-      registration.instrumentations = (
-        options.instrumentations ??
-        getDefaultOTELInstrumentations({
-          ignoreUrls,
-          enableFetchInstrumentation,
-          enableXhrInstrumentation,
-          propagateTraceHeaderCorsUrls,
-          fetchInstrumentationOptions,
-          xhrInstrumentationOptions,
-        })
-      ).flat();
+      const defaultInstrumentationOptions = {
+        ignoreUrls,
+        enableFetchInstrumentation,
+        enableXhrInstrumentation,
+        propagateTraceHeaderCorsUrls,
+        fetchInstrumentationOptions,
+        xhrInstrumentationOptions,
+      };
+
+      if (options.instrumentations) {
+        registration.instrumentations = options.instrumentations.flat();
+      } else if (this.defaultInstrumentations) {
+        updateDefaultOTELInstrumentations(this.defaultInstrumentations, defaultInstrumentationOptions);
+        registration.instrumentations = this.defaultInstrumentations;
+      } else {
+        this.defaultInstrumentations = getDefaultOTELInstrumentations(defaultInstrumentationOptions).flat();
+        registration.instrumentations = this.defaultInstrumentations;
+      }
 
       const instrumentationsNeedingExplicitEnable = registration.instrumentations.filter(
         (instrumentation) =>

@@ -3,6 +3,7 @@ import type { Context, ContextManager, MeterProvider, TracerProvider } from '@op
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import type { Instrumentation, InstrumentationConfig } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
+import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
 import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import type { SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { StackContextManager } from '@opentelemetry/sdk-trace-web';
@@ -543,6 +544,49 @@ describe('TracingInstrumentation teardown', () => {
     await globalThis.fetch('https://example.com/second');
 
     expect(spanProcessor.onStart).toHaveBeenCalledTimes(2);
+  });
+
+  it('reuses default request instrumentations and refreshes transport ignore URLs', async () => {
+    const firstCollectorUrl = 'https://collector.example.com/first';
+    const secondCollectorUrl = 'https://collector.example.com/second';
+    const transport = new MockTransport([firstCollectorUrl]);
+    const getIgnoreUrlsSpy = jest.spyOn(transport, 'getIgnoreUrls');
+    const setTracerProviderSpy = jest.spyOn(FetchInstrumentation.prototype, 'setTracerProvider');
+    const setXhrTracerProviderSpy = jest.spyOn(XMLHttpRequestInstrumentation.prototype, 'setTracerProvider');
+    const spanProcessor = createSpanProcessor();
+    const faro = initializeFaro(
+      mockConfig({
+        instrumentations: [],
+        transports: [transport],
+      })
+    ) as FaroWithOtel;
+    getInternalFaroMock.mockReturnValue(faro);
+    const tracingInstrumentation = new TracingInstrumentation({
+      instrumentationOptions: { enableXhrInstrumentation: true },
+      spanProcessor,
+    });
+    tracingInstrumentations.push(tracingInstrumentation);
+    faro.api.setSession({ id: 'sampled-session', attributes: { isSampled: 'true' } });
+
+    faro.instrumentations.add(tracingInstrumentation);
+    const firstFetchInstrumentation = setTracerProviderSpy.mock.instances[0];
+    const firstXhrInstrumentation = setXhrTracerProviderSpy.mock.instances[0];
+    expect(firstFetchInstrumentation).toBeInstanceOf(FetchInstrumentation);
+    expect(firstXhrInstrumentation).toBeInstanceOf(XMLHttpRequestInstrumentation);
+
+    await globalThis.fetch(firstCollectorUrl);
+    expect(spanProcessor.onStart).not.toHaveBeenCalled();
+    faro.instrumentations.remove(tracingInstrumentation);
+
+    getIgnoreUrlsSpy.mockReturnValue([secondCollectorUrl]);
+    faro.instrumentations.add(tracingInstrumentation);
+    expect(setTracerProviderSpy.mock.instances).toEqual([firstFetchInstrumentation, firstFetchInstrumentation]);
+    expect(setXhrTracerProviderSpy.mock.instances).toEqual([firstXhrInstrumentation, firstXhrInstrumentation]);
+
+    await globalThis.fetch(secondCollectorUrl);
+    expect(spanProcessor.onStart).not.toHaveBeenCalled();
+    await globalThis.fetch(firstCollectorUrl);
+    expect(spanProcessor.onStart).toHaveBeenCalledTimes(1);
   });
 
   it('does not double-enable an instrumentation that the OpenTelemetry registry re-enables', () => {
