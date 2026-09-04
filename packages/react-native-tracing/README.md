@@ -739,6 +739,9 @@ class TracingInstrumentation extends BaseInstrumentation {
 when the instrumentation is removed; it detaches immediately and completes provider shutdown in the background.
 Both methods are safe to call more than once.
 
+When tracing is removed and later re-added, reuse the same `TracingInstrumentation` instance so the default fetch
+and XHR patches are reused as well.
+
 **Options:**
 
 ```typescript
