@@ -524,9 +524,9 @@ describe('TracingInstrumentation teardown', () => {
       propagateTraceHeaderCorsUrls: [/.*/],
     });
     const enableSpy = jest.spyOn(fetchInstrumentation, 'enable');
-    const patchedFetch = globalThis.fetch;
     const spanProcessor = createSpanProcessor();
     const { faro, tracingInstrumentation } = addTracingInstrumentation(fetchInstrumentation, spanProcessor);
+    const patchedFetch = globalThis.fetch;
     faro.api.setSession({ id: 'sampled-session', attributes: { isSampled: 'true' } });
 
     await globalThis.fetch('https://example.com/first');
