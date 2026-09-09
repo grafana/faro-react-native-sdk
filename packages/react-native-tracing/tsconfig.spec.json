@@ -4,6 +4,7 @@
     "declarationDir": "./dist/types",
     "outDir": "./dist/spec",
     "rootDir": "..",
+    "target": "ES6",
     "tsBuildInfoFile": "../../.cache/tsc/webTracing.spec.tsbuildinfo"
   },
   "include": ["./src"],

@@ -1,7 +1,7 @@
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
 
-import { getDefaultOTELInstrumentations } from './getDefaultOTELInstrumentations';
+import { getDefaultOTELInstrumentations, updateDefaultOTELInstrumentations } from './getDefaultOTELInstrumentations';
 
 describe('getDefaultOTELInstrumentations', () => {
   it('should return FetchInstrumentation by default', () => {
@@ -47,6 +47,21 @@ describe('getDefaultOTELInstrumentations', () => {
     });
 
     expect((instrumentations[1] as any)._config.ignoreUrls).toEqual(ignoreUrls);
+  });
+
+  it('updates existing Fetch and XMLHttpRequest instrumentation configs', () => {
+    const instrumentations = getDefaultOTELInstrumentations({
+      enableXhrInstrumentation: true,
+      ignoreUrls: [/first-url/],
+    }).flat();
+
+    updateDefaultOTELInstrumentations(instrumentations, {
+      enableXhrInstrumentation: true,
+      ignoreUrls: [/second-url/],
+    });
+
+    expect((instrumentations[0] as FetchInstrumentation).getConfig().ignoreUrls).toEqual([/second-url/]);
+    expect((instrumentations[1] as XMLHttpRequestInstrumentation).getConfig().ignoreUrls).toEqual([/second-url/]);
   });
 
   it('should set ignoreNetworkEvents to true by default', () => {

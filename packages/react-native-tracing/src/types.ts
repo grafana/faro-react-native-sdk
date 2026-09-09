@@ -17,6 +17,10 @@ export interface TracingInstrumentationOptions {
   propagator?: TextMapPropagator;
   contextManager?: ContextManager;
   instrumentations?: InstrumentationOption[];
+  /**
+   * A caller-supplied processor. Faro removal flushes it so the tracing instrumentation can be re-added;
+   * TracingInstrumentation.shutdown() shuts it down and is terminal for that processor.
+   */
   spanProcessor?: SpanProcessor;
   instrumentationOptions?: Omit<DefaultInstrumentationsOptions, 'ignoreUrls'>;
 }
