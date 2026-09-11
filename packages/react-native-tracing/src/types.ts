@@ -1,6 +1,6 @@
 import type { Attributes, ContextManager, TextMapPropagator } from '@opentelemetry/api';
 import type { Instrumentation } from '@opentelemetry/instrumentation';
-import type { FetchCustomAttributeFunction } from '@opentelemetry/instrumentation-fetch';
+import type { FetchCustomAttributeFunction, FetchInstrumentationConfig } from '@opentelemetry/instrumentation-fetch';
 import type { XHRCustomAttributeFunction } from '@opentelemetry/instrumentation-xml-http-request';
 import type { SpanProcessor } from '@opentelemetry/sdk-trace-base';
 
@@ -34,6 +34,8 @@ export type DefaultInstrumentationsOptions = {
   enableXhrInstrumentation?: boolean;
 
   fetchInstrumentationOptions?: {
+    /** Stable HTTP spans by default. Set an empty string for legacy or http/dup for both schemas. */
+    semconvStabilityOptIn?: FetchInstrumentationConfig['semconvStabilityOptIn'];
     applyCustomAttributesOnSpan?: FetchCustomAttributeFunction;
     ignoreNetworkEvents?: boolean;
   };

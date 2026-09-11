@@ -11,6 +11,13 @@ describe('getDefaultOTELInstrumentations', () => {
     expect(instrumentations[0]).toBeInstanceOf(FetchInstrumentation);
   });
 
+  it('uses stable fetch semantics when the optional setting is undefined', () => {
+    const [instrumentation] = getDefaultOTELInstrumentations({
+      fetchInstrumentationOptions: { semconvStabilityOptIn: undefined },
+    });
+    expect((instrumentation as FetchInstrumentation).getConfig().semconvStabilityOptIn).toBe('http');
+  });
+
   it('should allow enabling XMLHttpRequestInstrumentation', () => {
     const instrumentations = getDefaultOTELInstrumentations({
       enableXhrInstrumentation: true,

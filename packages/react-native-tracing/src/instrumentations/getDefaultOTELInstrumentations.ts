@@ -86,6 +86,7 @@ function createFetchInstrumentationOptions(
     ignoreNetworkEvents: true,
     // Keep this here to overwrite the defaults above if provided by the users
     ...fetchInstrumentationOptions,
+    semconvStabilityOptIn: fetchInstrumentationOptions?.semconvStabilityOptIn ?? 'http',
     // Always keep this function
     applyCustomAttributesOnSpan: fetchCustomAttributeFunctionWithDefaults(
       fetchInstrumentationOptions?.applyCustomAttributesOnSpan
@@ -96,7 +97,9 @@ function createFetchInstrumentationOptions(
         const currentAction = faro.api.getActiveUserAction();
         if (
           currentAction &&
-          (currentAction as unknown as UserActionInternalInterface)?.getState() === UserActionState.Started
+          [UserActionState.Started, UserActionState.Halted].includes(
+            (currentAction as unknown as UserActionInternalInterface)?.getState()
+          )
         ) {
           span.setAttribute('faro.action.user.name', currentAction.name);
           span.setAttribute('faro.action.user.parentId', currentAction.parentId);

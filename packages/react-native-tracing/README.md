@@ -41,6 +41,42 @@ const faro = initializeFaro({
 
 That's it! HTTP requests via `fetch()` are now automatically traced (and correlated with user actions when user action tracking is enabled) and sent to your Faro collector.
 
+## HTTP span and event conventions
+
+Default fetch tracing uses OpenTelemetry's [stable HTTP conventions](https://opentelemetry.io/docs/specs/semconv/http/http-spans/#name). Known methods
+produce names such as `GET` and `POST`. Ordinary successful responses leave status
+UNSET; ordinary 4xx/5xx responses produce ERROR and a string `error.type`, without
+a redundant status description. Successful responses omit `error.type`.
+
+Span fields include string `http.request.method`, `url.full` and `server.address`,
+integer `server.port`, and integer `http.response.status_code` when a response is
+available. Additional attributes depend on the underlying instrumentation and its
+configuration; body-size and network timing attributes are not enabled by this change.
+
+The `faro.tracing.fetch` event has a separate compatibility contract. Its HTTP
+fields remain `http.method`, `http.url`, `http.status_code`, `http.host` (including
+an explicit non-default port), and `http.scheme`. Event attributes are strings,
+including `duration_ns`. Session, trace/span and user-action correlation are retained.
+These legacy event fields are projected during export without adding legacy
+attributes to stable-only spans. Other instrumentation-specific fields can differ
+between convention modes, such as legacy `http.status_text` and `http.user_agent`.
+
+An explicit override is available under `tracingOptions.instrumentationOptions`:
+
+```typescript
+fetchInstrumentationOptions: {
+  semconvStabilityOptIn: 'http', // default; stable spans
+  // Use '' for legacy spans, or 'http/dup' for both attribute schemas.
+}
+```
+
+`http/dup` retains the old `HTTP GET` / `HTTP POST` names. All three modes retain
+the Faro HTTP event fields and request monitoring for user actions. The setting
+applies when the fetch instrumentation is created; re-adding an existing tracing
+instance reuses that instrumentation. Construct a new tracing instance to choose
+a different mode. Custom instrumentation arrays and optional XHR tracing retain
+their own configuration.
+
 ## Fetch vs XHR in React Native
 
 By default, this package traces `fetch()` requests only.
@@ -172,6 +208,9 @@ new TracingInstrumentation({
 
     // Optional: Customize fetch instrumentation
     fetchInstrumentationOptions: {
+      // Stable HTTP span names and attributes (default: 'http')
+      semconvStabilityOptIn: 'http',
+
       // Ignore network performance events (default: true)
       ignoreNetworkEvents: true,
 
@@ -778,6 +817,7 @@ interface TracingInstrumentationOptions {
 
     // Fetch instrumentation options
     fetchInstrumentationOptions?: {
+      semconvStabilityOptIn?: string;
       // Custom attributes function
       applyCustomAttributesOnSpan?: FetchCustomAttributeFunction;
 

@@ -8,6 +8,35 @@ const internalLogger = createInternalLogger();
 
 const DURATION_NS_KEY = 'duration_ns';
 
+/** Keep Faro's fetch event contract independent of the selected OTel span schema. */
+function projectFetchEventAttributes(attributes: FaroEventAttributes): void {
+  const fields = {
+    'http.request.method': 'http.method',
+    'url.full': 'http.url',
+    'http.response.status_code': 'http.status_code',
+  };
+  for (const [stable, legacy] of Object.entries(fields)) {
+    if (attributes[stable] != null) {
+      attributes[legacy] = attributes[stable];
+      delete attributes[stable];
+    }
+  }
+
+  const url = attributes['http.url'];
+  if (url) {
+    try {
+      const parsed = new URL(url);
+      attributes['http.host'] = attributes['http.host'] ?? parsed.host;
+      attributes['http.scheme'] = attributes['http.scheme'] ?? parsed.protocol.replace(':', '');
+    } catch {
+      // Keep the captured URL even if it cannot supply host/scheme metadata.
+    }
+  }
+  delete attributes['server.address'];
+  delete attributes['server.port'];
+  attributes['component'] = attributes['component'] ?? 'fetch';
+}
+
 /**
  * Send Faro events for CLIENT spans (HTTP requests, navigation, etc.)
  *
@@ -46,6 +75,10 @@ export function sendFaroEvents(resourceSpans: IResourceSpans[] = []) {
           const faroEventAttributes: FaroEventAttributes = {};
           for (const attribute of span.attributes) {
             faroEventAttributes[attribute.key] = String(Object.values(attribute.value)[0]);
+          }
+
+          if (scope?.name === '@opentelemetry/instrumentation-fetch') {
+            projectFetchEventAttributes(faroEventAttributes);
           }
 
           // Add span duration in nanoseconds

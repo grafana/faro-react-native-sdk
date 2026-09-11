@@ -1,4 +1,5 @@
 import type { Context } from '@opentelemetry/api';
+import { hrTimeToMilliseconds } from '@opentelemetry/core';
 import type { ReadableSpan, Span, SpanProcessor } from '@opentelemetry/sdk-trace-base';
 
 import {
@@ -33,7 +34,16 @@ function getAttr(span: Span | ReadableSpan, key: string): string | undefined {
  * Check if a span is an HTTP span (from FetchInstrumentation).
  */
 function isHttpSpan(span: Span | ReadableSpan): boolean {
-  return getAttr(span, ATTR_HTTP_URL) != null || getAttr(span, ATTR_HTTP_METHOD) != null;
+  // url.full is shared by non-HTTP spans; stable HTTP spans identify their method at creation.
+  return getHttpMethod(span) != null || getAttr(span, ATTR_HTTP_URL) != null;
+}
+
+function getHttpUrl(span: Span | ReadableSpan): string | undefined {
+  return getAttr(span, 'url.full') ?? getAttr(span, ATTR_HTTP_URL);
+}
+
+function getHttpMethod(span: Span | ReadableSpan): string | undefined {
+  return getAttr(span, 'http.request.method') ?? getAttr(span, ATTR_HTTP_METHOD);
 }
 
 /**
@@ -49,10 +59,10 @@ export class HttpRequestMonitorSpanProcessor implements SpanProcessor {
 
   onStart(span: Span, parentContext: Context): void {
     if (isHttpSpan(span)) {
-      const url = getAttr(span, ATTR_HTTP_URL) ?? '';
-      const method = getAttr(span, ATTR_HTTP_METHOD) ?? 'GET';
+      const url = getHttpUrl(span) ?? '';
+      const method = getHttpMethod(span) ?? 'GET';
       const requestId = span.spanContext().spanId;
-      const startTimeMs = Date.now();
+      const startTimeMs = hrTimeToMilliseconds(span.startTime);
 
       const payload: HttpRequestMessagePayload = {
         requestId,
@@ -68,19 +78,13 @@ export class HttpRequestMonitorSpanProcessor implements SpanProcessor {
 
   onEnd(span: ReadableSpan): void {
     if (isHttpSpan(span)) {
-      const url = getAttr(span, ATTR_HTTP_URL) ?? '';
-      const method = getAttr(span, ATTR_HTTP_METHOD) ?? 'GET';
+      const url = getHttpUrl(span) ?? '';
+      const method = getHttpMethod(span) ?? 'GET';
       const requestId = span.spanContext().spanId;
-      const statusAttr = getAttr(span, ATTR_HTTP_STATUS_CODE);
+      const statusAttr = getAttr(span, 'http.response.status_code') ?? getAttr(span, ATTR_HTTP_STATUS_CODE);
       const status = statusAttr != null ? parseInt(statusAttr, 10) : undefined;
-      const spanWithTime = span as ReadableSpan & {
-        startTimeUnixNano?: number | bigint;
-        endTimeUnixNano?: number | bigint;
-      };
-      const startNs = spanWithTime.startTimeUnixNano;
-      const endNs = spanWithTime.endTimeUnixNano;
-      const startTimeMs = startNs != null && !Number.isNaN(Number(startNs)) ? Number(startNs) / 1_000_000 : Date.now();
-      const endTimeMs = endNs != null && !Number.isNaN(Number(endNs)) ? Number(endNs) / 1_000_000 : Date.now();
+      const startTimeMs = hrTimeToMilliseconds(span.startTime);
+      const endTimeMs = hrTimeToMilliseconds(span.endTime);
 
       const payload: HttpRequestMessagePayload = {
         requestId,
