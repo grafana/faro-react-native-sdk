@@ -75,13 +75,13 @@
     }
   },
   "devDependencies": {
-    "@types/node": "24.12.4",
-    "@types/react": "19.2.18",
+    "@types/node": "24.13.4",
+    "@types/react": "19.3.0",
     "@types/react-native": "0.73.0",
-    "@types/react-test-renderer": "19.1.0",
+    "@types/react-test-renderer": "19.3.0",
     "react-native-mmkv": "4.3.2",
-    "react-native-nitro-modules": "0.36.1",
-    "react-test-renderer": "19.2.3"
+    "react-native-nitro-modules": "0.37.1",
+    "react-test-renderer": "19.3.0"
   },
   "publishConfig": {
     "access": "public"
