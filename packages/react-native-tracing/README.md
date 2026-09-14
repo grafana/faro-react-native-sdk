@@ -61,6 +61,14 @@ These legacy event fields are projected during export without adding legacy
 attributes to stable-only spans. Other instrumentation-specific fields can differ
 between convention modes, such as legacy `http.status_text` and `http.user_agent`.
 
+Fetch requests capture the action that is Started when the request begins,
+before request monitoring moves that action to Halted. A request started while
+an action is already Halted, after it ends/cancels, or without an active action
+is still traced but does not inherit that action. Requests keep their original
+association when later actions begin. Span-derived fetch events preserve this
+same association instead of joining the action active when the export batch is sent.
+They retain the normal transport hooks, pause behavior and fetch-event deduplication.
+
 An explicit override is available under `tracingOptions.instrumentationOptions`:
 
 ```typescript

@@ -1,13 +1,11 @@
-import type { Span } from '@opentelemetry/api';
 import type { Instrumentation } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
 
-import { faro, type UserActionInternalInterface, UserActionState } from '@grafana/faro-core';
-
 import type { DefaultInstrumentationsOptions, InstrumentationOption } from '../types';
 
 import {
+  captureFetchUserAction,
   fetchCustomAttributeFunctionWithDefaults,
   xhrCustomAttributeFunctionWithDefaults,
 } from './instrumentationUtils';
@@ -91,24 +89,8 @@ function createFetchInstrumentationOptions(
     applyCustomAttributesOnSpan: fetchCustomAttributeFunctionWithDefaults(
       fetchInstrumentationOptions?.applyCustomAttributesOnSpan
     ),
-    // Request hook to add user action context
-    requestHook: (span: Span, _: Request | RequestInit) => {
-      try {
-        const currentAction = faro.api.getActiveUserAction();
-        if (
-          currentAction &&
-          [UserActionState.Started, UserActionState.Halted].includes(
-            (currentAction as unknown as UserActionInternalInterface)?.getState()
-          )
-        ) {
-          span.setAttribute('faro.action.user.name', currentAction.name);
-          span.setAttribute('faro.action.user.parentId', currentAction.parentId);
-        }
-      } catch (_error) {
-        // Silently fail - don't log to avoid infinite loops
-        // The span will just not have user action context
-      }
-    },
+    // Also supports callers using a custom processor without the RN request monitor.
+    requestHook: captureFetchUserAction,
   };
 }
 

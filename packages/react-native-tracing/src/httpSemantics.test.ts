@@ -8,6 +8,7 @@ import { UserActionInstrumentation } from '../../react-native/src/instrumentatio
 import { monitorHttpRequests } from '../../react-native/src/instrumentations/userActions/httpRequestMonitor';
 import type { HttpRequestMessage } from '../../react-native/src/instrumentations/userActions/httpRequestMonitor';
 
+import { sendFaroEvents } from './exporters/faroTraceExporter.utils';
 import { TracingInstrumentation } from './instrumentation';
 
 // Use the real RN monitor without loading native modules in jsdom.
@@ -41,6 +42,7 @@ describe.each(modes)('fetch semantics (%s)', (mode) => {
     const subscription = monitorHttpRequests().subscribe((message) => messages.push(message));
     unsubscribe = () => subscription.unsubscribe();
     transport = new MockTransport();
+    transport.getIgnoreUrls = () => [/ignored/];
     faro = initializeFaro(mockConfig({ transports: [transport], dedupe: false }))!;
     faro.api.setSession({ id: 'http-session', attributes: { isSampled: 'true' } });
     instrumentation = new TracingInstrumentation({
@@ -163,6 +165,143 @@ describe.each(modes)('fetch semantics (%s)', (mode) => {
       ])
     );
     expect(events.some((event) => event.name === 'faro.tracing.fetch')).toBe(false);
+  });
+
+  function pairs() {
+    const spans = transport.items
+      .filter((item) => item.type === TransportItemType.TRACE)
+      .flatMap((item) => (item.payload as TraceEvent).resourceSpans ?? [])
+      .flatMap((resource) => resource.scopeSpans)
+      .flatMap((scope) => scope.spans ?? []);
+    const events = transport.items
+      .filter((item) => item.type === TransportItemType.EVENT)
+      .map((item) => item.payload as EventEvent)
+      .filter((event) => event.name === 'faro.tracing.fetch');
+    return spans.map((span) => ({ span, event: events.find((event) => event.trace?.span_id === span.spanId)! }));
+  }
+
+  function expectAssociation(pair: ReturnType<typeof pairs>[number], action?: UserActionInternalInterface) {
+    const attributes = Object.fromEntries(pair.span.attributes.map(({ key, value }) => [key, value]));
+    expect(attributes['faro.action.user.name']).toEqual(action ? { stringValue: action.name } : undefined);
+    expect(attributes['faro.action.user.parentId']).toEqual(action ? { stringValue: action.parentId } : undefined);
+    expect(pair.event).toBeDefined();
+    expect(pair.event.action).toEqual(action ? { name: action.name, parentId: action.parentId } : undefined);
+  }
+
+  it.each(['none', 'ended', 'cancelled', 'halted'] as const)(
+    'does not associate a request with an action that is %s',
+    async (state) => {
+      if (state !== 'none') {
+        const action = faro.api.startUserAction('previous-action') as UserActionInternalInterface;
+        if (state === 'ended') action.end();
+        else if (state === 'cancelled') action.cancel();
+        else action.halt();
+      }
+      const pending = globalThis.fetch(url);
+      respond(200);
+      await pending;
+      await jest.advanceTimersByTimeAsync(2000);
+      expectAssociation(exported());
+    }
+  );
+
+  it('does not track excluded requests or make the action wait for them', async () => {
+    const action = faro.api.startUserAction('ignored-request') as UserActionInternalInterface;
+    const pending = globalThis.fetch('https://api.example.com/ignored');
+    await jest.advanceTimersByTimeAsync(250);
+    expect(action.getState()).toBe(UserActionState.Ended);
+    expect(messages).toEqual([]);
+    respond(200);
+    await pending;
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(pairs()).toEqual([]);
+  });
+
+  it.each([false, true])(
+    'preserves request-start ownership at export time (earlier action: %s)',
+    async (hasEarlierAction) => {
+      const earlier = hasEarlierAction
+        ? (faro.api.startUserAction('earlier-action') as UserActionInternalInterface)
+        : undefined;
+      const pending = globalThis.fetch(url);
+      earlier?.end();
+      respond(200);
+      await pending;
+      // Fetch waits 300ms for resource data, then the exporter batches for 1000ms.
+      await jest.advanceTimersByTimeAsync(1250);
+      const action = faro.api.startUserAction('later-action') as UserActionInternalInterface;
+      await jest.advanceTimersByTimeAsync(2000);
+      expect(action.getState()).toBe(UserActionState.Ended);
+      expectAssociation(exported(), earlier);
+    }
+  );
+
+  it.each(['paused', 'beforeSend'] as const)('respects transport filtering when %s', async (filter) => {
+    if (filter === 'paused') faro.transports.pause();
+    else faro.transports.addBeforeSendHooks((item) => (item.type === TransportItemType.EVENT ? null : item));
+    const pending = globalThis.fetch(url);
+    respond(200);
+    await pending;
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(transport.items.some((item) => item.type === TransportItemType.EVENT)).toBe(false);
+  });
+
+  it('respects fetch event deduplication and the configured event domain', async () => {
+    faro.config.eventDomain = 'http-tests';
+    const pending = globalThis.fetch(url);
+    respond(200);
+    await pending;
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(exported().event.domain).toBe('http-tests');
+    const resourceSpans = (transport.items.find((item) => item.type === TransportItemType.TRACE)!.payload as TraceEvent)
+      .resourceSpans;
+    faro.config.dedupe = true;
+    sendFaroEvents(resourceSpans);
+    expect(transport.items.filter((item) => item.type === TransportItemType.EVENT)).toHaveLength(1);
+    faro.config.dedupe = false;
+    sendFaroEvents(resourceSpans);
+    expect(transport.items.filter((item) => item.type === TransportItemType.EVENT)).toHaveLength(2);
+  });
+
+  it('does not attach a new request to an action already waiting for another request', async () => {
+    const action = faro.api.startUserAction('first-request') as UserActionInternalInterface;
+    const first = globalThis.fetch(url);
+    const resolveFirst = resolveResponse;
+    expect(action.getState()).toBe(UserActionState.Halted);
+    const second = globalThis.fetch(url);
+    const resolveSecond = resolveResponse;
+    resolveFirst(Object.assign(new Response(), { url, status: 200 }));
+    await first;
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(action.getState()).toBe(UserActionState.Ended);
+    resolveSecond(Object.assign(new Response(), { url, status: 200 }));
+    await second;
+    await jest.advanceTimersByTimeAsync(2000);
+    const results = pairs();
+    expect(results).toHaveLength(2);
+    expectAssociation(results.find(({ span }) => span.spanId === messages[0]!.request.requestId)!, action);
+    expectAssociation(results.find(({ span }) => span.spanId === messages[1]!.request.requestId)!);
+  });
+
+  it('retains request ownership when a later action starts before the earlier response arrives', async () => {
+    const firstAction = faro.api.startUserAction('first-action') as UserActionInternalInterface;
+    const first = globalThis.fetch(url);
+    const resolveFirst = resolveResponse;
+    firstAction.end();
+    const secondAction = faro.api.startUserAction('second-action') as UserActionInternalInterface;
+    const second = globalThis.fetch(url);
+    const resolveSecond = resolveResponse;
+    resolveFirst(Object.assign(new Response(), { url, status: 200 }));
+    await first;
+    await jest.advanceTimersByTimeAsync(500);
+    expect(secondAction.getState()).toBe(UserActionState.Halted);
+    resolveSecond(Object.assign(new Response(), { url, status: 200 }));
+    await second;
+    await jest.advanceTimersByTimeAsync(2000);
+    const results = pairs();
+    expect(results).toHaveLength(2);
+    expectAssociation(results.find(({ span }) => span.spanId === messages[0]!.request.requestId)!, firstAction);
+    expectAssociation(results.find(({ span }) => span.spanId === messages[1]!.request.requestId)!, secondAction);
   });
 
   it('keeps a slow request associated with its action until it ends', async () => {

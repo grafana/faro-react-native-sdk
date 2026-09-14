@@ -1,12 +1,25 @@
 import type { SpanContext } from '@opentelemetry/api';
 import { ESpanKind, type IResourceSpans } from '@opentelemetry/otlp-transformer/build/src/trace/internal-types';
 
-import { createInternalLogger, faro, unknownString } from '@grafana/faro-core';
-import type { EventAttributes as FaroEventAttributes } from '@grafana/faro-core';
+import { createInternalLogger, deepEqual, faro, TransportItemType, unknownString } from '@grafana/faro-core';
+import type { EventEvent, EventAttributes as FaroEventAttributes, Transports } from '@grafana/faro-core';
 
 const internalLogger = createInternalLogger();
 
 const DURATION_NS_KEY = 'duration_ns';
+const lastFetchEvents = new WeakMap<Transports, Pick<EventEvent, 'name' | 'domain' | 'attributes'>>();
+
+/** Span-derived events already have their request-start action (or none). */
+function sendFetchEvent(payload: EventEvent): void {
+  const comparable = { name: payload.name, domain: payload.domain, attributes: payload.attributes };
+  if (faro.config.dedupe && deepEqual(lastFetchEvents.get(faro.transports), comparable)) {
+    return;
+  }
+  lastFetchEvents.set(faro.transports, comparable);
+  // Keep normal batching, pause, sampling and beforeSend hooks, but bypass the
+  // event API's buffer for whichever user action happens to be active at export.
+  faro.transports.execute({ type: TransportItemType.EVENT, meta: faro.metas.value, payload });
+}
 
 /** Keep Faro's fetch event contract independent of the selected OTel span schema. */
 function projectFetchEventAttributes(attributes: FaroEventAttributes): void {
@@ -99,6 +112,22 @@ export function sendFaroEvents(resourceSpans: IResourceSpans[] = []) {
             if (index > -1) {
               eventName = scope?.name.substring(index + 1);
             }
+          }
+
+          if (scope?.name === '@opentelemetry/instrumentation-fetch') {
+            const name = faroEventAttributes['faro.action.user.name'];
+            const parentId = faroEventAttributes['faro.action.user.parentId'];
+            delete faroEventAttributes['faro.action.user.name'];
+            delete faroEventAttributes['faro.action.user.parentId'];
+            sendFetchEvent({
+              name: 'faro.tracing.fetch',
+              domain: faro.config.eventDomain,
+              attributes: faroEventAttributes,
+              timestamp: new Date(Number(span.endTimeUnixNano) / 1_000_000).toISOString(),
+              trace: { trace_id: spanContext.traceId, span_id: spanContext.spanId },
+              ...(name != null && parentId != null ? { action: { name, parentId } } : {}),
+            });
+            continue;
           }
 
           // Push event to Faro

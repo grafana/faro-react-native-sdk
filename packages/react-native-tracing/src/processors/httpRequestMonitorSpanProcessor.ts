@@ -8,6 +8,8 @@ import {
   notifyHttpRequestStart,
 } from '@grafana/faro-react-native';
 
+import { captureFetchUserAction } from '../instrumentations/instrumentationUtils';
+
 const ATTR_HTTP_METHOD = 'http.method';
 const ATTR_HTTP_STATUS_CODE = 'http.status_code';
 const ATTR_HTTP_URL = 'http.url';
@@ -59,6 +61,11 @@ export class HttpRequestMonitorSpanProcessor implements SpanProcessor {
 
   onStart(span: Span, parentContext: Context): void {
     if (isHttpSpan(span)) {
+      // Capture before notifyStart changes Started to Halted. New requests while
+      // already Halted are not tracked by the controller and must not inherit it.
+      if (span.instrumentationScope.name === '@opentelemetry/instrumentation-fetch') {
+        captureFetchUserAction(span);
+      }
       const url = getHttpUrl(span) ?? '';
       const method = getHttpMethod(span) ?? 'GET';
       const requestId = span.spanContext().spanId;
