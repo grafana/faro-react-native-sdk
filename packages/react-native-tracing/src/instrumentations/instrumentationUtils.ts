@@ -5,6 +5,19 @@ import type { XHRCustomAttributeFunction } from '@opentelemetry/instrumentation-
 
 import { faro, type UserActionInternalInterface, UserActionState } from '@grafana/faro-core';
 
+/** Capture request ownership at start, before the monitor can halt the action. */
+export function captureFetchUserAction(span: Span): void {
+  try {
+    const action = faro.api?.getActiveUserAction?.();
+    if (action && (action as UserActionInternalInterface).getState() === UserActionState.Started) {
+      span.setAttribute('faro.action.user.name', action.name);
+      span.setAttribute('faro.action.user.parentId', action.parentId);
+    }
+  } catch {
+    // Instrumentation must not interrupt the request or log recursively.
+  }
+}
+
 /**
  * FetchError interface matching OpenTelemetry's internal type
  * Note: FetchError is not exported from @opentelemetry/instrumentation-fetch
