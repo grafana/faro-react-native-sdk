@@ -43,7 +43,7 @@ That's it! HTTP requests via `fetch()` are now automatically traced (and correla
 
 ## HTTP span and event conventions
 
-Default fetch tracing uses OpenTelemetry's [stable HTTP conventions](https://opentelemetry.io/docs/specs/semconv/http/http-spans/#name). Known methods
+By default, fetch tracing uses OpenTelemetry's [stable HTTP conventions](https://opentelemetry.io/docs/specs/semconv/http/http-spans/#name). Known methods
 produce names such as `GET` and `POST`. Ordinary successful responses leave status
 UNSET; ordinary 4xx/5xx responses produce ERROR and a string `error.type`, without
 a redundant status description. Successful responses omit `error.type`.
@@ -51,26 +51,28 @@ a redundant status description. Successful responses omit `error.type`.
 Span fields include string `http.request.method`, `url.full` and `server.address`,
 integer `server.port`, and integer `http.response.status_code` when a response is
 available. Additional attributes depend on the underlying instrumentation and its
-configuration; body-size and network timing attributes are not enabled by this change.
+configuration.
 
-The `faro.tracing.fetch` event has a separate compatibility contract. Its HTTP
-fields remain `http.method`, `http.url`, `http.status_code`, `http.host` (including
+The `faro.tracing.fetch` event uses a separate HTTP schema. Its HTTP
+fields are `http.method`, `http.url`, `http.status_code`, `http.host` (including
 an explicit non-default port), and `http.scheme`. Event attributes are strings,
-including `duration_ns`. Session, trace/span and user-action correlation are retained.
-These legacy event fields are projected during export without adding legacy
-attributes to stable-only spans. Other instrumentation-specific fields can differ
-between convention modes, such as legacy `http.status_text` and `http.user_agent`.
+including `duration_ns`. Events carry session and trace/span context.
+Stable span attributes are mapped to these legacy event fields during export;
+stable-only spans do not include legacy HTTP attributes. Other instrumentation-specific
+fields can differ between convention modes, such as legacy `http.status_text`
+and `http.user_agent`.
 
 Fetch spans capture the action that is Started when the request begins,
 before request monitoring moves that action to Halted. A span started while
 an action is already Halted, after it ends/cancels, or without an active action
-does not inherit that action. Request monitoring waits for the tracked response.
+does not inherit that action. The action waits for its tracked request to finish.
 
-Fetch events continue through `faro.api.pushEvent`, retaining shared event
-deduplication, transport hooks and pause behavior. This change does not alter the
-user-action lifecycle or event buffering: an event exported while a different
-action is Started can still be associated with that later action. Resolving this
-existing export-time association issue is separate from the HTTP conventions update.
+Fetch events use `faro.api.pushEvent`, including shared event deduplication,
+transport hooks and pause behavior. Event buffering can affect user-action
+association: an event exported while a different action is Started can be
+associated with that later action instead of the action captured by the span.
+An event from a span without an action can also become associated with an action
+that is Started at export time.
 
 An explicit override is available under `tracingOptions.instrumentationOptions`:
 
@@ -81,11 +83,11 @@ fetchInstrumentationOptions: {
 }
 ```
 
-`http/dup` retains the old `HTTP GET` / `HTTP POST` names. All three modes retain
-the Faro HTTP event fields and request monitoring for user actions. The setting
-applies when the fetch instrumentation is created; re-adding an existing tracing
+`http/dup` uses legacy names such as `HTTP GET` and `HTTP POST`. All three modes
+use the same Faro HTTP event fields and support request monitoring for user actions.
+The setting applies when the fetch instrumentation is created; re-adding an existing tracing
 instance reuses that instrumentation. Construct a new tracing instance to choose
-a different mode. Custom instrumentation arrays and optional XHR tracing retain
+a different mode. Custom instrumentation arrays and optional XHR tracing use
 their own configuration.
 
 ## Fetch vs XHR in React Native
