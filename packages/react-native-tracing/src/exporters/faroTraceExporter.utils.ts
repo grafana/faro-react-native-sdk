@@ -107,8 +107,6 @@ export function sendFaroEvents(resourceSpans: IResourceSpans[] = []) {
           // 3. No console.log calls are made here
           faro.api.pushEvent(`faro.tracing.${eventName}`, faroEventAttributes, undefined, {
             spanContext,
-            // The span already captured its action (or none) at request start.
-            skipUserActionBuffer: scope?.name === '@opentelemetry/instrumentation-fetch',
             // Convert nanoseconds to milliseconds
             timestampOverwriteMs: Number(span.endTimeUnixNano) / 1_000_000,
             customPayloadTransformer: (payload) => {

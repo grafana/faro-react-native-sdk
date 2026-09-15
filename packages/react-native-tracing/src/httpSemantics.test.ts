@@ -217,25 +217,6 @@ describe.each(modes)('fetch semantics (%s)', (mode) => {
     expect(pairs()).toEqual([]);
   });
 
-  it.each([false, true])(
-    'preserves request-start ownership at export time (earlier action: %s)',
-    async (hasEarlierAction) => {
-      const earlier = hasEarlierAction
-        ? (faro.api.startUserAction('earlier-action') as UserActionInternalInterface)
-        : undefined;
-      const pending = globalThis.fetch(url);
-      earlier?.end();
-      respond(200);
-      await pending;
-      // Fetch waits 300ms for resource data, then the exporter batches for 1000ms.
-      await jest.advanceTimersByTimeAsync(1250);
-      const action = faro.api.startUserAction('later-action') as UserActionInternalInterface;
-      await jest.advanceTimersByTimeAsync(2000);
-      expect(action.getState()).toBe(UserActionState.Ended);
-      expectAssociation(exported(), earlier);
-    }
-  );
-
   it.each(['paused', 'beforeSend'] as const)('respects transport filtering when %s', async (filter) => {
     if (filter === 'paused') faro.transports.pause();
     else faro.transports.addBeforeSendHooks((item) => (item.type === TransportItemType.EVENT ? null : item));
