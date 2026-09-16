@@ -9,6 +9,18 @@ describe('getDefaultOTELInstrumentations', () => {
 
     expect(instrumentations).toHaveLength(1);
     expect(instrumentations[0]).toBeInstanceOf(FetchInstrumentation);
+    expect((instrumentations[0] as FetchInstrumentation).getConfig().semconvStabilityOptIn).toBe('http');
+  });
+
+  it.each(['', 'http/dup'])('ignores unsupported fetch convention overrides (%s)', (mode) => {
+    // JavaScript callers can still pass properties absent from the public type.
+    const options = { fetchInstrumentationOptions: { ignoreNetworkEvents: true, semconvStabilityOptIn: mode } };
+    const instrumentations = getDefaultOTELInstrumentations(options).flat();
+    const fetch = instrumentations[0] as FetchInstrumentation;
+    expect(fetch.getConfig().semconvStabilityOptIn).toBe('http');
+
+    updateDefaultOTELInstrumentations(instrumentations, options);
+    expect(fetch.getConfig().semconvStabilityOptIn).toBe('http');
   });
 
   it('should allow enabling XMLHttpRequestInstrumentation', () => {

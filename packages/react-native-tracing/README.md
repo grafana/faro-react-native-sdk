@@ -41,6 +41,23 @@ const faro = initializeFaro({
 
 That's it! HTTP requests via `fetch()` are now automatically traced (and correlated with user actions when user action tracking is enabled) and sent to your Faro collector.
 
+## HTTP span and event conventions
+
+Built-in fetch tracing uses OpenTelemetry's [stable HTTP conventions](https://opentelemetry.io/docs/specs/semconv/http/http-spans/#name),
+with span names such as `GET` and `POST`. Attributes include `http.request.method`,
+`url.full`, `server.address`, `server.port`, and `http.response.status_code`.
+Successful responses leave status UNSET; ordinary 4xx/5xx responses set ERROR
+and a string `error.type`. There is no fetch convention mode setting.
+
+The `faro.tracing.fetch` event keeps `http.method`, `http.url`, `http.status_code`,
+`http.host`, and `http.scheme`. Event attributes, including `duration_ns`, are
+strings. Events retain session and trace/span context and use the shared event
+pipeline for deduplication and transport hooks. Optional XHR tracing and custom
+instrumentations use their own conventions.
+
+Fetch spans capture the active user action at request start. A delayed fetch
+event can still be associated with a later action through event buffering.
+
 ## Fetch vs XHR in React Native
 
 By default, this package traces `fetch()` requests only.
