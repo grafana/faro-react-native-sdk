@@ -7,17 +7,17 @@ import type { EventAttributes as FaroEventAttributes } from '@grafana/faro-core'
 const internalLogger = createInternalLogger();
 
 const DURATION_NS_KEY = 'duration_ns';
-/** Keep Faro's fetch event contract independent of the selected OTel span schema. */
+/** Map stable OTel span attributes to Faro's fetch event contract. */
 function projectFetchEventAttributes(attributes: FaroEventAttributes): void {
   const fields = {
     'http.request.method': 'http.method',
     'url.full': 'http.url',
     'http.response.status_code': 'http.status_code',
   };
-  for (const [stable, legacy] of Object.entries(fields)) {
-    if (attributes[stable] != null) {
-      attributes[legacy] = attributes[stable];
-      delete attributes[stable];
+  for (const [spanField, eventField] of Object.entries(fields)) {
+    if (attributes[spanField] != null) {
+      attributes[eventField] = attributes[spanField];
+      delete attributes[spanField];
     }
   }
 

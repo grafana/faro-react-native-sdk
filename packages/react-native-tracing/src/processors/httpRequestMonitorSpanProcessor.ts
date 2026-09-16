@@ -10,6 +10,7 @@ import {
 
 import { captureFetchUserAction } from '../instrumentations/instrumentationUtils';
 
+// Optional XHR instrumentation still emits these attributes.
 const ATTR_HTTP_METHOD = 'http.method';
 const ATTR_HTTP_STATUS_CODE = 'http.status_code';
 const ATTR_HTTP_URL = 'http.url';

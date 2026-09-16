@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes
+
+- Fetch spans use stable HTTP conventions only. Update queries from `HTTP GET` / `HTTP POST`
+  to `GET` / `POST`, and replace `http.method`, `http.url`, and `http.status_code` with
+  `http.request.method`, `url.full`, and `http.response.status_code`. Faro fetch event
+  fields stay unchanged; there is no legacy span mode.
+
+### Bug Fixes
+
+- Correct HTTP request timing and capture the active user action before request monitoring halts it.
+
 ## [1.3.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v1.3.0...faro-react-native-tracing-v1.3.1) (2026-07-15)
 
 ### Bug Fixes

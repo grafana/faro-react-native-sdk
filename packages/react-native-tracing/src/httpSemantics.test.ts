@@ -16,10 +16,9 @@ jest.mock('@grafana/faro-react-native', () =>
   jest.requireActual('../../react-native/src/instrumentations/userActions/httpRequestMonitor')
 );
 
-const modes = [undefined, 'http', '', 'http/dup'] as const;
 const url = 'https://api.example.com:8443/orders';
 
-describe.each(modes)('fetch semantics (%s)', (mode) => {
+describe('stable fetch semantics', () => {
   let faro: Faro;
   let transport: MockTransport;
   let instrumentation: TracingInstrumentation;
@@ -50,7 +49,6 @@ describe.each(modes)('fetch semantics (%s)', (mode) => {
         propagateTraceHeaderCorsUrls: [/.*/],
         fetchInstrumentationOptions: {
           ignoreNetworkEvents: true,
-          ...(mode === undefined ? {} : { semconvStabilityOptIn: mode }),
         },
       },
     });
@@ -103,27 +101,21 @@ describe.each(modes)('fetch semantics (%s)', (mode) => {
     await pending;
     await jest.advanceTimersByTimeAsync(2000);
     const { span, event } = exported();
-    const stable = mode !== '';
-    const legacy = mode === '' || mode === 'http/dup';
-    expect(span.name).toBe(legacy ? `HTTP ${method}` : method);
+    expect(span.name).toBe(method);
     expect(span.status?.code).toBe(status >= 400 ? 2 : 0);
     const attributes = Object.fromEntries(span.attributes.map(({ key, value }) => [key, value]));
-    if (stable) {
-      expect(attributes).toMatchObject({
-        'http.request.method': { stringValue: method },
-        'url.full': { stringValue: url },
-        'server.address': { stringValue: 'api.example.com' },
-        'server.port': { intValue: 8443 },
-        'http.response.status_code': { intValue: status },
-      });
-      expect(attributes['error.type']).toEqual(status >= 400 ? { stringValue: String(status) } : undefined);
-      expect(span.status?.message).toBeUndefined();
-    }
-    if (!legacy) {
-      expect(attributes['http.method']).toBeUndefined();
-      expect(attributes['http.url']).toBeUndefined();
-      expect(attributes['http.status_code']).toBeUndefined();
-    }
+    expect(attributes).toMatchObject({
+      'http.request.method': { stringValue: method },
+      'url.full': { stringValue: url },
+      'server.address': { stringValue: 'api.example.com' },
+      'server.port': { intValue: 8443 },
+      'http.response.status_code': { intValue: status },
+    });
+    expect(attributes['error.type']).toEqual(status >= 400 ? { stringValue: String(status) } : undefined);
+    expect(span.status?.message).toBeUndefined();
+    expect(attributes['http.method']).toBeUndefined();
+    expect(attributes['http.url']).toBeUndefined();
+    expect(attributes['http.status_code']).toBeUndefined();
     expect(event.attributes).toMatchObject({
       'http.method': method,
       'http.url': url,
@@ -134,7 +126,9 @@ describe.each(modes)('fetch semantics (%s)', (mode) => {
     });
     expect(event.attributes!['url.full']).toBeUndefined();
     expect(event.attributes!['http.request.method']).toBeUndefined();
+    expect(event.attributes!['http.response.status_code']).toBeUndefined();
     expect(event.attributes!['server.address']).toBeUndefined();
+    expect(event.attributes!['server.port']).toBeUndefined();
     expect(Object.values(event.attributes!).every((value) => typeof value === 'string')).toBe(true);
     expect(Number(event.attributes!['duration_ns'])).toBeGreaterThan(0);
     expect(event.trace).toEqual({ trace_id: span.traceId, span_id: span.spanId });
