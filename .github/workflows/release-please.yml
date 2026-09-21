@@ -85,7 +85,7 @@ jobs:
         with:
           ref: ${{ needs.release-please.outputs.release_pr_branch }}
           token: ${{ steps.get-github-app-token.outputs.token }}
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Enable corepack
         run: corepack enable
@@ -122,17 +122,17 @@ jobs:
           yarn install --immutable
           node packages/react-native/scripts/sync-faro-rn-package-meta.mjs
           yarn quality:format:packages
-          if git diff --quiet; then
-            echo "No lockfile, package meta, or formatting changes."
-            exit 0
-          fi
-          # Match the identity the release-please-action uses for its commits
-          # on the same branch, so this commit appears as the same bot.
-          git config user.name 'app-o11y-kwl-ci[bot]'
-          git config user.email 'app-o11y-kwl-ci[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'chore: refresh yarn.lock and format release files'
-          git push
+          git add yarn.lock packages/react-native/CHANGELOG.md \
+            packages/react-native-tracing/CHANGELOG.md \
+            packages/react-native/src/generated/faroRNPackageMeta.ts
+
+      # GitHub signs API commits, satisfying the repository's verified-signature rule.
+      - name: Commit refreshed release files
+        uses: grafana/github-api-commit-action@b1d81091e8480dd11fcea8bc1f0ab977a0376ca5 # v1.0.0
+        with:
+          token: ${{ steps.get-github-app-token.outputs.token }}
+          commit-message: 'chore: refresh yarn.lock and format release files'
+          success-if-no-changes: true
 
   verify:
     name: Verify release
