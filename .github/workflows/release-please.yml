@@ -122,17 +122,54 @@ jobs:
           yarn install --immutable
           node packages/react-native/scripts/sync-faro-rn-package-meta.mjs
           yarn quality:format:packages
-          git add yarn.lock packages/react-native/CHANGELOG.md \
-            packages/react-native-tracing/CHANGELOG.md \
-            packages/react-native/src/generated/faroRNPackageMeta.ts
 
-      # GitHub signs API commits, satisfying the repository's verified-signature rule.
+      # GitHub signs API commits. Compare against the checkout SHA atomically so
+      # a concurrent release update cannot be overwritten by stale generated files.
       - name: Commit refreshed release files
-        uses: grafana/github-api-commit-action@b1d81091e8480dd11fcea8bc1f0ab977a0376ca5 # v1.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RELEASE_BRANCH: ${{ needs.release-please.outputs.release_pr_branch }}
         with:
-          token: ${{ steps.get-github-app-token.outputs.token }}
-          commit-message: 'chore: refresh yarn.lock and format release files'
-          success-if-no-changes: true
+          github-token: ${{ steps.get-github-app-token.outputs.token }}
+          script: |
+            const { execFileSync } = require('node:child_process');
+            const fs = require('node:fs');
+            const expectedHeadOid = execFileSync('git', ['rev-parse', 'HEAD']).toString().trim();
+            const releaseFiles = [
+              'yarn.lock',
+              'packages/react-native/CHANGELOG.md',
+              'packages/react-native-tracing/CHANGELOG.md',
+              'packages/react-native/src/generated/faroRNPackageMeta.ts',
+            ];
+            const changedFiles = execFileSync('git', [
+              'diff', '--name-only', '-z', 'HEAD', '--', ...releaseFiles,
+            ]).toString().split('\0').filter(Boolean);
+            if (changedFiles.length === 0) {
+              core.info('No release files changed.');
+              return;
+            }
+            const additions = changedFiles.map((path) => {
+              if (!fs.lstatSync(path).isFile()) {
+                throw new Error(`Release file is not a regular file: ${path}`);
+              }
+              return { path, contents: fs.readFileSync(path).toString('base64') };
+            });
+            const result = await github.graphql(`
+              mutation($input: CreateCommitOnBranchInput!) {
+                createCommitOnBranch(input: $input) { commit { oid } }
+              }
+            `, {
+              input: {
+                branch: {
+                  repositoryNameWithOwner: process.env.GITHUB_REPOSITORY,
+                  branchName: process.env.RELEASE_BRANCH,
+                },
+                expectedHeadOid,
+                message: { headline: 'chore: refresh yarn.lock and format release files' },
+                fileChanges: { additions },
+              },
+            });
+            core.info(`Created signed commit ${result.createCommitOnBranch.commit.oid}`);
 
   verify:
     name: Verify release
