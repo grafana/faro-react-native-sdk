@@ -14,7 +14,9 @@ declare const global: {
   removeEventListener?: (event: string, handler: (event: PromiseRejectionEvent) => void) => void;
 };
 
-type ErrorHandlerCallback = (error: Error | unknown, isFatal?: boolean) => void;
+// Mirrors RN's ErrorHandler: a thrown value is not necessarily an Error, and
+// isFatal is always supplied by the runtime.
+type ErrorHandlerCallback = (error: unknown, isFatal: boolean) => void;
 
 export interface ErrorsInstrumentationOptions {
   /**
@@ -115,7 +117,10 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
     this.originalErrorHandler = global.ErrorUtils.getGlobalHandler();
 
     // Set our custom handler
-    global.ErrorUtils.setGlobalHandler((error: Error, isFatal?: boolean) => {
+    global.ErrorUtils.setGlobalHandler((thrown: unknown, isFatal: boolean) => {
+      // JS can throw any value, so normalise before the Error-shaped paths below.
+      const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+
       try {
         // Check if error should be ignored
         if (this.shouldIgnoreError(error)) {
@@ -144,7 +149,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
         this.api.pushError(enhancedError, {
           type: enhancedError.name || 'Error',
           context,
-          fatal: isFatal ?? false,
+          fatal: isFatal,
           stackFrames,
         });
 
@@ -157,7 +162,7 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
       } finally {
         // Always call the original handler to maintain normal error behavior
         if (this.originalErrorHandler) {
-          this.originalErrorHandler(error, isFatal);
+          this.originalErrorHandler(thrown, isFatal);
         }
       }
     });

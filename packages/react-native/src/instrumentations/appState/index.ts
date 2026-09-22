@@ -4,6 +4,14 @@ import { BaseInstrumentation, dateNow, VERSION } from '@grafana/faro-core';
 
 export const EVENT_APP_STATE_CHANGED = 'app_lifecycle_changed';
 
+const APP_STATE_STATUSES = ['inactive', 'background', 'active', 'extension', 'unknown'] as const;
+
+// RN types AppState.currentState as `null | undefined | string`: it stays null
+// until the initial value is set, so narrow it instead of trusting the shape.
+function isAppStateStatus(value: unknown): value is AppStateStatus {
+  return typeof value === 'string' && (APP_STATE_STATUSES as readonly string[]).includes(value);
+}
+
 /**
  * AppState instrumentation for React Native
  * Tracks app foreground/background/inactive state changes
@@ -21,7 +29,8 @@ export class AppStateInstrumentation extends BaseInstrumentation {
 
   initialize(): void {
     // Get initial app state
-    this.currentState = AppState.currentState;
+    const initialState = AppState.currentState;
+    this.currentState = isAppStateStatus(initialState) ? initialState : undefined;
     this.stateStartTime = dateNow();
 
     this.logInfo('AppState instrumentation initialized', {
