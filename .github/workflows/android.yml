@@ -127,6 +127,15 @@ jobs:
           echo "--- app Kotlin version ---"
           grep -n 'kotlinVersion' android/build.gradle || echo 'app sets no kotlinVersion'
 
+      # The 0.74 template still runs Jetifier, and its 2g default heap is not
+      # enough to transform hermes-android — the build dies before the SDK
+      # module compiles. Later entries win, so appending is enough.
+      - name: Raise the Gradle heap
+        working-directory: ${{ runner.temp }}/consumer/android
+        run: |
+          echo 'org.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g' >> gradle.properties
+          tail -3 gradle.properties
+
       - name: Assemble debug
         working-directory: ${{ runner.temp }}/consumer/android
         run: ./gradlew assembleDebug --no-daemon
