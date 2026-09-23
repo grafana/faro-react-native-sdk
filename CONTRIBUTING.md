@@ -256,13 +256,50 @@ Releases are automated with
    (`feat:`, `fix:`, etc.).
 2. release-please opens a release PR with version bumps, per-package changelogs,
    and updated `release-please-manifest.json`.
-3. After the release PR merges, the workflow tags the repo and publishes
-   `@grafana/faro-react-native` and `@grafana/faro-react-native-tracing` to npm
-   (Trusted Publishing + provenance).
+3. After the release PR merges, the workflow creates package tags and GitHub
+   releases, then runs build, lint, circular-dependency, and unit-test checks.
+4. Approve the `npm-publish` environment when the publish job waits for review.
+   An eligible `mobile-o11y-engineers` reviewer other than the run initiator must
+   approve it; self-review is disabled. Publishing uses npm Trusted Publishing
+   with provenance.
+5. Confirm both package versions are available on npm. GitHub releases are
+   created before publishing, so their existence alone does not confirm success.
 
 Maintainers do not run manual `lerna version` or tag pushes for releases. If
 release-please or CI is broken, fix the workflow rather than bypassing it with
 ad-hoc publishes.
+
+### Preparing a release
+
+Use the existing release-please PR. The two packages are versioned independently;
+a breaking tracing change can require a major tracing release alongside a minor
+core SDK release. Review each package changelog and call out migration requirements.
+
+Before merging:
+
+- Check that the PR includes the intended fixes and its checks pass.
+- Confirm `src/generated/faroRNPackageMeta.ts` matches the core package version.
+  The refresh job updates this file, the lockfile, and changelog formatting, then
+  commits through GitHub's API to satisfy the verified-signature rule.
+- Build both packages locally with `yarn build`, then pack each workspace:
+
+  ```sh
+  yarn workspace @grafana/faro-react-native pack --out /tmp/faro-react-native.tgz
+  yarn workspace @grafana/faro-react-native-tracing pack --out /tmp/faro-react-native-tracing.tgz
+  ```
+
+  Install both archives in a consumer app, including dependency resolutions,
+  to verify the unpublished candidate.
+
+- Exercise iOS and Android and verify emitted telemetry in the target Grafana
+  stack. Record the tested commit and package versions. A native rebuild is
+  required when changing SDK native code.
+- Arrange an eligible reviewer for the publishing environment approval.
+
+If the refresh job fails, fix that workflow before the next release. A manual
+workflow dispatch can retry release-please on `main`; inspect the previous run
+first, since a dispatch after a merged release PR can create a release. Do not
+use manual tags or local npm publishing to bypass the workflow.
 
 ### Version Strategy
 
