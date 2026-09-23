@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'packages/react-native/android/**'
+      # Holds the react-native peer range that the old-consumer job checks.
+      - 'packages/react-native/package.json'
       - 'demo/android/**'
       - 'demo/package.json'
       - '.github/workflows/android.yml'
@@ -20,7 +22,7 @@ jobs:
   demo:
     permissions:
       contents: read
-    name: Demo app (react-native 0.87)
+    name: Demo app
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -79,10 +81,10 @@ jobs:
           # Oldest release the peer range admits that still has a working
           # template on a current Node. Ships Kotlin 1.9.22.
           - react-native: 0.74.7
-            cli: 13
+            cli: 13.6.9
           # Last release before the Kotlin 2.x switch.
           - react-native: 0.79.6
-            cli: 18
+            cli: 18.0.1
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -127,9 +129,10 @@ jobs:
           echo "--- app Kotlin version ---"
           grep -n 'kotlinVersion' android/build.gradle || echo 'app sets no kotlinVersion'
 
-      # The 0.74 template still runs Jetifier, and its 2g default heap is not
-      # enough to transform hermes-android — the build dies before the SDK
-      # module compiles. Later entries win, so appending is enough.
+      # 0.74 runs Jetifier, and the template's 2g default heap cannot transform
+      # hermes-android: the build dies before the SDK module compiles. Applied
+      # to every entry because the templates all default low and the extra heap
+      # costs a passing build nothing. Later entries win, so appending is enough.
       - name: Raise the Gradle heap
         working-directory: ${{ runner.temp }}/consumer/android
         run: |
@@ -139,3 +142,8 @@ jobs:
       - name: Assemble debug
         working-directory: ${{ runner.temp }}/consumer/android
         run: ./gradlew assembleDebug --no-daemon
+
+      # Autolinking derives the project name from the package name.
+      - name: Unit tests for the SDK module
+        working-directory: ${{ runner.temp }}/consumer/android
+        run: ./gradlew :grafana_faro-react-native:testDebugUnitTest --no-daemon
