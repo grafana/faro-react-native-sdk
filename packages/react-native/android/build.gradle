@@ -1,4 +1,12 @@
 buildscript {
+    // Follow the consumer app's Kotlin version. Pinning our own would ship a
+    // stdlib the app's compiler cannot read: Kotlin 1.9.x rejects 2.2 metadata,
+    // and our peer range still admits react-native >=0.70.0. The fallback only
+    // applies to apps whose root buildscript sets no kotlinVersion.
+    ext.faroKotlinVersion = rootProject.ext.has('kotlinVersion')
+        ? rootProject.ext.get('kotlinVersion')
+        : '1.9.25'
+
     repositories {
         google()
         mavenCentral()
@@ -6,7 +14,7 @@ buildscript {
 
     dependencies {
         classpath 'com.android.tools.build:gradle:7.4.2'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$faroKotlinVersion"
         classpath 'com.google.protobuf:protobuf-gradle-plugin:0.10.0'
     }
 }
@@ -66,7 +74,7 @@ repositories {
 dependencies {
     //noinspection GradleDynamicVersion
     implementation 'com.facebook.react:react-native:+'
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.0'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$faroKotlinVersion"
     implementation 'com.google.protobuf:protobuf-javalite:3.25.9'
 
     testImplementation 'junit:junit:4.13.2'
