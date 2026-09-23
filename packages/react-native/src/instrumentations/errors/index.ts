@@ -118,10 +118,13 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
 
     // Set our custom handler
     global.ErrorUtils.setGlobalHandler((thrown: unknown, isFatal: boolean) => {
-      // JS can throw any value, so normalise before the Error-shaped paths below.
-      const error = thrown instanceof Error ? thrown : new Error(String(thrown));
-
       try {
+        // JS can throw any value, so normalise before the Error-shaped paths
+        // below. String() can itself throw — on a null-prototype object, or one
+        // with a throwing toString — so keep it inside the try, or finally never
+        // runs and React Native's own handler never sees the crash.
+        const error = thrown instanceof Error ? thrown : new Error(String(thrown));
+
         // Check if error should be ignored
         if (this.shouldIgnoreError(error)) {
           return;

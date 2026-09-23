@@ -577,5 +577,40 @@ describe('ErrorsInstrumentation', () => {
       expect(() => errorHandler(errorWithoutStack, false)).not.toThrow();
       expect(transport.items).toHaveLength(1);
     });
+
+    it.each([
+      ['a null-prototype object', () => Object.create(null)],
+      [
+        'an object with a throwing toString',
+        () => ({
+          toString: () => {
+            throw new Error('toString exploded');
+          },
+        }),
+      ],
+    ])('should still forward %s to the original handler', (_name, makeThrown) => {
+      const originalHandler = jest.fn();
+      mockGlobal.ErrorUtils.getGlobalHandler = jest.fn(() => originalHandler);
+
+      let errorHandler: any;
+      mockGlobal.ErrorUtils.setGlobalHandler = jest.fn((handler) => {
+        errorHandler = handler;
+      });
+
+      const transport = new MockTransport();
+      initializeFaro(
+        mockConfig({
+          transports: [transport],
+          instrumentations: [new ErrorsInstrumentation()],
+        })
+      );
+
+      // String(thrown) throws for these values, so Faro cannot report them.
+      // React Native's handler must still see the original value and flag.
+      const thrown = makeThrown();
+      expect(() => errorHandler(thrown, true)).not.toThrow();
+      expect(originalHandler).toHaveBeenCalledWith(thrown, true);
+      expect(transport.items).toHaveLength(0);
+    });
   });
 });
