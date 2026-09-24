@@ -36,9 +36,6 @@ android {
     sourceSets {
         main {
             java.srcDirs = ['src/main/java']
-            proto {
-                srcDir 'src/main/proto'
-            }
         }
     }
 

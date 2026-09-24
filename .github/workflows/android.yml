@@ -60,9 +60,10 @@ jobs:
         working-directory: demo/android
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Unit tests
+      # Test our module; dependency libraries own their test configuration.
+      - name: Unit tests for the SDK module
         working-directory: demo/android
-        run: ./gradlew testDebugUnitTest --no-daemon
+        run: ./gradlew :grafana_faro-react-native:testDebugUnitTest --no-daemon
 
   # peerDependencies admits react-native >=0.70.0, and nothing checks that
   # claim. An old app compiles with an old Kotlin, which rejects newer class
@@ -143,7 +144,12 @@ jobs:
         working-directory: ${{ runner.temp }}/consumer/android
         run: ./gradlew assembleDebug --no-daemon
 
+      # Robolectric pulls in a multi-release Bouncy Castle jar that old Jetifier
+      # cannot parse. It has no Android Support references to rewrite; exclude
+      # only that jar while retaining Jetifier for the consumer dependencies.
       # Autolinking derives the project name from the package name.
       - name: Unit tests for the SDK module
         working-directory: ${{ runner.temp }}/consumer/android
-        run: ./gradlew :grafana_faro-react-native:testDebugUnitTest --no-daemon
+        run: >-
+          ./gradlew :grafana_faro-react-native:testDebugUnitTest --no-daemon
+          -Pandroid.jetifier.ignorelist=bcprov-jdk18on
