@@ -73,7 +73,14 @@ export class ANRInstrumentation extends BaseInstrumentation {
     this.startNativeTracking(nativeModule);
 
     const emitter = new NativeEventEmitter(nativeModule);
-    this.anrEventSubscription = emitter.addListener('onANRDetected', (anrJson: string) => {
+    this.anrEventSubscription = emitter.addListener('onANRDetected', (...args: readonly Object[]) => {
+      const [anrJson] = args;
+
+      if (typeof anrJson !== 'string') {
+        this.logWarn('Ignoring onANRDetected event without a string payload');
+        return;
+      }
+
       void this.handleLiveAnrEvent(nativeModule, anrJson);
     });
 

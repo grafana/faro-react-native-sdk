@@ -132,7 +132,14 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
       try {
         this.eventEmitter = new NativeEventEmitter(nativeModule);
 
-        const refreshRateSubscription = this.eventEmitter.addListener('onRefreshRate', (refreshRate: number) => {
+        const refreshRateSubscription = this.eventEmitter.addListener('onRefreshRate', (...args: readonly Object[]) => {
+          const [refreshRate] = args;
+
+          if (typeof refreshRate !== 'number') {
+            this.logWarn('Ignoring onRefreshRate event without a numeric payload');
+            return;
+          }
+
           this.handleRefreshRate(refreshRate);
         });
         this.eventSubscriptions.push(refreshRateSubscription);
