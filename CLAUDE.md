@@ -412,3 +412,4 @@ Native OS-level APIs are used for accurate metrics:
 - **Android:** `/proc/[pid]/stat` for CPU, `/proc/[pid]/status` for memory
 
 These implementations use native OS-level APIs for accurate mobile metrics.
+- Security issues should be reported via [Grafana's security issue reporting page](https://grafana.com/legal/report-a-security-issue/) and not directly in this repository.
