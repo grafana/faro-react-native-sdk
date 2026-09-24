@@ -15,30 +15,27 @@
 
 ## [2.0.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v1.3.1...faro-react-native-tracing-v2.0.0) (2026-09-24)
 
-
 ### ⚠ BREAKING CHANGES
 
-* **tracing:** Fetch spans use stable OpenTelemetry HTTP names and attributes only. Update legacy span queries; no legacy fetch mode is available.
+- **tracing:** Fetch spans use stable OpenTelemetry HTTP names and attributes only. Update legacy span queries; no legacy fetch mode is available.
 
 ### Features
 
-* **tracing:** adopt stable HTTP spans with compatible Faro events ([#196](https://github.com/grafana/faro-react-native-sdk/issues/196)) ([a6e78a9](https://github.com/grafana/faro-react-native-sdk/commit/a6e78a9dd9009693f11010633d012761f36d60f3))
-
+- **tracing:** adopt stable HTTP spans with compatible Faro events ([#196](https://github.com/grafana/faro-react-native-sdk/issues/196)) ([a6e78a9](https://github.com/grafana/faro-react-native-sdk/commit/a6e78a9dd9009693f11010633d012761f36d60f3))
 
 ### Bug Fixes
 
-* **tracing:** clean up instrumentation on removal ([5ecfa70](https://github.com/grafana/faro-react-native-sdk/commit/5ecfa701c4e3bbd3dd55573d1cf7d592334d7186))
-* **tracing:** clean up instrumentation on removal ([f9357d4](https://github.com/grafana/faro-react-native-sdk/commit/f9357d43fd6f36decb7a1191aa10a13e670f062a))
-* **tracing:** preserve reusable OpenTelemetry components ([4122984](https://github.com/grafana/faro-react-native-sdk/commit/4122984b2ed41957fdaf8fcb55d6409a19af263e))
-* **tracing:** reject duplicate global provider ([cb8b9a0](https://github.com/grafana/faro-react-native-sdk/commit/cb8b9a0453f8e9c76350b56db7684b0ce7463f09))
-* **tracing:** reuse default request instrumentations ([6fd3f4b](https://github.com/grafana/faro-react-native-sdk/commit/6fd3f4b333d707cf25d565cb530a2ff86ebabd57))
-
+- **tracing:** clean up instrumentation on removal ([5ecfa70](https://github.com/grafana/faro-react-native-sdk/commit/5ecfa701c4e3bbd3dd55573d1cf7d592334d7186))
+- **tracing:** clean up instrumentation on removal ([f9357d4](https://github.com/grafana/faro-react-native-sdk/commit/f9357d43fd6f36decb7a1191aa10a13e670f062a))
+- **tracing:** preserve reusable OpenTelemetry components ([4122984](https://github.com/grafana/faro-react-native-sdk/commit/4122984b2ed41957fdaf8fcb55d6409a19af263e))
+- **tracing:** reject duplicate global provider ([cb8b9a0](https://github.com/grafana/faro-react-native-sdk/commit/cb8b9a0453f8e9c76350b56db7684b0ce7463f09))
+- **tracing:** reuse default request instrumentations ([6fd3f4b](https://github.com/grafana/faro-react-native-sdk/commit/6fd3f4b333d707cf25d565cb530a2ff86ebabd57))
 
 ### Dependencies
 
-* The following workspace dependencies were updated
-  * dependencies
-    * @grafana/faro-react-native bumped to 1.4.0
+- The following workspace dependencies were updated
+  - dependencies
+    - @grafana/faro-react-native bumped to 1.4.0
 
 ## [1.3.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v1.3.0...faro-react-native-tracing-v1.3.1) (2026-07-15)
 
