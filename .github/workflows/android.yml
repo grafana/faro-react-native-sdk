@@ -1,0 +1,149 @@
+name: Android
+
+on:
+  pull_request:
+    paths:
+      - 'packages/react-native/android/**'
+      # Holds the react-native peer range that the old-consumer job checks.
+      - 'packages/react-native/package.json'
+      - 'demo/android/**'
+      - 'demo/package.json'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The SDK's Gradle module has no build coverage today, so a change to
+  # compileSdk, the Kotlin version or the protobuf plugin only surfaces when
+  # someone builds an app by hand.
+  demo:
+    permissions:
+      contents: read
+    name: Demo app
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: 'yarn'
+
+      - name: Setup Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@67621b124fd2e251c5e8a0e6e3b91318f2287669 # v6.3.0
+
+      # `demo` is a workspace, so the root install covers it. The demo consumes
+      # the SDK through `link:`, so dist/ must exist before Gradle runs.
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build the SDK packages
+        run: yarn build
+
+      - name: Assemble debug
+        working-directory: demo/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Unit tests
+        working-directory: demo/android
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+  # peerDependencies admits react-native >=0.70.0, and nothing checks that
+  # claim. An old app compiles with an old Kotlin, which rejects newer class
+  # metadata, so the SDK module has to build under the app's toolchain rather
+  # than pin its own.
+  old-consumer:
+    permissions:
+      contents: read
+    name: Generated app (react-native ${{ matrix.react-native }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Oldest release the peer range admits that still has a working
+          # template on a current Node. Ships Kotlin 1.9.22.
+          - react-native: 0.74.7
+            cli: 13.6.9
+          # Last release before the Kotlin 2.x switch.
+          - react-native: 0.79.6
+            cli: 18.0.1
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          path: sdk
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: sdk/.nvmrc
+
+      - name: Setup Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@67621b124fd2e251c5e8a0e6e3b91318f2287669 # v6.3.0
+
+      - name: Build the SDK packages
+        working-directory: sdk
+        run: |
+          yarn install --immutable
+          yarn build
+
+      - name: Generate a consumer app
+        run: |
+          npx --yes @react-native-community/cli@${{ matrix.cli }} init OldConsumer \
+            --version ${{ matrix.react-native }} \
+            --skip-install --skip-git-init --install-pods false \
+            --directory "$RUNNER_TEMP/consumer"
+
+      - name: Add the SDK to the app
+        working-directory: ${{ runner.temp }}/consumer
+        run: |
+          npm pkg set 'dependencies.@grafana/faro-react-native'="file:$GITHUB_WORKSPACE/sdk/packages/react-native"
+          npm install --legacy-peer-deps
+          echo "--- app Kotlin version ---"
+          grep -n 'kotlinVersion' android/build.gradle || echo 'app sets no kotlinVersion'
+
+      # 0.74 runs Jetifier, and the template's 2g default heap cannot transform
+      # hermes-android: the build dies before the SDK module compiles. Applied
+      # to every entry because the templates all default low and the extra heap
+      # costs a passing build nothing. Later entries win, so appending is enough.
+      - name: Raise the Gradle heap
+        working-directory: ${{ runner.temp }}/consumer/android
+        run: |
+          echo 'org.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g' >> gradle.properties
+          tail -3 gradle.properties
+
+      - name: Assemble debug
+        working-directory: ${{ runner.temp }}/consumer/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      # Autolinking derives the project name from the package name.
+      - name: Unit tests for the SDK module
+        working-directory: ${{ runner.temp }}/consumer/android
+        run: ./gradlew :grafana_faro-react-native:testDebugUnitTest --no-daemon
