@@ -117,18 +117,19 @@ export function makeRNConfig(
   const installationId = config.app.installationId ?? preloadedAppMeta?.installationId;
 
   const releaseBundleFilename = config.releaseBundleFilename;
-  // Merge bundleId (from config, Metro, or DeviceInfo) with preloaded app meta
   const bundleIdValue = resolveAppBundleId(config.app, config.app?.name, appSymbolsBundleId);
-  const appMetasIfPresent =
-    preloadedAppMeta || bundleIdValue
-      ? [{ app: { ...preloadedAppMeta, ...(bundleIdValue && { bundleId: bundleIdValue }) } }]
-      : [];
+  const app = {
+    ...preloadedAppMeta,
+    ...config.app,
+    ...(installationId && { installationId }),
+    ...(bundleIdValue && { bundleId: bundleIdValue }),
+  };
+  // Core merges metadata shallowly. Supply the complete app object so native
+  // metadata cannot replace configured fields such as version and environment.
+  const appMetasIfPresent = preloadedAppMeta || bundleIdValue ? [{ app }] : [];
 
   return {
-    app: {
-      ...config.app,
-      ...(installationId && { installationId }),
-    },
+    app,
     ...(preloadedMobileMeta != null && {
       preloadedMobileMeta: preloadedMobileMeta.meta,
       preloadedSessionDeviceAttributes: preloadedMobileMeta.sessionAttributes,
