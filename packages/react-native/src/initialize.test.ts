@@ -1,4 +1,4 @@
-import { VERSION } from '@grafana/faro-core';
+import { getTransportBody, VERSION } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import packageJson from '../package.json';
@@ -6,6 +6,7 @@ import packageJson from '../package.json';
 import { initializeFaro } from './initialize';
 import { SessionInstrumentation } from './instrumentations/session';
 import * as sessionAttributes from './instrumentations/session/sessionAttributes';
+import * as appBuildIdentity from './metas/appBuildIdentity';
 
 describe('initializeFaro', () => {
   const preambleKey = '__faroBundleId_test';
@@ -20,6 +21,62 @@ describe('initializeFaro', () => {
   afterEach(() => {
     delete (globalThis as Record<string, unknown>)[preambleKey];
   });
+
+  it.each([
+    {
+      source: 'explicit',
+      explicit: 'explicit-bundle',
+      metro: 'metro-bundle',
+      native: 'native-bundle',
+      expected: 'explicit-bundle',
+    },
+    { source: 'Metro', metro: 'metro-bundle', native: 'native-bundle', expected: 'metro-bundle' },
+    { source: 'native', native: 'native-bundle', expected: 'native-bundle' },
+    { source: 'unavailable', expected: undefined },
+    { source: 'native without preloaded app', native: 'native-bundle', expected: 'native-bundle', preloaded: false },
+    { source: 'unavailable without preloaded app', expected: undefined, preloaded: false },
+  ])(
+    'preserves configured app metadata in emitted telemetry with $source bundle identity',
+    async ({ explicit, metro, native, expected, preloaded = true }) => {
+      const mobileSpy = jest.spyOn(sessionAttributes, 'loadMobileMetaForInit').mockResolvedValue({
+        sessionAttributes: sessionAttributes.minimalSessionDeviceAttributes(),
+        meta: preloaded ? { app: { installationId: 'preloaded-installation' } } : {},
+      });
+      const bundleSpy = jest.spyOn(appBuildIdentity, 'loadAppSymbolsBundleIdForInit').mockResolvedValue(native);
+      if (metro) {
+        (globalThis as Record<string, unknown>)[preambleKey] = metro;
+      }
+      const app = {
+        name: 'test',
+        version: '1.0.42',
+        environment: 'production',
+        namespace: 'test-namespace',
+        release: 'release-42',
+        installationId: 'configured-installation',
+        ...(explicit && { bundleId: explicit }),
+      };
+      const transport = new MockTransport();
+      try {
+        const faro = await initializeFaro(
+          mockConfig({
+            url: 'http://localhost:12345/collect',
+            app,
+            transports: [transport],
+            sessionTracking: { enabled: true, persistent: false },
+          })
+        );
+        transport.items = [];
+        faro.api.pushEvent('app_metadata_regression');
+        expect(transport.items).toHaveLength(1);
+        const expectedApp = { ...app, ...(expected && { bundleId: expected }) };
+        expect(faro.metas.value.app).toEqual(expectedApp);
+        expect(JSON.parse(JSON.stringify(getTransportBody(transport.items))).meta.app).toEqual(expectedApp);
+      } finally {
+        mobileSpy.mockRestore();
+        bundleSpy.mockRestore();
+      }
+    }
+  );
 
   it('should initialize Faro', async () => {
     const transport = new MockTransport();
@@ -145,7 +202,11 @@ describe('initializeFaro', () => {
     expect(faro.metas.value.sdk?.name).toBe('faro-react-native');
     expect(faro.metas.value.sdk?.version).toBe(VERSION);
     expect(faro.metas.value.sdk?.integrations).toEqual([{ name: packageJson.name, version: packageJson.version }]);
-    expect(faro.metas.value.app?.installationId).toBe('preloaded-installation-id');
+    expect(faro.metas.value.app).toMatchObject({
+      name: 'test',
+      version: '1.0.0',
+      installationId: 'preloaded-installation-id',
+    });
     expect(faro.metas.value.device?.model_identifier).toBe('test-model-identifier');
     expect(faro.metas.value.os?.name).toBe('iOS');
     expect(faro.metas.value.session?.attributes?.['react_native_version']).toBe('0.0.1');
