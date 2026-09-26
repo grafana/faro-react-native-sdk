@@ -254,7 +254,10 @@ describe('stable fetch semantics', () => {
     await jest.advanceTimersByTimeAsync(2000);
     const results = pairs();
     expect(results).toHaveLength(2);
-    expectAssociation(results.find(({ span }) => span.spanId === messages[0]!.request.requestId)!, action);
+    expectAssociation(
+      results.find(({ span }) => span.spanId === messages[0]!.request.requestId)!,
+      action
+    );
     expectAssociation(results.find(({ span }) => span.spanId === messages[1]!.request.requestId)!);
   });
 
@@ -275,8 +278,14 @@ describe('stable fetch semantics', () => {
     await jest.advanceTimersByTimeAsync(2000);
     const results = pairs();
     expect(results).toHaveLength(2);
-    expectAssociation(results.find(({ span }) => span.spanId === messages[0]!.request.requestId)!, firstAction);
-    expectAssociation(results.find(({ span }) => span.spanId === messages[1]!.request.requestId)!, secondAction);
+    expectAssociation(
+      results.find(({ span }) => span.spanId === messages[0]!.request.requestId)!,
+      firstAction
+    );
+    expectAssociation(
+      results.find(({ span }) => span.spanId === messages[1]!.request.requestId)!,
+      secondAction
+    );
   });
 
   it('keeps a slow request associated with its action until it ends', async () => {
