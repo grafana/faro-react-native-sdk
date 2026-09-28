@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.0...faro-react-native-v1.4.1) (2026-09-25)
+
+### Bug Fixes
+
+- **react-native:** preserve configured app metadata during initialization ([#208](https://github.com/grafana/faro-react-native-sdk/issues/208)) ([7fa2aac](https://github.com/grafana/faro-react-native-sdk/commit/7fa2aacdea0b351baea7545124a30a79f9c8e28b))
+
 ## [1.4.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.3.1...faro-react-native-v1.4.0) (2026-09-24)
 
 ### Features
