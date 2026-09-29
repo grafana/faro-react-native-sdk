@@ -159,6 +159,7 @@ describe('sessionAttributes', () => {
         ['iPhone', 'iPhone99,1'],
         ['iPad', 'iPad99,1'],
         ['iPod Touch', 'iPod99,1'],
+        ['Apple TV', 'AppleTV99,1'],
         ['Apple Vision', 'RealityDevice99,1'],
         ['unknown', 'iPhone99,1'],
       ])(
@@ -181,30 +182,6 @@ describe('sessionAttributes', () => {
           expect(mobileMeta.meta.device).not.toHaveProperty('model_name');
         }
       );
-
-      it.each([
-        ['iPhone', 'iPhone1,1'],
-        ['iPad', 'iPad3,1'],
-        ['iPod Touch', 'iPod9,1'],
-      ])('should keep the marketing name %p for identifier %p', async (modelName, deviceId) => {
-        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
-        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('17.0');
-        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.getModel as jest.Mock).mockReturnValue(modelName);
-        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue(deviceId);
-        (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
-        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
-
-        const mobileMeta = await loadMobileMetaForInit();
-
-        expect(mobileMeta.sessionAttributes.device_model).toBe(deviceId);
-        expect(mobileMeta.sessionAttributes.device_model_name).toBe(modelName);
-        expect(mobileMeta.meta.device).toMatchObject({
-          model_identifier: deviceId,
-          model_name: modelName,
-        });
-      });
 
       it('should identify emulator devices', async () => {
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');

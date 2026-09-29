@@ -116,26 +116,11 @@ function getDeviceManufacturer(manufacturer: string): string {
   return Platform.OS === 'ios' ? manufacturer.toLowerCase() : manufacturer;
 }
 
-// getModel() uses these family names both as real marketing names and as the fallback when its
-// table has no entry. Keep the name only for the identifiers whose marketing name is that string.
-const GENERIC_APPLE_MODEL_NAME_IDS: Record<string, ReadonlySet<string>> = {
-  iPhone: new Set(['iPhone1,1']),
-  iPad: new Set(['iPad1,1', 'iPad3,1', 'iPad3,2', 'iPad3,3', 'iPad3,4', 'iPad3,5', 'iPad3,6']),
-  'iPod Touch': new Set(['iPod1,1', 'iPod2,1', 'iPod3,1', 'iPod4,1', 'iPod5,1', 'iPod7,1', 'iPod9,1']),
-};
+// getModel() returns a bare family name when its table has no entry for the identifier.
+const APPLE_MODEL_FALLBACK_NAMES = new Set(['iPhone', 'iPad', 'iPod Touch', 'Apple TV', 'Apple Vision', 'unknown']);
 
-function getDeviceModelName(model: string, deviceId: string): string | undefined {
-  if (Platform.OS !== 'ios') {
-    return model;
-  }
-
-  // Returned only when getModel() has no table entry. Never a real marketing name.
-  if (model === 'unknown' || model === 'Apple Vision') {
-    return undefined;
-  }
-
-  const knownGenericIds = GENERIC_APPLE_MODEL_NAME_IDS[model];
-  if (knownGenericIds && !knownGenericIds.has(deviceId)) {
+function getDeviceModelName(model: string): string | undefined {
+  if (Platform.OS === 'ios' && APPLE_MODEL_FALLBACK_NAMES.has(model)) {
     return undefined;
   }
 
@@ -300,7 +285,7 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     const manufacturer = DeviceInfo.getManufacturerSync();
     const model = DeviceInfo.getModel();
     const modelIdentifier = getDeviceModelIdentifier(model);
-    const modelName = getDeviceModelName(model, modelIdentifier ?? '');
+    const modelName = getDeviceModelName(model);
     const brand = DeviceInfo.getBrand();
     const isEmulator = DeviceInfo.isEmulatorSync();
     const isTablet = DeviceInfo.isTablet();
