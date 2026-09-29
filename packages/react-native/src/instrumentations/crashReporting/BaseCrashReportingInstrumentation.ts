@@ -112,20 +112,20 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
           // getSessionAttributes() collects these asynchronously:
           // - device_id (SDK installation id, kept as a flat attr during migration)
           // - device_os_detail (async getDeviceOsDetail)
-          // - device_model_name (DeviceInfo.getDeviceNameSync)
+          // - device_model (always set; device_model_name is omitted for unknown iOS models)
           // All three should be present when collection is complete.
           const hasDeviceId = 'device_id' in sessionAttrs && sessionAttrs['device_id'] !== 'unknown';
           const hasDeviceOsDetail =
             'device_os_detail' in sessionAttrs && sessionAttrs['device_os_detail'] !== 'unknown';
-          const hasDeviceModelName = 'device_model_name' in sessionAttrs;
+          const hasDeviceModel = 'device_model' in sessionAttrs;
 
-          if (hasDeviceId && hasDeviceOsDetail && hasDeviceModelName) {
+          if (hasDeviceId && hasDeviceOsDetail && hasDeviceModel) {
             const elapsed = Date.now() - startTime;
             this.logDebug(`Session attributes ready after ${elapsed}ms (${checkCount} checks, ${attrCount} attrs)`);
             return;
           } else {
             this.logDebug(
-              `Check #${checkCount}: Found ${attrCount} session attributes: ${attrKeys} but still missing required attrs - device_id:${hasDeviceId}, device_os_detail:${hasDeviceOsDetail}, device_model_name:${hasDeviceModelName}`
+              `Check #${checkCount}: Found ${attrCount} session attributes: ${attrKeys} but still missing required attrs - device_id:${hasDeviceId}, device_os_detail:${hasDeviceOsDetail}, device_model:${hasDeviceModel}`
             );
           }
         } else {

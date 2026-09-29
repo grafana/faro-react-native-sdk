@@ -106,6 +106,16 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
+     * Whether the device is connected to power (AC, USB, wireless or dock).
+     *
+     * Resolves true while plugged in even when charging is paused, or null when unknown.
+     */
+    @ReactMethod
+    fun isConnectedToPower(promise: Promise) {
+        promise.resolve(FaroPowerSource.isConnected(reactApplicationContext))
+    }
+
+    /**
      * Gets current CPU usage percentage
      *
      * Uses differential calculation - first call returns 0.0 (baseline),
