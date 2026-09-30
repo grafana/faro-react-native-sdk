@@ -13,6 +13,19 @@
 
 - Correct HTTP request timing and capture the active user action before request monitoring halts it.
 
+## [2.0.2](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v2.0.1...faro-react-native-tracing-v2.0.2) (2026-09-30)
+
+### Bug Fixes
+
+- **react-native:** report correct device and SDK metadata ([397f456](https://github.com/grafana/faro-react-native-sdk/commit/397f456b2ba2a12dc6f4491f4812b36ca686e9a7))
+- **react-native:** report correct device and SDK metadata ([3d06f8a](https://github.com/grafana/faro-react-native-sdk/commit/3d06f8ab0ddf3a171849e965bc5d312d2b7ff426)), closes [#209](https://github.com/grafana/faro-react-native-sdk/issues/209)
+
+### Dependencies
+
+- The following workspace dependencies were updated
+  - dependencies
+    - @grafana/faro-react-native bumped to 1.4.2
+
 ## [2.0.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v2.0.0...faro-react-native-tracing-v2.0.1) (2026-09-25)
 
 ### Dependencies
