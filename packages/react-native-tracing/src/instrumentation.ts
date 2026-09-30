@@ -15,6 +15,7 @@ import {
 
 import { BaseInstrumentation, getInternalFaroFromGlobalObject, VERSION } from '@grafana/faro-core';
 import type { Faro, OTELApi, Transport } from '@grafana/faro-core';
+import { FARO_REACT_NATIVE_NPM_VERSION } from '@grafana/faro-react-native';
 
 import { FaroTraceExporter } from './exporters/faroTraceExporter';
 import { getReactNativeDevServerIgnoreUrls } from './instrumentations/devServerIgnoreUrls';
@@ -199,7 +200,7 @@ export class TracingInstrumentation extends BaseInstrumentation {
     attributes[ATTR_PROCESS_RUNTIME_VERSION] = deviceMeta?.osVersion ?? 'unknown';
 
     attributes[ATTR_TELEMETRY_DISTRO_NAME] = 'faro-react-native-sdk';
-    attributes[ATTR_TELEMETRY_DISTRO_VERSION] = VERSION;
+    attributes[ATTR_TELEMETRY_DISTRO_VERSION] = FARO_REACT_NATIVE_NPM_VERSION;
 
     // Merge with user-provided attributes
     Object.assign(attributes, options.resourceAttributes);

@@ -1784,7 +1784,7 @@ __metadata:
     prettier: "npm:2.8.8"
     react: "npm:19.2.3"
     react-native: "npm:0.87.1"
-    react-native-device-info: "npm:^11.1.0"
+    react-native-device-info: "npm:^15.0.2"
     react-native-dotenv: "npm:3.4.12"
     react-native-mmkv: "npm:4.3.2"
     react-native-nitro-modules: "npm:0.36.1"
@@ -1840,7 +1840,7 @@ __metadata:
     "@types/react": "npm:19.2.18"
     "@types/react-native": "npm:0.73.0"
     "@types/react-test-renderer": "npm:19.1.0"
-    react-native-device-info: "npm:^11.1.0"
+    react-native-device-info: "npm:^15.0.2"
     react-native-mmkv: "npm:4.3.2"
     react-native-nitro-modules: "npm:0.36.1"
     react-test-renderer: "npm:19.2.3"
@@ -13780,12 +13780,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-native-device-info@npm:^11.1.0":
-  version: 11.1.0
-  resolution: "react-native-device-info@npm:11.1.0"
+"react-native-device-info@npm:^15.0.2":
+  version: 15.0.2
+  resolution: "react-native-device-info@npm:15.0.2"
   peerDependencies:
     react-native: "*"
-  checksum: 10c0/424eb512a35264699d0f1c2f9dce2b0ca10247fbe263af37eda5563d9eb5fb333ea513c90aa58444b67d7364ac03d9a0d9cf913a0054e78ec0f2dfff22033ab0
+  checksum: 10c0/c4a1d9ae049f42f0aa3c5aba539a9826d2400cb15a6d17815824204e4e842fbc15c80afec7387acd07e02f80a1fa49aaef1d4d6e96bc9ec53c42ba63046e8ce1
   languageName: node
   linkType: hard
 

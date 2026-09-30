@@ -157,8 +157,8 @@ describe('initializeFaro', () => {
         device_os_version: '17.0',
         device_os_detail: 'iOS 17.0',
         device_manufacturer: 'apple',
-        device_model: 'Test Phone',
-        device_model_name: "Test's iPhone",
+        device_model: 'test-model-identifier',
+        device_model_name: 'Test Phone',
         device_brand: 'Apple',
         device_is_physical: 'true',
         device_id: 'preloaded-device-id',
@@ -171,7 +171,7 @@ describe('initializeFaro', () => {
           installationId: 'preloaded-installation-id',
         },
         device: {
-          brand: 'iPhone',
+          brand: 'Apple',
           is_physical: true,
           manufacturer: 'apple',
           model_identifier: 'test-model-identifier',
@@ -200,8 +200,8 @@ describe('initializeFaro', () => {
 
     expect(spy).toHaveBeenCalled();
     expect(faro.metas.value.sdk?.name).toBe('faro-react-native');
-    expect(faro.metas.value.sdk?.version).toBe(VERSION);
-    expect(faro.metas.value.sdk?.integrations).toEqual([{ name: packageJson.name, version: packageJson.version }]);
+    expect(faro.metas.value.sdk?.version).toBe(packageJson.version);
+    expect(faro.metas.value.sdk?.integrations).toEqual([{ name: '@grafana/faro-core', version: VERSION }]);
     expect(faro.metas.value.app).toMatchObject({
       name: 'test',
       version: '1.0.0',

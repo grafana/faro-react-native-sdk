@@ -19,10 +19,10 @@ export function mockDeviceInfo(): void {
       isEmulatorSync: jest.fn(() => false),
       getTotalMemorySync: jest.fn(() => 6442450944), // 6GB in bytes
       getUsedMemorySync: jest.fn(() => 2147483648), // 2GB in bytes
-      getBatteryLevel: jest.fn(() => Promise.resolve(0.75)),
       getCarrier: jest.fn(() => Promise.resolve('T-Mobile')),
-      isPowerSaveMode: jest.fn(() => Promise.resolve(false)),
-      isBatteryCharging: jest.fn(() => Promise.resolve(false)),
+      getPowerState: jest.fn(() =>
+        Promise.resolve({ batteryLevel: 0.75, batteryState: 'unplugged', lowPowerMode: false })
+      ),
     },
   }));
 }

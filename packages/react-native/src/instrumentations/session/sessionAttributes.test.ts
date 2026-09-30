@@ -35,8 +35,7 @@ jest.mock('react-native-device-info', () => ({
   isTablet: jest.fn(),
   getTotalMemorySync: jest.fn(),
   getUsedMemorySync: jest.fn(),
-  getBatteryLevel: jest.fn(),
-  isBatteryCharging: jest.fn(),
+  getPowerState: jest.fn(),
   getCarrier: jest.fn(),
   getApiLevel: jest.fn(),
   getBuildId: jest.fn(),
@@ -86,8 +85,11 @@ describe('sessionAttributes', () => {
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
         (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(4000000000);
         (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(2000000000);
-        (DeviceInfo.getBatteryLevel as jest.Mock).mockResolvedValue(0.85);
-        (DeviceInfo.isBatteryCharging as jest.Mock).mockResolvedValue(false);
+        (DeviceInfo.getPowerState as jest.Mock).mockResolvedValue({
+          batteryLevel: 0.85,
+          batteryState: 'unplugged',
+          lowPowerMode: false,
+        });
         (DeviceInfo.getCarrier as jest.Mock).mockResolvedValue('Verizon');
 
         const attributes = await getSessionAttributes();
@@ -99,8 +101,8 @@ describe('sessionAttributes', () => {
           device_os_version: '17.0',
           device_os_detail: 'iOS 17.0',
           device_manufacturer: 'apple',
-          device_model: 'iPhone 15 Pro',
-          device_model_name: "Vishwan's iPhone",
+          device_model: 'iPhone16,1',
+          device_model_name: 'iPhone 15 Pro',
           device_brand: 'Apple',
           device_is_physical: 'true',
           device_id: STORED_INSTALLATION_ID,
@@ -109,18 +111,85 @@ describe('sessionAttributes', () => {
           device_memory_used: '2000000000',
           device_battery_level: '85',
           device_is_charging: 'false',
-          device_low_power_mode: undefined,
+          device_low_power_mode: 'false',
           device_carrier: 'Verizon',
         });
       });
+
+      it('should never report the user-assigned device name', async () => {
+        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
+        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('15.8');
+        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 13');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone14,5');
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Vishwan's iPhone");
+        (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
+        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(DeviceInfo.getDeviceNameSync).not.toHaveBeenCalled();
+        expect(JSON.stringify(mobileMeta)).not.toContain('Vishwan');
+      });
+
+      it('should report the marketing name for iPhone 16 Pro', async () => {
+        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
+        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('27.0');
+        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 16 Pro');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone17,1');
+        (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
+        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.sessionAttributes).toMatchObject({
+          device_model: 'iPhone17,1',
+          device_model_name: 'iPhone 16 Pro',
+        });
+        expect(mobileMeta.meta.device).toMatchObject({
+          model_identifier: 'iPhone17,1',
+          model_name: 'iPhone 16 Pro',
+        });
+      });
+
+      it.each([
+        ['iPhone', 'iPhone99,1'],
+        ['iPad', 'iPad99,1'],
+        ['iPod Touch', 'iPod99,1'],
+        ['Apple TV', 'AppleTV99,1'],
+        ['Apple Vision', 'RealityDevice99,1'],
+        ['unknown', 'iPhone99,1'],
+      ])(
+        'should omit the model name when getModel() falls back to %p for unknown identifier %p',
+        async (fallbackName, deviceId) => {
+          (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
+          (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('27.0');
+          (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
+          (DeviceInfo.getModel as jest.Mock).mockReturnValue(fallbackName);
+          (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue(deviceId);
+          (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
+          (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+          (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+
+          const mobileMeta = await loadMobileMetaForInit();
+
+          expect(mobileMeta.sessionAttributes.device_model).toBe(deviceId);
+          expect(mobileMeta.sessionAttributes.device_model_name).toBeUndefined();
+          expect(mobileMeta.meta.device?.model_identifier).toBe(deviceId);
+          expect(mobileMeta.meta.device).not.toHaveProperty('model_name');
+        }
+      );
 
       it('should identify emulator devices', async () => {
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('17.0');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone Simulator');
-        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('x86_64');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Test iPhone Simulator');
+        // On a simulator getDeviceId() returns SIMULATOR_MODEL_IDENTIFIER, not the host architecture.
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(true);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -130,7 +199,8 @@ describe('sessionAttributes', () => {
         const attributes = await getSessionAttributes();
 
         expect(attributes.device_is_physical).toBe('false');
-        expect(attributes.device_model_name).toBe('Test iPhone Simulator');
+        expect(attributes.device_model).toBe('iPhone16,1');
+        expect(attributes.device_model_name).toBe('iPhone 15 Pro');
       });
 
       it('should handle iOS with different OS versions', async () => {
@@ -139,7 +209,6 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 14 Pro');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone15,2');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's iPhone");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -174,18 +243,22 @@ describe('sessionAttributes', () => {
         // Setup mocks for Android device
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('Android');
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('15');
-        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Samsung');
+        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('samsung');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('SM-A155F');
         // Android getDeviceId() is the board code; structured model_identifier should use Build.MODEL instead.
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('a15');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('SM-A155F');
+        // User-assigned Bluetooth/device name; must not be reported.
+        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Ben's Galaxy");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('samsung');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
         (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(8000000000);
         (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(4000000000);
-        (DeviceInfo.getBatteryLevel as jest.Mock).mockResolvedValue(0.85);
-        (DeviceInfo.isBatteryCharging as jest.Mock).mockResolvedValue(false);
+        (DeviceInfo.getPowerState as jest.Mock).mockResolvedValue({
+          batteryLevel: 0.85,
+          batteryState: 'unplugged',
+          lowPowerMode: false,
+        });
         (DeviceInfo.getCarrier as jest.Mock).mockResolvedValue('Verizon');
         (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(35);
 
@@ -208,7 +281,7 @@ describe('sessionAttributes', () => {
           device_memory_used: '4000000000',
           device_battery_level: '85',
           device_is_charging: 'false',
-          device_low_power_mode: undefined,
+          device_low_power_mode: 'false',
           device_carrier: 'Verizon',
         });
       });
@@ -219,7 +292,6 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Google');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('sdk_gphone64_arm64');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('emu64a');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Pixel 5');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('google');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(true);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -239,7 +311,6 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Xiaomi');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('M2101K7AG');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('camellia');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('M2101K7AG');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('xiaomi');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -276,7 +347,6 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Samsung');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('SM-A155F');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('a15');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Galaxy A15');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('samsung');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(true);
@@ -308,7 +378,10 @@ describe('sessionAttributes', () => {
         });
         expect(mobileMeta.sessionAttributes).toMatchObject({
           device_id: STORED_INSTALLATION_ID,
+          device_brand: 'samsung',
+          device_manufacturer: 'Samsung',
           device_model: 'SM-A155F',
+          device_model_name: 'SM-A155F',
           device_os: 'Android',
           device_os_detail: 'Android 15 (SDK 35)',
           device_type: 'tablet',
@@ -340,7 +413,7 @@ describe('sessionAttributes', () => {
             installationId: STORED_INSTALLATION_ID,
           },
           device: {
-            brand: 'iPhone',
+            brand: 'Apple',
             is_physical: true,
             manufacturer: 'apple',
             model_identifier: 'iPhone16,1',
@@ -356,12 +429,14 @@ describe('sessionAttributes', () => {
         });
         expect(mobileMeta.sessionAttributes).toMatchObject({
           device_id: STORED_INSTALLATION_ID,
-          device_model: 'iPhone 15 Pro',
+          device_brand: 'Apple',
+          device_manufacturer: 'apple',
+          device_model: 'iPhone16,1',
+          device_model_name: 'iPhone 15 Pro',
           device_os: 'iOS',
           device_os_detail: 'iOS 17.2',
           device_type: 'mobile',
         });
-        expect(mobileMeta.meta.device?.model_name).not.toContain('Vishwan');
       });
 
       it('should classify iPad structured meta as iPad tablet', async () => {
@@ -372,7 +447,6 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPad Pro');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPad14,3');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's iPad");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(true);
@@ -383,7 +457,7 @@ describe('sessionAttributes', () => {
         const mobileMeta = await loadMobileMetaForInit();
 
         expect(mobileMeta.meta.device).toMatchObject({
-          brand: 'iPad',
+          brand: 'Apple',
           manufacturer: 'apple',
           model_identifier: 'iPad14,3',
           model_name: 'iPad Pro',
@@ -405,7 +479,6 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('MacBookPro18,3');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('MacBookPro18,3');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's MacBook Pro");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -425,7 +498,6 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Google');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('sdk_gphone64_arm64');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('emu64a');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Pixel 5');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('google');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(true);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -486,7 +558,6 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 15 Pro');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's iPhone");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
 
@@ -506,7 +577,6 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 15 Pro');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's iPhone");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
 
@@ -533,9 +603,6 @@ describe('sessionAttributes', () => {
         });
         (DeviceInfo.getDeviceId as jest.Mock).mockImplementation(() => {
           throw new Error('Failed to get device id');
-        });
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockImplementation(() => {
-          throw new Error('Failed to get device name');
         });
         (DeviceInfo.getBrand as jest.Mock).mockImplementation(() => {
           throw new Error('Failed to get brand');
@@ -565,7 +632,6 @@ describe('sessionAttributes', () => {
         });
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 15 Pro');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue("Test's iPhone");
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
 
@@ -583,13 +649,16 @@ describe('sessionAttributes', () => {
     });
 
     describe('Manufacturer normalization', () => {
-      it('should lowercase manufacturer names', async () => {
+      beforeEach(() => {
+        (Platform as any).OS = 'android';
+      });
+
+      it('should keep the Android manufacturer as reported', async () => {
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('Android');
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('14');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('SAMSUNG');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('SM-G998B');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('p3s');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('Galaxy S21 Ultra');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('samsung');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -597,18 +666,18 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(6000000000);
         (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(34);
 
-        const attributes = await getSessionAttributes();
+        const mobileMeta = await loadMobileMetaForInit();
 
-        expect(attributes.device_manufacturer).toBe('samsung');
+        expect(mobileMeta.sessionAttributes.device_manufacturer).toBe('SAMSUNG');
+        expect(mobileMeta.meta.device?.manufacturer).toBe('SAMSUNG');
       });
 
-      it('should handle mixed case manufacturer names', async () => {
+      it('should report one Android manufacturer value in flat and typed meta', async () => {
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('Android');
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('14');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('OnePlus');
         (DeviceInfo.getModel as jest.Mock).mockReturnValue('LE2121');
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('lemonade');
-        (DeviceInfo.getDeviceNameSync as jest.Mock).mockReturnValue('OnePlus 9 Pro');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('OnePlus');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
         (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
@@ -616,9 +685,168 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(4000000000);
         (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(34);
 
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.sessionAttributes.device_manufacturer).toBe('OnePlus');
+        expect(mobileMeta.meta.device?.manufacturer).toBe('OnePlus');
+      });
+
+      it('should lowercase the iOS manufacturer in flat and typed meta', async () => {
+        (Platform as any).OS = 'ios';
+        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
+        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('17.0');
+        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue('iPhone 15 Pro');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
+        (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
+        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.sessionAttributes.device_manufacturer).toBe('apple');
+        expect(mobileMeta.meta.device?.manufacturer).toBe('apple');
+      });
+    });
+
+    describe('Power and carrier', () => {
+      function mockDevice(os: 'ios' | 'android'): void {
+        (Platform as any).OS = os;
+        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue(os === 'ios' ? 'iOS' : 'Android');
+        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue(os === 'ios' ? '27.0' : '16');
+        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue(os === 'ios' ? 'Apple' : 'Google');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue(os === 'ios' ? 'iPhone 16 Pro' : 'Pixel 9');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue(os === 'ios' ? 'iPhone17,1' : 'tokay');
+        (DeviceInfo.getBrand as jest.Mock).mockReturnValue(os === 'ios' ? 'Apple' : 'google');
+        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(36);
+      }
+
+      it.each([
+        ['charging', 'true'],
+        ['full', 'true'],
+        ['unplugged', 'false'],
+        ['unknown', undefined],
+      ])('should map iOS battery state %p to device_is_charging %p', async (batteryState, expected) => {
+        mockDevice('ios');
+        (DeviceInfo.getPowerState as jest.Mock).mockResolvedValue({ batteryLevel: 0.5, batteryState });
+
         const attributes = await getSessionAttributes();
 
-        expect(attributes.device_manufacturer).toBe('oneplus');
+        expect(attributes.device_is_charging).toBe(expected);
+      });
+
+      it('should report low power mode from getPowerState', async () => {
+        mockDevice('ios');
+        (DeviceInfo.getPowerState as jest.Mock).mockResolvedValue({
+          batteryLevel: 0.2,
+          batteryState: 'unplugged',
+          lowPowerMode: true,
+        });
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.device_low_power_mode).toBe('true');
+        expect(attributes.device_battery_level).toBe('20');
+      });
+
+      it('should omit battery fields when the power state is unavailable', async () => {
+        mockDevice('android');
+        (DeviceInfo.getPowerState as jest.Mock).mockResolvedValue(null);
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.device_battery_level).toBeUndefined();
+        expect(attributes.device_is_charging).toBeUndefined();
+        expect(attributes.device_low_power_mode).toBeUndefined();
+        expect(attributes.device_os).toBe('Android');
+      });
+
+      it('should omit the battery level when the simulator reports -1', async () => {
+        mockDevice('ios');
+        (DeviceInfo.getPowerState as jest.Mock).mockResolvedValue({
+          batteryLevel: -1,
+          batteryState: 'unknown',
+          lowPowerMode: false,
+        });
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.device_battery_level).toBeUndefined();
+        expect(attributes.device_is_charging).toBeUndefined();
+        expect(attributes.device_low_power_mode).toBe('false');
+      });
+
+      it('should keep other device fields when getPowerState rejects', async () => {
+        mockDevice('ios');
+        (DeviceInfo.getPowerState as jest.Mock).mockRejectedValue(new Error('power state unavailable'));
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.device_is_charging).toBeUndefined();
+        expect(attributes.device_model).toBe('iPhone17,1');
+      });
+
+      it('should report a plugged-in Android device as charging while charging is paused', async () => {
+        mockDevice('android');
+        NativeModules.FaroReactNativeModule = {
+          ...sessionNativeModule,
+          isConnectedToPower: jest.fn().mockResolvedValue(true),
+        };
+        // react-native-device-info reports BATTERY_STATUS_NOT_CHARGING while plugged in as "unknown".
+        (DeviceInfo.getPowerState as jest.Mock).mockResolvedValue({
+          batteryLevel: 0.8,
+          batteryState: 'unknown',
+          lowPowerMode: false,
+        });
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.device_is_charging).toBe('true');
+        expect(attributes.device_battery_level).toBe('80');
+      });
+
+      it('should prefer the native plug type over the battery state on Android', async () => {
+        mockDevice('android');
+        NativeModules.FaroReactNativeModule = {
+          ...sessionNativeModule,
+          isConnectedToPower: jest.fn().mockResolvedValue(false),
+        };
+        // The two reads can disagree when the cable is pulled between them.
+        (DeviceInfo.getPowerState as jest.Mock).mockResolvedValue({ batteryLevel: 1, batteryState: 'full' });
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.device_is_charging).toBe('false');
+      });
+
+      it('should fall back to the battery state when the native plug type is unavailable', async () => {
+        mockDevice('android');
+        (DeviceInfo.getPowerState as jest.Mock).mockResolvedValue({ batteryLevel: 1, batteryState: 'full' });
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.device_is_charging).toBe('true');
+        expect(attributes.device_battery_level).toBe('100');
+      });
+
+      it.each(['--', 'unknown', '', '   ', null])('should omit the placeholder carrier %p', async (carrierName) => {
+        mockDevice('ios');
+        (DeviceInfo.getCarrier as jest.Mock).mockResolvedValue(carrierName);
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.device_carrier).toBeUndefined();
+      });
+
+      it('should trim a real carrier name', async () => {
+        mockDevice('android');
+        (DeviceInfo.getCarrier as jest.Mock).mockResolvedValue(' T-Mobile ');
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.device_carrier).toBe('T-Mobile');
       });
     });
 

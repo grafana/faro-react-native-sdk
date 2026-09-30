@@ -22,6 +22,7 @@ jest.mock('@grafana/faro-core', () => ({
 }));
 
 jest.mock('@grafana/faro-react-native', () => ({
+  FARO_REACT_NATIVE_NPM_VERSION: '1.2.3',
   notifyHttpRequestEnd: jest.fn(),
   notifyHttpRequestStart: jest.fn(),
 }));
@@ -527,6 +528,29 @@ describe('TracingInstrumentation teardown', () => {
     await replacementTracingInstrumentation.shutdown();
     expect(processorShutdownSpy).toHaveBeenCalledTimes(1);
     expect(exporterShutdownSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the React Native package version as the telemetry distro version', async () => {
+    const exporter = new InMemorySpanExporter();
+    const spanProcessor = new SimpleSpanProcessor(exporter);
+    const faro = initializeFaro(
+      mockConfig({
+        instrumentations: [],
+        // A user-supplied sdk meta must not change the distro version.
+        metas: [() => ({ sdk: { name: 'faro-react-native', version: '9.8.7' } })],
+        transports: [new MockTransport()],
+      })
+    ) as FaroWithOtel;
+    getInternalFaroMock.mockReturnValue(faro);
+    const tracingInstrumentation = new TracingInstrumentation({ instrumentations: [], spanProcessor });
+    tracingInstrumentations.push(tracingInstrumentation);
+    faro.instrumentations.add(tracingInstrumentation);
+    faro.api.setSession({ id: 'sampled-session', attributes: { isSampled: 'true' } });
+
+    trace.getTracer('distro-version').startSpan('span').end();
+    await spanProcessor.forceFlush();
+
+    expect(exporter.getFinishedSpans()[0]?.resource.attributes['telemetry.distro.version']).toBe('1.2.3');
   });
 
   it('re-enables a real fetch instrumentation when a new tracing instance reuses it', async () => {

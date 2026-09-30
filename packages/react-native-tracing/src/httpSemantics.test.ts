@@ -12,9 +12,10 @@ import { sendFaroEvents } from './exporters/faroTraceExporter.utils';
 import { TracingInstrumentation } from './instrumentation';
 
 // Use the real RN monitor without loading native modules in jsdom.
-jest.mock('@grafana/faro-react-native', () =>
-  jest.requireActual('../../react-native/src/instrumentations/userActions/httpRequestMonitor')
-);
+jest.mock('@grafana/faro-react-native', () => ({
+  ...jest.requireActual('../../react-native/src/instrumentations/userActions/httpRequestMonitor'),
+  ...jest.requireActual('../../react-native/src/generated/faroRNPackageMeta'),
+}));
 
 const url = 'https://api.example.com:8443/orders';
 

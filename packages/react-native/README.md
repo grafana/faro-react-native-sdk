@@ -941,7 +941,6 @@ Every telemetry event automatically includes default session attributes with dev
 
 | Attribute              | Description          | iOS Example      | Android Example       |
 | ---------------------- | -------------------- | ---------------- | --------------------- |
-| `faro_sdk_version`     | SDK version          | `2.0.2`          | `2.0.2`               |
 | `react_native_version` | React Native version | `0.75.1`         | `0.75.1`              |
 | `process_name`         | Process identity     | `com.acme.share` | `com.acme.app:sync`   |
 | `device_os`            | Operating system     | `iOS`            | `Android`             |
@@ -950,11 +949,15 @@ Every telemetry event automatically includes default session attributes with dev
 | `device_manufacturer`  | Manufacturer         | `apple`          | `samsung`             |
 | `device_model`         | Raw model identifier | `iPhone16,1`     | `SM-A155F`            |
 | `device_model_name`    | Human-readable model | `iPhone 15 Pro`  | `SM-A155F`\*          |
-| `device_brand`         | Device brand         | `iPhone`         | `samsung`             |
+| `device_brand`         | Device brand         | `Apple`          | `samsung`             |
 | `device_is_physical`   | Physical or emulator | `true`           | `true`                |
 | `device_id`            | Unique device ID     | `uuid`           | `uuid`                |
 
 \*Android does not provide a mapping from model codes to marketing names, so `device_model_name` equals `device_model`.
+On iOS, `device_model_name` is omitted when `react-native-device-info` does not know the model identifier yet.
+
+The SDK version is not a session attribute. It is in `meta.sdk.version` (for example `1.4.1`). The `@grafana/faro-core`
+version is in `meta.sdk.integrations`.
 
 **How It Works:**
 
@@ -1308,15 +1311,14 @@ All device information is sent as session attributes (not browser meta):
 
 **Core Attributes:**
 
-- `faro_sdk_version` - SDK version (e.g., "1.0.0")
 - `react_native_version` - React Native version (e.g., "0.75.1")
 - `device_os` - Operating system name ("iOS" or "Android")
 - `device_os_version` - OS version (e.g., "17.0", "14")
 - `device_os_detail` - Detailed OS info (e.g., "iOS 17.0", "Android 14 (SDK 34)")
-- `device_manufacturer` - Manufacturer (e.g., "apple", "samsung")
+- `device_manufacturer` - Manufacturer: "apple" on iOS, `Build.MANUFACTURER` as reported on Android (e.g., "samsung", "Google")
 - `device_model` - Raw model identifier (e.g., "iPhone16,1", "SM-A155F")
-- `device_model_name` - Human-readable name (e.g., "iPhone 15 Pro")
-- `device_brand` - Device brand (e.g., "iPhone", "samsung")
+- `device_model_name` - Human-readable name (e.g., "iPhone 15 Pro"); omitted for iOS models unknown to `react-native-device-info`
+- `device_brand` - Device brand (e.g., "Apple", "samsung")
 - `device_is_physical` - Physical device or emulator ("true" or "false")
 - `device_id` - Unique device identifier (UUID)
 
@@ -1324,11 +1326,13 @@ All device information is sent as session attributes (not browser meta):
 
 - `device_type` - Device type ("mobile" or "tablet")
 - `device_memory_total` - Total device memory in bytes
-- `device_memory_used` - Currently used memory in bytes
+- `device_memory_used` - Memory used by the app process in bytes, not by the whole device
 - `device_battery_level` - Battery percentage (e.g., "85") - if available
-- `device_is_charging` - Whether charging ("true" or "false") - if available
-- `device_low_power_mode` - Low power mode enabled ("true" or "false") - if available
-- `device_carrier` - Mobile carrier name (e.g., "Verizon") - if available
+- `device_is_charging` - Whether the device is connected to power ("true" or "false"), also when the battery is full or charging is paused - if available
+- `device_low_power_mode` - iOS Low Power Mode or Android Battery Saver on ("true" or "false") - if available
+- `device_carrier` - Mobile carrier name (e.g., "Verizon") - if available. iOS 16.4 and later do not expose the carrier, so it is always omitted there
+
+Battery, charging, and low power mode are captured once when Faro initializes.
 
 These attributes are automatically collected during Faro initialization and included with all telemetry events.
 

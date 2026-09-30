@@ -15,6 +15,8 @@ export default function DeviceInfoScreen() {
   const sessionMeta = (metasValue?.session as Record<string, unknown>) || {};
   const sessionAttributes =
     (sessionMeta.attributes as Record<string, unknown>) || {};
+  const sdkVersion = (metasValue?.sdk as { version?: string } | undefined)
+    ?.version;
 
   const renderMetaField = (label: string, value: unknown) => {
     if (value === undefined || value === null || value === '') {
@@ -57,7 +59,7 @@ export default function DeviceInfoScreen() {
           {renderMetaField('OS', sessionAttributes.device_os)}
           {renderMetaField('OS Version', sessionAttributes.device_os_version)}
           {renderMetaField('OS Detail', sessionAttributes.device_os_detail)}
-          {renderMetaField('SDK Version', sessionAttributes.faro_sdk_version)}
+          {renderMetaField('SDK Version', sdkVersion)}
           {renderMetaField(
             'React Native',
             sessionAttributes.react_native_version,

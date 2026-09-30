@@ -1,9 +1,11 @@
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
+import type { PowerState } from 'react-native-device-info';
 
 import type { Meta } from '@grafana/faro-core';
 
 import { getInstallationId } from './installationId';
+import { isConnectedToPower } from './powerSource';
 import { getSessionProcessInfo } from './sessionProcess';
 
 /**
@@ -13,7 +15,7 @@ import { getSessionProcessInfo } from './sessionProcess';
  * Core mobile session attributes, with additional monitoring fields
  * (memory, device type, battery, etc.)
  *
- * SDK name, core version, and npm adapter are on Faro meta `sdk` (`getSdkMeta` in `metas/sdk.ts`).
+ * SDK name and version are on Faro meta `sdk` (`getSdkMeta` in `metas/sdk.ts`).
  *
  * `react_native_version` is the host app's React Native **framework** version from `Platform`, not the Faro package.
  */
@@ -33,16 +35,19 @@ export interface SessionAttributes {
   /** Detailed OS info (e.g., "iOS 17.0" or "Android 15 (SDK 35)") */
   device_os_detail?: string;
 
-  /** Device manufacturer (e.g., "apple", "samsung", "Google") */
+  /** Device manufacturer, same value as `meta.device.manufacturer` (e.g., "apple", "samsung", "Google") */
   device_manufacturer?: string;
 
-  /** Device model in flat session attributes (e.g., "iPhone 15 Pro", "SM-A155F") */
+  /** Raw model identifier, same value as `meta.device.model_identifier` (e.g., "iPhone17,1", "SM-A155F") */
   device_model?: string;
 
-  /** Human-readable model name (e.g., "iPhone 15 Pro") */
+  /**
+   * Human-readable model name, same value as `meta.device.model_name` (e.g., "iPhone 16 Pro").
+   * Android reports `Build.MODEL`. Omitted when the iOS identifier is not known to `react-native-device-info`.
+   */
   device_model_name?: string;
 
-  /** Device brand in flat session attributes (e.g., "Apple", "samsung") */
+  /** Device brand, same value as `meta.device.brand` (e.g., "Apple", "samsung") */
   device_brand?: string;
 
   /** Whether device is physical or emulator ("true" or "false") */
@@ -57,19 +62,22 @@ export interface SessionAttributes {
   /** Total device memory in bytes */
   device_memory_total?: string;
 
-  /** Currently used memory in bytes */
+  /** Memory used by the app process in bytes, not by the whole device */
   device_memory_used?: string;
 
-  /** Battery level percentage (e.g., "85") - empty if unavailable */
+  /** Battery level percentage at SDK start (e.g., "85") - empty if unavailable */
   device_battery_level?: string;
 
-  /** Whether device is charging ("true" or "false") - empty if unavailable */
+  /**
+   * Whether the device is connected to external power at SDK start ("true" or "false"), including when the
+   * battery is full or charging is paused - empty if unavailable
+   */
   device_is_charging?: string;
 
-  /** Whether low power mode is enabled ("true" or "false") - empty if unavailable */
+  /** Whether iOS Low Power Mode or Android Battery Saver is on at SDK start ("true" or "false") - empty if unavailable */
   device_low_power_mode?: string;
 
-  /** Mobile carrier name (e.g., "Verizon") - empty if unavailable */
+  /** Mobile carrier name (e.g., "Verizon") - empty if unavailable, which is always the case on iOS 16.4 and later */
   device_carrier?: string;
 }
 
@@ -103,19 +111,23 @@ function getReactNativeVersion(): string {
   }
 }
 
-function getStructuredDeviceBrand(model: string, brand: string): string {
-  if (Platform.OS !== 'ios') {
-    return brand;
-  }
-
-  return model.toLowerCase().includes('ipad') ? 'iPad' : 'iPhone';
-}
-
-function getStructuredDeviceManufacturer(manufacturer: string): string {
+// Matches the Faro Flutter SDK: lowercase "apple" on iOS, raw Build.MANUFACTURER on Android.
+function getDeviceManufacturer(manufacturer: string): string {
   return Platform.OS === 'ios' ? manufacturer.toLowerCase() : manufacturer;
 }
 
-function getStructuredDeviceModelIdentifier(model: string): string | undefined {
+// getModel() returns a bare family name when its table has no entry for the identifier.
+const APPLE_MODEL_FALLBACK_NAMES = new Set(['iPhone', 'iPad', 'iPod Touch', 'Apple TV', 'Apple Vision', 'unknown']);
+
+function getDeviceModelName(model: string): string | undefined {
+  if (Platform.OS === 'ios' && APPLE_MODEL_FALLBACK_NAMES.has(model)) {
+    return undefined;
+  }
+
+  return model;
+}
+
+function getDeviceModelIdentifier(model: string): string | undefined {
   // Android getDeviceId() returns a board code, so use Build.MODEL for the Faro
   // model identifier.
   if (Platform.OS === 'android') {
@@ -173,6 +185,59 @@ async function getDeviceOsBuildId(): Promise<string | undefined> {
   }
 }
 
+interface DevicePowerAttributes {
+  batteryLevel?: string;
+  isCharging?: string;
+  lowPowerMode?: string;
+}
+
+function isChargingFromBatteryState(batteryState: unknown): boolean | undefined {
+  if (batteryState === 'charging' || batteryState === 'full') {
+    return true;
+  }
+
+  return batteryState === 'unplugged' ? false : undefined;
+}
+
+async function getPowerState(): Promise<Partial<PowerState>> {
+  try {
+    // Android resolves null when the battery broadcast is unavailable.
+    return (await DeviceInfo.getPowerState()) ?? {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+async function getDevicePowerAttributes(): Promise<DevicePowerAttributes> {
+  const [{ batteryLevel, batteryState, lowPowerMode }, connectedToPower] = await Promise.all([
+    getPowerState(),
+    isConnectedToPower(),
+  ]);
+  const isCharging = connectedToPower ?? isChargingFromBatteryState(batteryState);
+
+  return {
+    batteryLevel:
+      typeof batteryLevel === 'number' && batteryLevel >= 0 && batteryLevel <= 1
+        ? String(Math.round(batteryLevel * 100))
+        : undefined,
+    isCharging: isCharging === undefined ? undefined : String(isCharging),
+    lowPowerMode: typeof lowPowerMode === 'boolean' ? String(lowPowerMode) : undefined,
+  };
+}
+
+// Apple deprecated CTCarrier, so iOS 16.4 and later return "--" for every carrier.
+const UNAVAILABLE_CARRIER_NAMES = new Set(['', '--', 'unknown']);
+
+async function getCarrier(): Promise<string | undefined> {
+  try {
+    const carrierName = await DeviceInfo.getCarrier();
+    const trimmedCarrierName = typeof carrierName === 'string' ? carrierName.trim() : '';
+    return UNAVAILABLE_CARRIER_NAMES.has(trimmedCarrierName) ? undefined : trimmedCarrierName;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
 /**
  * Session attributes without device props when async collection or DeviceInfo is unavailable.
  * No synchronous DeviceInfo reads — use {@link getSessionAttributes} or the package async `initializeFaro`.
@@ -219,79 +284,40 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     const systemVersion = DeviceInfo.getSystemVersion();
     const manufacturer = DeviceInfo.getManufacturerSync();
     const model = DeviceInfo.getModel();
-    const modelIdentifier = getStructuredDeviceModelIdentifier(model);
-    const deviceName = DeviceInfo.getDeviceNameSync();
+    const modelIdentifier = getDeviceModelIdentifier(model);
+    const modelName = getDeviceModelName(model);
     const brand = DeviceInfo.getBrand();
     const isEmulator = DeviceInfo.isEmulatorSync();
     const isTablet = DeviceInfo.isTablet();
     const deviceType = getMobileDeviceType(isTablet);
+    const deviceManufacturer = getDeviceManufacturer(manufacturer);
 
     // Memory info
     const totalMemory = DeviceInfo.getTotalMemorySync();
     const usedMemory = DeviceInfo.getUsedMemorySync();
 
-    // Try to get async device info (battery, carrier)
-    let batteryLevel: string | undefined;
-    let isCharging: string | undefined;
-    let lowPowerMode: string | undefined;
-    let carrier: string | undefined;
-
-    try {
-      const battery = await DeviceInfo.getBatteryLevel();
-      if (battery >= 0) {
-        batteryLevel = String(Math.round(battery * 100));
-      }
-    } catch (_error) {
-      // Battery info not available
-    }
-
-    try {
-      isCharging = String(await DeviceInfo.isBatteryCharging());
-    } catch (_error) {
-      // Charging status not available
-    }
-
-    try {
-      if ('isPowerSaveMode' in DeviceInfo) {
-        lowPowerMode = String(
-          await (DeviceInfo as typeof DeviceInfo & { isPowerSaveMode: () => Promise<boolean> }).isPowerSaveMode()
-        );
-      }
-    } catch (_error) {
-      // Low power mode not available
-    }
-
-    try {
-      const carrierName = await DeviceInfo.getCarrier();
-      if (carrierName && carrierName !== 'unknown') {
-        carrier = carrierName;
-      }
-    } catch (_error) {
-      // Carrier not available
-    }
+    const [power, carrier] = await Promise.all([getDevicePowerAttributes(), getCarrier()]);
 
     const attributes: SessionAttributes = {
       ...minimalSessionDeviceAttributes(),
       device_os: systemName,
       device_os_version: systemVersion,
       device_os_detail: deviceOsDetail,
-      device_manufacturer: manufacturer.toLowerCase(),
-      device_model: model,
-      device_model_name: deviceName,
+      device_manufacturer: deviceManufacturer,
+      device_model: modelIdentifier ?? model,
+      device_model_name: modelName,
       device_brand: brand,
       device_is_physical: String(!isEmulator),
       ...(installationId ? { device_id: installationId } : {}),
       ...(deviceType ? { device_type: deviceType } : {}),
       device_memory_total: String(totalMemory),
       device_memory_used: String(usedMemory),
-      device_battery_level: batteryLevel,
-      device_is_charging: isCharging,
-      device_low_power_mode: lowPowerMode,
+      device_battery_level: power.batteryLevel,
+      device_is_charging: power.isCharging,
+      device_low_power_mode: power.lowPowerMode,
       device_carrier: carrier,
     };
     const appMeta = installationId ? { installationId } : {};
-    const structuredDeviceBrand = getStructuredDeviceBrand(model, brand);
-    const structuredDeviceManufacturer = getStructuredDeviceManufacturer(manufacturer);
     const osMeta = {
       ...(deviceOsBuildId ? { build_id: deviceOsBuildId } : {}),
       detail: deviceOsDetail,
@@ -304,11 +330,11 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
       meta: {
         app: appMeta,
         device: {
-          brand: structuredDeviceBrand,
+          brand,
           is_physical: !isEmulator,
-          manufacturer: structuredDeviceManufacturer,
+          manufacturer: deviceManufacturer,
           ...(modelIdentifier ? { model_identifier: modelIdentifier } : {}),
-          model_name: model,
+          ...(modelName ? { model_name: modelName } : {}),
           ...(deviceType ? { type: deviceType } : {}),
         },
         os: osMeta,
