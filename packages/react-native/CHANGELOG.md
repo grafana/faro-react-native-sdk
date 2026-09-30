@@ -2,12 +2,11 @@
 
 ## [1.4.2](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.1...faro-react-native-v1.4.2) (2026-09-30)
 
-
 ### Bug Fixes
 
-* **react-native:** omit bare Apple family model names ([6415701](https://github.com/grafana/faro-react-native-sdk/commit/6415701e78c6bbcb31f105e52e1c8f725d10f2ca)), closes [#209](https://github.com/grafana/faro-react-native-sdk/issues/209)
-* **react-native:** report correct device and SDK metadata ([397f456](https://github.com/grafana/faro-react-native-sdk/commit/397f456b2ba2a12dc6f4491f4812b36ca686e9a7))
-* **react-native:** report correct device and SDK metadata ([3d06f8a](https://github.com/grafana/faro-react-native-sdk/commit/3d06f8ab0ddf3a171849e965bc5d312d2b7ff426)), closes [#209](https://github.com/grafana/faro-react-native-sdk/issues/209)
+- **react-native:** omit bare Apple family model names ([6415701](https://github.com/grafana/faro-react-native-sdk/commit/6415701e78c6bbcb31f105e52e1c8f725d10f2ca)), closes [#209](https://github.com/grafana/faro-react-native-sdk/issues/209)
+- **react-native:** report correct device and SDK metadata ([397f456](https://github.com/grafana/faro-react-native-sdk/commit/397f456b2ba2a12dc6f4491f4812b36ca686e9a7))
+- **react-native:** report correct device and SDK metadata ([3d06f8a](https://github.com/grafana/faro-react-native-sdk/commit/3d06f8ab0ddf3a171849e965bc5d312d2b7ff426)), closes [#209](https://github.com/grafana/faro-react-native-sdk/issues/209)
 
 ## [1.4.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.0...faro-react-native-v1.4.1) (2026-09-25)
 
