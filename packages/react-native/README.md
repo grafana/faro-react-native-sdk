@@ -18,10 +18,13 @@ Xcode 27 rejects pod targets with an iOS deployment target below 15.0. The SDK d
 The iOS Simulator deployment target 'IPHONEOS_DEPLOYMENT_TARGET' is set to 12.0, but the range of supported deployment target versions is 15.0 to 27.0.x. (in target 'PLCrashReporter-PLCrashReporter' from project 'Pods')
 ```
 
-To fix it, add this to the `post_install` block in `ios/Podfile`, after `react_native_post_install`. Then run `pod install`.
+To fix it, add this to the `post_install` block in `ios/Podfile`, after `react_native_post_install`. It raises pod targets to at least 15.0, or to your React Native minimum if that is higher. Then run `pod install`.
 
 ```ruby
-minimum_ios = Gem::Version.new(min_ios_version_supported)
+minimum_ios = Gem::Version.new('15.0')
+if respond_to?(:min_ios_version_supported, true)
+  minimum_ios = [minimum_ios, Gem::Version.new(min_ios_version_supported)].max
+end
 installer.pods_project.targets.each do |target|
   target.build_configurations.each do |build_config|
     deployment_target = build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
@@ -31,6 +34,8 @@ installer.pods_project.targets.each do |target|
   end
 end
 ```
+
+If your React Native version targets iOS below 15.0, also set your app target's iOS Deployment Target to 15.0 in Xcode.
 
 ## Quick Start
 
