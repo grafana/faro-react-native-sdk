@@ -37,6 +37,30 @@ end
 
 If your React Native version targets iOS below 15.0, also set your app target's iOS Deployment Target to 15.0 in Xcode.
 
+## Telemetry batching
+
+Batching is disabled by default. Enable it to collect telemetry before sending it
+to the collector:
+
+```ts
+await initializeFaro({
+  app: { name: 'my-app' },
+  url: 'https://faro.example.com/collect',
+  batching: {
+    enabled: true,
+    sendTimeout: 2000,
+    itemLimit: 200,
+  },
+});
+```
+
+The batch flushes when either the item limit is reached or the timer fires.
+`sendTimeout` is in milliseconds; omitted values default to 250 ms and 50 items.
+With batching disabled, batched transports receive each item immediately. A flush
+can produce multiple collector requests when items have different metadata, such
+as different sessions or views. Trace export batching is configured separately
+through the tracing SDK; these options control core telemetry batching.
+
 ## Quick Start
 
 ```tsx

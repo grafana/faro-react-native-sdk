@@ -95,6 +95,24 @@ describe('makeRNConfig', () => {
     expect(names.at(-1)).toBe(extra.name);
   });
 
+  it.each([
+    { batching: undefined, expected: { enabled: false, sendTimeout: 250, itemLimit: 50 } },
+    { batching: { enabled: true }, expected: { enabled: true, sendTimeout: 250, itemLimit: 50 } },
+    {
+      batching: { enabled: true, sendTimeout: 2000, itemLimit: 200 },
+      expected: { enabled: true, sendTimeout: 2000, itemLimit: 200 },
+    },
+    { batching: { sendTimeout: 2000 }, expected: { enabled: false, sendTimeout: 2000, itemLimit: 50 } },
+    {
+      batching: { enabled: false, sendTimeout: 0, itemLimit: 1 },
+      expected: { enabled: false, sendTimeout: 0, itemLimit: 1 },
+    },
+  ])('merges batching defaults with $batching', ({ batching, expected }) => {
+    const cfg = makeRNConfig({ ...base, batching });
+
+    expect(cfg.batching).toEqual(expected);
+  });
+
   it('merges sessionTracking defaults with user overrides', () => {
     const cfg = makeRNConfig({
       ...base,

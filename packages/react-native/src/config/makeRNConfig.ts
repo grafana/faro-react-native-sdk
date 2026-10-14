@@ -146,6 +146,7 @@ export function makeRNConfig(
       enabled: false,
       sendTimeout: 250,
       itemLimit: 50,
+      ...config.batching,
     },
     sessionTracking: {
       ...defaultSessionTrackingConfig,
