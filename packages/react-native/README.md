@@ -104,6 +104,20 @@ initializeFaro({
 });
 ```
 
+### Offline caching
+
+Set `enableTransports.offline: true` to cache telemetry in AsyncStorage while
+connectivity is reported as offline. The SDK registers live replay targets and
+tries cached telemetry when connectivity returns, or on startup when already
+online. Replay respects Faro's paused state and removed transports. Replayed
+payloads keep their captured metadata.
+
+A rejected collector response, network failure, or FetchTransport backoff leaves
+cached telemetry available for a later replay attempt. Custom transports must
+reject their `send()` promise to report a delivery failure. Partial delivery can
+result in duplicate telemetry on retry. The cache retains its configured size and
+age limits; by default, payloads expire after three days.
+
 ## Error symbolication
 
 This section ties together **SDK configuration**, **release builds**, **uploaded source maps**, and **errors/crashes** so stacks from Hermes release binaries show up as your real source files in Grafana.

@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { genShortID } from '@grafana/faro-core';
+
 import type { CachedPayload, OfflineCache } from './types';
 
 /**
@@ -35,7 +37,7 @@ export class AsyncStorageOfflineCache implements OfflineCache {
       const payloads = await this.readAllInternal();
 
       // Add new payload
-      payloads.push(payload);
+      payloads.push({ ...payload, id: genShortID() });
 
       // Trim to max size (remove oldest entries)
       while (payloads.length > this.maxCacheSize) {
@@ -48,7 +50,20 @@ export class AsyncStorageOfflineCache implements OfflineCache {
 
   async readAll(): Promise<CachedPayload[]> {
     return this.withLock(async () => {
-      return this.readAllInternal();
+      const payloads = await this.readAllInternal();
+      let migrated = false;
+      const ids = new Set<string>();
+      for (const payload of payloads) {
+        if (typeof payload.id !== 'string' || !payload.id || ids.has(payload.id)) {
+          payload.id = genShortID();
+          migrated = true;
+        }
+        ids.add(payload.id);
+      }
+      if (migrated) {
+        await this.writeAll(payloads);
+      }
+      return payloads;
     });
   }
 
@@ -58,14 +73,19 @@ export class AsyncStorageOfflineCache implements OfflineCache {
     });
   }
 
-  async removeByTimestamps(timestamps: number[]): Promise<void> {
+  async removeByTimestamps(timestamps: number[], expectedPayloads?: CachedPayload[]): Promise<void> {
     if (timestamps.length === 0) return;
 
     const timestampSet = new Set(timestamps);
+    const expectedIds =
+      expectedPayloads && new Set(expectedPayloads.flatMap((payload) => (payload.id ? [payload.id] : [])));
 
     await this.withLock(async () => {
       const payloads = await this.readAllInternal();
-      const remaining = payloads.filter((p) => !timestampSet.has(p.timestamp));
+      const remaining = payloads.filter((payload) => {
+        const expected = expectedIds === undefined || (payload.id !== undefined && expectedIds.has(payload.id));
+        return !timestampSet.has(payload.timestamp) || !expected;
+      });
       await this.writeAll(remaining);
     });
   }
