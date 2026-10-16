@@ -1,6 +1,8 @@
 import { BaseTransport, VERSION } from '@grafana/faro-core';
 import type { Patterns, Transport, TransportItem } from '@grafana/faro-core';
 
+import { FetchTransport } from '../fetch';
+
 import { DefaultConnectivityService } from './ConnectivityService';
 import { AsyncStorageOfflineCache } from './OfflineCache';
 import type { CachedPayload, ConnectivityService, OfflineCache, OfflineTransportOptions } from './types';
@@ -44,7 +46,7 @@ export class OfflineTransport extends BaseTransport {
   private readonly cache: OfflineCache;
   private readonly connectivityService: ConnectivityService;
   private readonly maxCacheDurationMs: number;
-  private readonly otherTransports: Transport[] = [];
+  private getReplayTransports: () => Transport[] = () => [];
   private unsubscribeConnectivity: (() => void) | null = null;
   private isReplaying: boolean = false;
 
@@ -108,15 +110,15 @@ export class OfflineTransport extends BaseTransport {
 
   /**
    * Register other transports for replay.
-   * Called by the transport system after initialization.
+   * The SDK supplies a live registry after initialization so pause and removal
+   * take effect during replay. Manual registrations can supply a fixed list.
    */
-  setOtherTransports(transports: Transport[]): void {
-    this.otherTransports.length = 0;
-    for (const transport of transports) {
-      if (transport !== this) {
-        this.otherTransports.push(transport);
-      }
-    }
+  setOtherTransports(transports: Transport[] | (() => Transport[])): void {
+    const registeredTransports = typeof transports === 'function' ? transports : [...transports];
+    this.getReplayTransports = () => {
+      const current = typeof registeredTransports === 'function' ? registeredTransports() : registeredTransports;
+      return current.filter((transport) => !(transport instanceof OfflineTransport));
+    };
   }
 
   /**
@@ -175,27 +177,35 @@ export class OfflineTransport extends BaseTransport {
       this.logDebug(`Replaying ${payloads.length} cached payloads`);
 
       const now = Date.now();
-      const successfulTimestamps: number[] = [];
+      const successfulPayloads: CachedPayload[] = [];
 
       for (const payload of payloads) {
         // Skip expired payloads
         if (now - payload.timestamp > this.maxCacheDurationMs) {
           this.logDebug(`Skipping expired payload from ${new Date(payload.timestamp).toISOString()}`);
-          successfulTimestamps.push(payload.timestamp);
+          successfulPayloads.push(payload);
+          continue;
+        }
+
+        if (!this.connectivityService.isOnline) {
           continue;
         }
 
         const success = await this.sendToOtherTransports(payload.items);
 
         if (success) {
-          successfulTimestamps.push(payload.timestamp);
+          successfulPayloads.push(payload);
         }
       }
 
-      // Remove successfully sent or expired payloads
-      if (successfulTimestamps.length > 0) {
-        await this.cache.removeByTimestamps(successfulTimestamps);
-        this.logDebug(`Removed ${successfulTimestamps.length} payloads from cache`);
+      // Guard removal with the persisted snapshot identities. A new payload
+      // cached during delivery can have the same millisecond timestamp.
+      if (successfulPayloads.length > 0) {
+        await this.cache.removeByTimestamps(
+          successfulPayloads.map((payload) => payload.timestamp),
+          successfulPayloads
+        );
+        this.logDebug(`Removed ${successfulPayloads.length} payloads from cache`);
       }
     } catch (error) {
       this.logError('Failed to replay cached payloads', error);
@@ -209,14 +219,29 @@ export class OfflineTransport extends BaseTransport {
    * Sends cached telemetry when connectivity is restored.
    */
   private async sendToOtherTransports(items: TransportItem[]): Promise<boolean> {
-    if (this.otherTransports.length === 0) {
+    const transports = this.getReplayTransports();
+    if (transports.length === 0) {
       this.logWarn('No other transports registered for offline replay');
       return false;
     }
 
     try {
-      for (const transport of this.otherTransports) {
-        await transport.send(items);
+      for (const transport of transports) {
+        // Recheck the live registry after each asynchronous delivery. Faro may
+        // have paused or removed this target while an earlier send was pending.
+        if (!this.getReplayTransports().includes(transport)) {
+          return false;
+        }
+        if (transport instanceof FetchTransport) {
+          // send() deliberately resolves on rejected requests and backoff. Only
+          // collector acceptance is sufficient to remove the persistent copy.
+          const result = await transport.sendWithResult(items);
+          if (result.outcome !== 'accepted') {
+            return false;
+          }
+        } else {
+          await transport.send(items);
+        }
       }
       return true;
     } catch (error) {

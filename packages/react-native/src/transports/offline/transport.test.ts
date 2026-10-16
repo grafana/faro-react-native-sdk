@@ -5,7 +5,7 @@ import { FetchTransport } from '../fetch';
 
 import { AsyncStorageOfflineCache } from './OfflineCache';
 import { OfflineTransport } from './transport';
-import type { ConnectivityService } from './types';
+import type { CachedPayload, ConnectivityService } from './types';
 
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -46,10 +46,11 @@ class MockConnectivityService implements ConnectivityService {
 
 // Mock cache
 class MockOfflineCache {
-  private payloads: { timestamp: number; items: TransportItem[] }[] = [];
+  private payloads: CachedPayload[] = [];
+  private nextId = 0;
 
   async write(payload: { timestamp: number; items: TransportItem[] }): Promise<void> {
-    this.payloads.push(payload);
+    this.payloads.push({ ...payload, id: String(++this.nextId) });
   }
 
   async readAll(): Promise<{ timestamp: number; items: TransportItem[] }[]> {
@@ -60,9 +61,10 @@ class MockOfflineCache {
     this.payloads = [];
   }
 
-  async removeByTimestamps(timestamps: number[]): Promise<void> {
+  async removeByTimestamps(timestamps: number[], expectedPayloads?: CachedPayload[]): Promise<void> {
     const set = new Set(timestamps);
-    this.payloads = this.payloads.filter((p) => !set.has(p.timestamp));
+    const ids = expectedPayloads && new Set(expectedPayloads.map((payload) => payload.id));
+    this.payloads = this.payloads.filter((p) => !set.has(p.timestamp) || (ids && !ids.has(p.id)));
   }
 
   async getCount(): Promise<number> {
@@ -232,6 +234,117 @@ describe('OfflineTransport', () => {
       // Should have removed the expired payload
       const count = await mockCache.getCount();
       expect(count).toBe(0);
+    });
+  });
+
+  describe('collector acceptance during replay', () => {
+    let originalFetch: typeof global.fetch;
+    let collectorFetch: jest.Mock;
+    let fetchTransport: FetchTransport;
+
+    beforeEach(() => {
+      originalFetch = global.fetch;
+      collectorFetch = jest.fn();
+      global.fetch = collectorFetch;
+      fetchTransport = new FetchTransport({ url: 'https://collector.example.com/collect' });
+      fetchTransport.internalLogger = mockInternalLogger;
+      fetchTransport.metas.value = { session: { id: 'live-session' } };
+      transport.setOtherTransports([fetchTransport]);
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    const response = (status: number, retryAfter: string | null = null) => ({
+      status,
+      text: async () => '',
+      headers: { get: () => retryAfter },
+    });
+
+    it.each([400, 429, 500])(
+      'retains cached telemetry after HTTP %i and removes it after acceptance',
+      async (status) => {
+        const item = createMockTransportItem();
+        await mockCache.write({ timestamp: Date.now(), items: [item] });
+        collectorFetch.mockResolvedValueOnce(response(status, status === 429 ? '0' : null));
+
+        await transport.forceReplay();
+
+        expect(collectorFetch).toHaveBeenCalledTimes(1);
+        expect(await transport.getCachedCount()).toBe(1);
+
+        collectorFetch.mockResolvedValueOnce(response(202));
+        await transport.forceReplay();
+
+        expect(collectorFetch).toHaveBeenCalledTimes(2);
+        expect(await transport.getCachedCount()).toBe(0);
+      }
+    );
+
+    it('retains cached telemetry after a network failure', async () => {
+      await mockCache.write({ timestamp: Date.now(), items: [createMockTransportItem()] });
+      collectorFetch.mockRejectedValueOnce(new Error('offline'));
+
+      await transport.forceReplay();
+
+      expect(await transport.getCachedCount()).toBe(1);
+      collectorFetch.mockResolvedValueOnce(response(204));
+      await transport.forceReplay();
+      expect(await transport.getCachedCount()).toBe(0);
+    });
+
+    it('retains cached telemetry while the fetch transport is rate limited', async () => {
+      collectorFetch.mockResolvedValueOnce(response(429, '60'));
+      await fetchTransport.sendWithResult([createMockTransportItem()]);
+      await mockCache.write({ timestamp: Date.now(), items: [createMockTransportItem()] });
+
+      await transport.forceReplay();
+
+      expect(collectorFetch).toHaveBeenCalledTimes(1);
+      expect(await transport.getCachedCount()).toBe(1);
+    });
+
+    it('retains the rejected payload when another payload from the same millisecond is accepted', async () => {
+      const timestamp = Date.now();
+      await mockCache.write({ timestamp, items: [createMockTransportItem()] });
+      await mockCache.write({ timestamp, items: [createMockTransportItem()] });
+      collectorFetch.mockResolvedValueOnce(response(202)).mockResolvedValueOnce(response(500));
+
+      await transport.forceReplay();
+
+      expect(collectorFetch).toHaveBeenCalledTimes(2);
+      expect(await transport.getCachedCount()).toBe(1);
+      collectorFetch.mockResolvedValue(response(202));
+      await transport.forceReplay();
+      expect(await transport.getCachedCount()).toBe(0);
+    });
+
+    it('stops sending cached payloads when connectivity is lost during replay', async () => {
+      const timestamp = Date.now();
+      await mockCache.write({ timestamp, items: [createMockTransportItem()] });
+      await mockCache.write({ timestamp, items: [createMockTransportItem()] });
+      collectorFetch.mockImplementationOnce(async () => {
+        mockConnectivity.setOnline(false);
+        return response(202);
+      });
+
+      await transport.forceReplay();
+
+      expect(collectorFetch).toHaveBeenCalledTimes(1);
+      expect(await transport.getCachedCount()).toBe(1);
+    });
+
+    it('does not let a successful secondary transport acknowledge a rejected collector request', async () => {
+      const secondary = { ...fetchTransport, send: jest.fn().mockResolvedValue(undefined) };
+      transport.setOtherTransports([secondary as unknown as FetchTransport, fetchTransport]);
+      await mockCache.write({ timestamp: Date.now(), items: [createMockTransportItem()] });
+      collectorFetch.mockResolvedValueOnce(response(500));
+
+      await transport.forceReplay();
+
+      expect(secondary.send).toHaveBeenCalledTimes(1);
+      expect(await transport.getCachedCount()).toBe(1);
     });
   });
 

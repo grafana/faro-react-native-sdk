@@ -35,6 +35,9 @@ export interface OfflineTransportOptions {
  * A cached telemetry payload with timestamp for expiration checking.
  */
 export interface CachedPayload {
+  /** Internal persistent identity used to acknowledge a replay snapshot. */
+  id?: string;
+
   /**
    * Timestamp when the payload was cached (milliseconds since epoch).
    */
@@ -88,9 +91,10 @@ export interface OfflineCache {
   clear(): Promise<void>;
 
   /**
-   * Remove specific payloads by their timestamps.
+   * Remove specific payloads by their timestamps. When expectedPayloads is
+   * provided, remove only those persisted entry identities from the snapshot.
    */
-  removeByTimestamps(timestamps: number[]): Promise<void>;
+  removeByTimestamps(timestamps: number[], expectedPayloads?: CachedPayload[]): Promise<void>;
 
   /**
    * Get the number of cached payloads.
