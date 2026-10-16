@@ -216,7 +216,9 @@ this.api.pushError(error, { type: 'react_native_error' });
 - Off by default; `makeRNConfig` merges the app's `batching` config over `{ enabled: false, sendTimeout: 250, itemLimit: 50 }`
 - When enabled, core queues items and runs `beforeSend` hooks at flush time, not capture time. Session logic must not live in a `beforeSend` hook (see Session Management)
 - With an unbatched transport (such as `ConsoleTransport`) present, faro-core 2.8.2 runs `beforeSend` hooks on both delivery paths, so hooks must be free of side effects
+- Fatal JS errors are pushed through `pushWithoutBatching()` (`src/transports/pushWithoutBatching.ts`), which temporarily replaces `transports.execute` to apply session capture and `beforeSend` hooks once and send to every transport immediately. faro-core still holds errors pushed during an active user action until the action ends
 - Core only flushes early on `document` visibility changes, so nothing is sent early when an RN app goes to the background
+- Core groups a flush by `meta` before `beforeSend` hooks run, and `getTransportBody()` uses the first item's `meta`. `FetchTransport.send()` regroups by final `meta` and sends the groups sequentially, so each `send()` call holds at most one request-buffer slot at a time. Core calls `send()` once per pre-hook group without awaiting and flushes can overlap, so concurrent sends still share the buffer limit, and groups that find it full are dropped. Groups after a 429 or circuit-breaker backoff are skipped. `sendWithResult()` sends one request and expects items that share `meta`. Custom batched transports still receive mixed post-hook `meta` from faro-core
 
 **FetchTransport:**
 

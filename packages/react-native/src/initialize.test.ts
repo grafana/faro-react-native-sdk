@@ -480,6 +480,96 @@ describe('initializeFaro', () => {
       expect(batchedSend).toHaveBeenCalledTimes(1);
     });
 
+    describe('request bodies when beforeSend changes metadata', () => {
+      const originalFetch = global.fetch;
+      const fetchMock = jest.fn((_url: string, _init: { body: string }) =>
+        Promise.resolve({ status: 202, text: () => Promise.resolve(''), headers: { get: () => null } })
+      );
+
+      beforeEach(() => {
+        fetchMock.mockClear();
+        (global as any).fetch = fetchMock;
+      });
+
+      afterEach(() => {
+        (global as any).fetch = originalFetch;
+      });
+
+      // Removes the user from exceptions only, so a flush holds items with different final metadata.
+      const removeUserFromExceptions = (item: TransportItem) =>
+        item.type === 'exception' ? { ...item, meta: { ...item.meta, user: undefined } } : item;
+
+      async function initWithFetch(beforeSend: Config['beforeSend']) {
+        const faro = await initializeFaro({
+          url: 'http://localhost:12345/collect',
+          app: { name: 'request-body-test', version: '1.0.0' },
+          batching: { enabled: true, sendTimeout: 2_000, itemLimit: 200 },
+          isolate: true,
+          beforeSend,
+          // Without session tracking, FetchTransport sends without waiting for a session.
+          sessionTracking: { enabled: false },
+        });
+        faro.api.setUser({ id: 'user-1' });
+        await jest.advanceTimersByTimeAsync(2_000);
+        fetchMock.mockClear();
+        return faro;
+      }
+
+      // Faro instances from earlier tests in this file can still send through the
+      // fetch mock, and HTTP instrumentation reports those requests.
+      function sentBodies() {
+        return fetchMock.mock.calls
+          .map(([, init]) => JSON.parse(init.body))
+          .filter((body) => body.meta?.app?.name === 'request-body-test')
+          .filter((body) => !body.events?.every((event: { name: string }) => event.name === 'faro.tracing.fetch'));
+      }
+
+      it.each(['event first', 'exception first'])('keeps the final metadata of each item (%s)', async (order) => {
+        const faro = await initWithFetch(removeUserFromExceptions);
+
+        if (order === 'event first') {
+          faro.api.pushEvent('ordinary');
+          faro.api.pushError(new Error('boom'));
+        } else {
+          faro.api.pushError(new Error('boom'));
+          faro.api.pushEvent('ordinary');
+        }
+        await jest.advanceTimersByTimeAsync(2_000);
+
+        const bodies = sentBodies();
+        expect(bodies).toHaveLength(2);
+        const eventBody = bodies.find((body) => body.events);
+        const exceptionBody = bodies.find((body) => body.exceptions);
+        expect(eventBody.meta.user).toEqual(expect.objectContaining({ id: 'user-1' }));
+        expect(eventBody.exceptions).toBeUndefined();
+        expect(exceptionBody.meta.user).toBeUndefined();
+        expect(exceptionBody.events).toBeUndefined();
+      });
+
+      it('sends one request when beforeSend leaves the metadata alone', async () => {
+        const faro = await initWithFetch((item) => item);
+
+        faro.api.pushEvent('ordinary');
+        faro.api.pushError(new Error('boom'));
+        await jest.advanceTimersByTimeAsync(2_000);
+
+        const bodies = sentBodies();
+        expect(bodies).toHaveLength(1);
+        expect(bodies[0].events).toHaveLength(1);
+        expect(bodies[0].exceptions).toHaveLength(1);
+      });
+
+      it('sends nothing when beforeSend drops every item', async () => {
+        const faro = await initWithFetch(() => null);
+
+        faro.api.pushEvent('ordinary');
+        faro.api.pushError(new Error('boom'));
+        await jest.advanceTimersByTimeAsync(2_000);
+
+        expect(sentBodies()).toHaveLength(0);
+      });
+    });
+
     it('stops flushing while paused and resumes on unpause', async () => {
       const { faro, send } = await initWithBatching({ enabled: true, sendTimeout: 2_000, itemLimit: 200 });
 

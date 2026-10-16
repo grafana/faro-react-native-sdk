@@ -2,6 +2,8 @@ import type { ErrorUtils } from 'react-native';
 
 import { BaseInstrumentation } from '@grafana/faro-core';
 
+import { pushWithoutBatching } from '../../transports/pushWithoutBatching';
+
 import { ErrorMechanism, primitiveUnhandledType } from './const';
 export { ErrorMechanism } from './const';
 export type { ErrorMechanismType } from './const';
@@ -149,12 +151,19 @@ export class ErrorsInstrumentation extends BaseInstrumentation {
         );
 
         // Push error to Faro with enhanced data (type from error.name, matches Web SDK)
-        this.api.pushError(enhancedError, {
-          type: enhancedError.name || 'Error',
-          context,
-          fatal: isFatal,
-          stackFrames,
-        });
+        const pushError = () =>
+          this.api.pushError(enhancedError, {
+            type: enhancedError.name || 'Error',
+            context,
+            fatal: isFatal,
+            stackFrames,
+          });
+        if (isFatal) {
+          // The app can exit right after the original handler runs, before a batch flush.
+          pushWithoutBatching(this.transports, this.config, pushError);
+        } else {
+          pushError();
+        }
 
         // Track error fingerprint for deduplication
         if (this.options.enableDeduplication) {

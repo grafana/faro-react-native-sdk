@@ -108,12 +108,24 @@ export class FetchTransport extends BaseTransport {
     return this.sessionReadyPromise;
   }
 
+  /**
+   * A request carries one meta block, but faro-core groups a batch before
+   * beforeSend hooks run, so a hook that changes an item's meta can leave mixed
+   * metadata in one send call. Each group of items with the same final meta is
+   * sent as its own request. Groups are sent one after another, so a send call
+   * holds at most one request-buffer slot at a time; overlapping send calls
+   * still share the buffer limit. Groups after one that starts a rate-limit or
+   * failure backoff are skipped like any send during backoff.
+   */
   async send(items: TransportItem[]): Promise<void> {
-    await this.sendWithResult(items);
+    for (const group of groupItemsByMeta(items)) {
+      await this.sendWithResult(group);
+    }
   }
 
   /**
-   * Sends a batch and reports whether the collector accepted it.
+   * Sends items that share one meta block as one request, and reports whether
+   * the collector accepted it. The request body uses the first item's meta.
    * The request header uses the live session for collector accounting. Payload
    * metadata remains independent so delayed signals can retain their original
    * session.
@@ -269,4 +281,18 @@ export class FetchTransport extends BaseTransport {
 
     return new Date(now + this.rateLimitBackoffMs);
   }
+}
+
+function groupItemsByMeta(items: TransportItem[]): TransportItem[][] {
+  const groups = new Map<string, TransportItem[]>();
+  for (const item of items) {
+    const key = JSON.stringify(item.meta);
+    const group = groups.get(key);
+    if (group == null) {
+      groups.set(key, [item]);
+    } else {
+      group.push(item);
+    }
+  }
+  return Array.from(groups.values());
 }

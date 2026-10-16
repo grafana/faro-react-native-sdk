@@ -455,6 +455,130 @@ describe('FetchTransport', () => {
     );
   });
 
+  describe('items with different metadata', () => {
+    function itemWithMeta(message: string, userId?: string): TransportItem<LogEvent> {
+      return {
+        ...item,
+        payload: { ...item.payload, message },
+        meta: { session: { id: mockSessionId }, ...(userId ? { user: { id: userId } } : {}) },
+      };
+    }
+
+    function sentBodies() {
+      return fetch.mock.calls.map((call) => JSON.parse((call as unknown as [string, { body: string }])[1].body));
+    }
+
+    function createTransport(options: Partial<ConstructorParameters<typeof FetchTransport>[0]> = {}) {
+      const transport = new FetchTransport({ url: 'http://example.com/collect', ...options });
+      transport.metas.value = { session: { id: mockSessionId } };
+      transport.internalLogger = mockInternalLogger;
+      return transport;
+    }
+
+    it.each([
+      ['user first', [itemWithMeta('with-user', 'user-1'), itemWithMeta('without-user')]],
+      ['user last', [itemWithMeta('without-user'), itemWithMeta('with-user', 'user-1')]],
+    ])('sends each meta in its own request (%s)', async (_order, items) => {
+      await createTransport().send(items);
+
+      const bodies = sentBodies();
+      expect(bodies).toHaveLength(2);
+      const withUser = bodies.find((body) => body.logs[0].message === 'with-user');
+      const withoutUser = bodies.find((body) => body.logs[0].message === 'without-user');
+      expect(withUser.meta.user).toEqual({ id: 'user-1' });
+      expect(withUser.logs).toHaveLength(1);
+      expect(withoutUser.meta.user).toBeUndefined();
+      expect(withoutUser.logs).toHaveLength(1);
+    });
+
+    it('sends items with the same meta in one request, in order', async () => {
+      await createTransport().send([itemWithMeta('a', 'user-1'), itemWithMeta('b'), itemWithMeta('c', 'user-1')]);
+
+      const bodies = sentBodies();
+      expect(bodies).toHaveLength(2);
+      expect(bodies[0].logs.map((log: LogEvent) => log.message)).toEqual(['a', 'c']);
+      expect(bodies[1].logs.map((log: LogEvent) => log.message)).toEqual(['b']);
+    });
+
+    it('does not change the items it groups', async () => {
+      const items = [itemWithMeta('a', 'user-1'), itemWithMeta('b')];
+      const snapshot = JSON.parse(JSON.stringify(items));
+
+      await createTransport().send(items);
+
+      expect(items).toEqual(snapshot);
+    });
+
+    it('sends every group of a fully mixed batch one at a time, within the request buffer', async () => {
+      const resolvers: Array<() => void> = [];
+      let inFlight = 0;
+      let maxInFlight = 0;
+      fetch.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            inFlight++;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            resolvers.push(() => {
+              inFlight--;
+              resolve({ status: 202, text: () => Promise.resolve(), headers: { get: () => null } });
+            });
+          })
+      );
+      const items = Array.from({ length: 200 }, (_, idx) => itemWithMeta(`item-${idx}`, `user-${idx}`));
+
+      const sending = createTransport().send(items);
+      for (let idx = 0; idx < 200; idx++) {
+        // Wait for the next request to start, then complete it.
+        for (let ticks = 0; resolvers.length === 0 && ticks < 100; ticks++) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        resolvers.shift()?.();
+      }
+      await sending;
+
+      expect(fetch).toHaveBeenCalledTimes(200);
+      expect(maxInFlight).toBe(1);
+      expect(sentBodies().map((body) => body.meta.user.id)).toEqual(items.map((_, idx) => `user-${idx}`));
+    });
+
+    it('shares the request buffer between overlapping sends and drops groups that do not fit', async () => {
+      const resolvers: Array<() => void> = [];
+      fetch.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolvers.push(() => resolve({ status: 202, text: () => Promise.resolve(), headers: { get: () => null } }));
+          })
+      );
+      const transport = createTransport({ bufferSize: 2 });
+
+      // Faro Core calls send() once per pre-hook group without awaiting, and flushes can overlap.
+      const sends = ['a', 'b', 'c'].map((name) =>
+        transport.send([itemWithMeta(`${name}-1`, `${name}-user`), itemWithMeta(`${name}-2`)])
+      );
+      for (let ticks = 0; ticks < 100 && (resolvers.length > 0 || fetch.mock.calls.length < 4); ticks++) {
+        resolvers.shift()?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      await Promise.all(sends);
+
+      // Each send holds at most one slot at a time, so the first two sends deliver
+      // every group. The third finds the buffer full and its groups are dropped,
+      // as when the buffer is exhausted by unrelated sends.
+      const delivered = sentBodies().map((body) => body.logs[0].message);
+      expect(delivered.sort()).toEqual(['a-1', 'a-2', 'b-1', 'b-2']);
+    });
+
+    it('skips the remaining groups once a group is rate limited', async () => {
+      fetch.mockImplementationOnce(() =>
+        Promise.resolve({ status: 429, headers: { get: () => null }, text: () => Promise.resolve() })
+      );
+
+      await createTransport().send([itemWithMeta('a', 'user-1'), itemWithMeta('b', 'user-2'), itemWithMeta('c')]);
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('Circuit Breaker - Offline Behavior', () => {
     it('activates circuit breaker after 3 consecutive failures', async () => {
       let now = Date.now();

@@ -1,4 +1,7 @@
 import type { TransportItem } from '@grafana/faro-core';
+import { mockInternalLogger } from '@grafana/faro-test-utils';
+
+import { FetchTransport } from '../fetch';
 
 import { AsyncStorageOfflineCache } from './OfflineCache';
 import { OfflineTransport } from './transport';
@@ -168,6 +171,37 @@ describe('OfflineTransport', () => {
       await transport.forceReplay();
 
       expect(mockTransport.send).toHaveBeenCalled();
+    });
+
+    it('replays cached items with different metadata as separate requests through FetchTransport', async () => {
+      const originalFetch = global.fetch;
+      const fetchMock = jest.fn((_url: string, _init: { body: string }) =>
+        Promise.resolve({ status: 202, text: () => Promise.resolve(''), headers: { get: () => null } })
+      );
+      (global as any).fetch = fetchMock;
+
+      try {
+        mockConnectivity.setOnline(false);
+        await transport.send([
+          { type: 'log' as TransportItem['type'], payload: { message: 'with-user' }, meta: { user: { id: 'user-1' } } },
+          { type: 'log' as TransportItem['type'], payload: { message: 'without-user' }, meta: {} },
+        ]);
+
+        const fetchTransport = new FetchTransport({ url: 'http://example.com/collect' });
+        fetchTransport.metas.value = {};
+        fetchTransport.internalLogger = mockInternalLogger;
+        transport.setOtherTransports([fetchTransport]);
+
+        mockConnectivity.setOnline(true);
+        await transport.forceReplay();
+
+        const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body));
+        expect(bodies).toHaveLength(2);
+        expect(bodies.find((body) => body.logs[0].message === 'with-user').meta.user).toEqual({ id: 'user-1' });
+        expect(bodies.find((body) => body.logs[0].message === 'without-user').meta.user).toBeUndefined();
+      } finally {
+        (global as any).fetch = originalFetch;
+      }
     });
 
     it('should skip expired payloads', async () => {

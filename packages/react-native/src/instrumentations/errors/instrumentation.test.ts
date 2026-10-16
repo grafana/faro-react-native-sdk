@@ -1,6 +1,10 @@
 import { type ExceptionEvent, initializeFaro, type TransportItem } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
+import { SamplingRate } from '../../config/sampling';
+import { SessionInstrumentation } from '../session';
+import { VolatileSessionsManager } from '../session/sessionManager/VolatileSessionManager';
+
 import { ErrorsInstrumentation } from './index';
 
 // Mock React Native's global error handler
@@ -612,5 +616,157 @@ describe('ErrorsInstrumentation', () => {
       expect(originalHandler).toHaveBeenCalledWith(thrown, true);
       expect(transport.items).toHaveLength(0);
     });
+  });
+
+  describe('with batching', () => {
+    const batching = { enabled: true, sendTimeout: 2_000, itemLimit: 200 };
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      VolatileSessionsManager.removeUserSession();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+      VolatileSessionsManager.removeUserSession();
+    });
+
+    function setup(config: Parameters<typeof mockConfig>[0] = {}) {
+      const transport = new MockTransport();
+      const send = jest.spyOn(transport, 'send');
+      let errorHandler: (error: unknown, isFatal: boolean) => void = () => {};
+      // Records what was sent when React Native's own handler runs, which can exit the app.
+      let sentBeforeOriginalHandler: TransportItem[] | undefined;
+      mockGlobal.ErrorUtils.getGlobalHandler = jest.fn(() =>
+        jest.fn(() => {
+          sentBeforeOriginalHandler = [...transport.items];
+        })
+      );
+      mockGlobal.ErrorUtils.setGlobalHandler = jest.fn((handler) => {
+        errorHandler = handler;
+      });
+      const faro = initializeFaro(
+        mockConfig({
+          transports: [transport],
+          instrumentations: [new ErrorsInstrumentation()],
+          batching,
+          ...config,
+        })
+      );
+      jest.advanceTimersByTime(batching.sendTimeout);
+      transport.items = [];
+      send.mockClear();
+
+      return {
+        faro,
+        transport,
+        send,
+        throwError: (error: Error, isFatal: boolean) => errorHandler(error, isFatal),
+        sentBeforeOriginalHandler: () => sentBeforeOriginalHandler,
+      };
+    }
+
+    function exceptions(transport: MockTransport) {
+      return transport.items.filter((item) => item.type === 'exception') as Array<TransportItem<ExceptionEvent>>;
+    }
+
+    it('sends a fatal error before the original handler runs, and only once', () => {
+      const setupResult = setup();
+
+      setupResult.throwError(new Error('fatal'), true);
+
+      expect(setupResult.sentBeforeOriginalHandler()?.map((item) => item.payload)).toEqual([
+        expect.objectContaining({ value: 'fatal', fatal: true }),
+      ]);
+      jest.advanceTimersByTime(batching.sendTimeout * 2);
+      expect(exceptions(setupResult.transport)).toHaveLength(1);
+    });
+
+    it('keeps batching non-fatal errors and telemetry pushed after a fatal error', () => {
+      const setupResult = setup();
+
+      setupResult.throwError(new Error('non-fatal'), false);
+      expect(setupResult.sentBeforeOriginalHandler()).toEqual([]);
+
+      setupResult.throwError(new Error('fatal'), true);
+      setupResult.faro.api.pushEvent('after-fatal');
+      expect(setupResult.transport.items.map((item) => (item.payload as { value?: string }).value)).toEqual(['fatal']);
+
+      jest.advanceTimersByTime(batching.sendTimeout);
+      expect(exceptions(setupResult.transport).map((item) => item.payload.value)).toEqual(['fatal', 'non-fatal']);
+      expect(
+        setupResult.transport.items.some((item) => (item.payload as { name?: string }).name === 'after-fatal')
+      ).toBe(true);
+    });
+
+    it('applies beforeSend once to a fatal error', () => {
+      const beforeSend = jest.fn((item: TransportItem) => ({
+        ...item,
+        meta: { ...item.meta, user: undefined },
+      }));
+      const setupResult = setup({ beforeSend });
+      setupResult.faro.api.setUser({ id: 'user-1' });
+      beforeSend.mockClear();
+
+      setupResult.throwError(new Error('fatal'), true);
+
+      expect(beforeSend).toHaveBeenCalledTimes(1);
+      expect(exceptions(setupResult.transport)[0]?.meta.user).toBeUndefined();
+    });
+
+    it('drops a fatal error that beforeSend filters out', () => {
+      const setupResult = setup({ beforeSend: (item) => (item.type === 'exception' ? null : item) });
+
+      setupResult.throwError(new Error('fatal'), true);
+      jest.advanceTimersByTime(batching.sendTimeout);
+
+      expect(exceptions(setupResult.transport)).toHaveLength(0);
+    });
+
+    it('does not send a fatal error while paused', () => {
+      const setupResult = setup();
+      setupResult.faro.pause();
+
+      setupResult.throwError(new Error('fatal'), true);
+
+      expect(setupResult.send).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['sampled', 1, 1],
+      ['unsampled', 0, 0],
+    ] as const)(
+      'applies session attribution and sampling to a fatal error in a %s session',
+      (_name, rate, expected) => {
+        const transport = new MockTransport();
+        let errorHandler: (error: unknown, isFatal: boolean) => void = () => {};
+        mockGlobal.ErrorUtils.setGlobalHandler = jest.fn((handler) => {
+          errorHandler = handler;
+        });
+        const sessionInstrumentation = new SessionInstrumentation();
+        initializeFaro(
+          mockConfig({
+            transports: [transport],
+            instrumentations: [sessionInstrumentation, new ErrorsInstrumentation()],
+            batching,
+            sessionTracking: { enabled: true, persistent: false, sampling: new SamplingRate(rate) },
+          })
+        );
+        const sessionId = VolatileSessionsManager.fetchUserSession()?.sessionId;
+
+        try {
+          errorHandler(new Error('fatal'), true);
+
+          const sent = exceptions(transport);
+          expect(sent).toHaveLength(expected);
+          if (expected === 1) {
+            expect(sent[0]?.meta.session?.id).toBe(sessionId);
+            expect(sent[0]?.meta.session?.attributes?.['isSampled']).toBeUndefined();
+          }
+        } finally {
+          sessionInstrumentation.unpatch();
+        }
+      }
+    );
   });
 });
