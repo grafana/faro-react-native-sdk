@@ -15,19 +15,17 @@
 
 ## [2.0.2](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v2.0.1...faro-react-native-tracing-v2.0.2) (2026-10-16)
 
-
 ### Bug Fixes
 
-* **react-native:** honor the batching config ([#227](https://github.com/grafana/faro-react-native-sdk/issues/227)) ([1f938e2](https://github.com/grafana/faro-react-native-sdk/commit/1f938e291fd5ab379d3c07d51947b7a50f48ef10))
-* **react-native:** report correct device and SDK metadata ([397f456](https://github.com/grafana/faro-react-native-sdk/commit/397f456b2ba2a12dc6f4491f4812b36ca686e9a7))
-* **react-native:** report correct device and SDK metadata ([3d06f8a](https://github.com/grafana/faro-react-native-sdk/commit/3d06f8ab0ddf3a171849e965bc5d312d2b7ff426)), closes [#209](https://github.com/grafana/faro-react-native-sdk/issues/209)
-
+- **react-native:** honor the batching config ([#227](https://github.com/grafana/faro-react-native-sdk/issues/227)) ([1f938e2](https://github.com/grafana/faro-react-native-sdk/commit/1f938e291fd5ab379d3c07d51947b7a50f48ef10))
+- **react-native:** report correct device and SDK metadata ([397f456](https://github.com/grafana/faro-react-native-sdk/commit/397f456b2ba2a12dc6f4491f4812b36ca686e9a7))
+- **react-native:** report correct device and SDK metadata ([3d06f8a](https://github.com/grafana/faro-react-native-sdk/commit/3d06f8ab0ddf3a171849e965bc5d312d2b7ff426)), closes [#209](https://github.com/grafana/faro-react-native-sdk/issues/209)
 
 ### Dependencies
 
-* The following workspace dependencies were updated
-  * dependencies
-    * @grafana/faro-react-native bumped to 1.4.2
+- The following workspace dependencies were updated
+  - dependencies
+    - @grafana/faro-react-native bumped to 1.4.2
 
 ## [2.0.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v2.0.0...faro-react-native-tracing-v2.0.1) (2026-09-25)
 
