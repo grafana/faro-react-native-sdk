@@ -1,7 +1,6 @@
 import { BaseInstrumentation, dateNow, EVENT_SESSION_START, faro, VERSION } from '@grafana/faro-core';
 import type {
   API,
-  BeforeSendHook,
   Config,
   Meta,
   Metas,
@@ -16,6 +15,12 @@ import type { ReactNativeFullConfig, ReactNativeSessionTrackingConfig } from '..
 import { clearDirectSessionActivityHandler, registerDirectSessionActivityHandler } from './directSessionActivity';
 import { classifySessionActivity, isRecoveredCrashItem, SessionActivityKind } from './sessionActivity';
 import { minimalSessionDeviceAttributes, type SessionAttributes } from './sessionAttributes';
+import {
+  installSessionCaptureHandler,
+  isActiveSessionCaptureHandler,
+  type SessionCaptureHandler,
+  uninstallSessionCaptureHandler,
+} from './sessionCapture';
 import { type FaroUserSession, getSessionManagerByConfig, isSampled } from './sessionManager';
 import { MAX_SESSION_PERSISTENCE_TIME } from './sessionManager/sessionConstants';
 import { createUserSessionObject, isUserSessionValid } from './sessionManager/sessionManagerUtils';
@@ -23,11 +28,10 @@ import type { SessionManager, SessionManagerInstance } from './sessionManager/ty
 
 const SESSION_INSTRUMENTATION_NAME = '@grafana/faro-react-native:instrumentation-session';
 
-// Track the current session hook per transport so superseded hooks yield to a
-// replacement. The shared fallback preserves sampling decisions captured on
-// queued items after the owning instrumentation has detached.
-const activeSessionBeforeSendHooks = new WeakMap<Transports, BeforeSendHook>();
-const sessionSamplingFallbackHooks = new WeakMap<Transports, BeforeSendHook>();
+// Strips the internal sampling marker, and drops unsampled items, that reach
+// the transports without passing a capture handler, such as items captured
+// after teardown with a recovered session.
+const sessionSamplingHooks = new WeakSet<Transports>();
 
 function applySessionSampling(item: TransportItem, fallbackSamplingDecision?: boolean): TransportItem | null {
   const attributes = item.meta.session?.attributes;
@@ -64,16 +68,13 @@ function applySessionSampling(item: TransportItem, fallbackSamplingDecision?: bo
   return sampledItem;
 }
 
-function ensureSessionSamplingFallback(transports: Transports): void {
-  if (sessionSamplingFallbackHooks.has(transports)) {
+function ensureSessionSamplingHook(transports: Transports): void {
+  if (sessionSamplingHooks.has(transports)) {
     return;
   }
 
-  const fallbackHook: BeforeSendHook = (item) =>
-    activeSessionBeforeSendHooks.has(transports) ? item : applySessionSampling(item);
-
-  transports.addBeforeSendHooks(fallbackHook);
-  sessionSamplingFallbackHooks.set(transports, fallbackHook);
+  transports.addBeforeSendHooks((item) => applySessionSampling(item));
+  sessionSamplingHooks.add(transports);
 }
 
 function removeInternalSamplingAttribute(session: MetaSession | undefined): MetaSession | undefined {
@@ -127,9 +128,9 @@ export class SessionInstrumentation extends BaseInstrumentation {
   private isResettingSession = false;
   private unregisterDirectSessionActivity: (() => void) | undefined;
   private sessionMetaListenerMetas: Metas | undefined;
-  private beforeSendHookApi: API | undefined;
-  private beforeSendHook: BeforeSendHook | undefined;
-  private beforeSendHookTransports: Transports | undefined;
+  private captureHandlerApi: API | undefined;
+  private captureHandler: SessionCaptureHandler | undefined;
+  private captureHandlerTransports: Transports | undefined;
 
   private getDefaultSessionDeviceAttributes(): SessionAttributes {
     const cfg = this.config as ReactNativeFullConfig;
@@ -247,19 +248,14 @@ export class SessionInstrumentation extends BaseInstrumentation {
     return { initialSession, emitSessionStartOnInit };
   }
 
-  private registerBeforeSendHook(SessionManagerClass: SessionManager): void {
+  private registerSessionCaptureHandler(SessionManagerClass: SessionManager): void {
     const registeredTransports = this.transports;
-    ensureSessionSamplingFallback(registeredTransports);
+    ensureSessionSamplingHook(registeredTransports);
 
-    const beforeSendHook: BeforeSendHook = (item: TransportItem) => {
-      const activeBeforeSendHook = activeSessionBeforeSendHooks.get(registeredTransports);
-      if (activeBeforeSendHook != null && activeBeforeSendHook !== beforeSendHook) {
-        return item;
-      }
-
+    const captureHandler: SessionCaptureHandler = (item: TransportItem) => {
       let nextItem = item;
       let fallbackSamplingDecision: boolean | undefined;
-      const sessionManager = this.beforeSendHook === beforeSendHook ? this.sessionManagerInstance : undefined;
+      const sessionManager = this.captureHandler === captureHandler ? this.sessionManagerInstance : undefined;
 
       if (sessionManager != null) {
         const storedSession = SessionManagerClass.fetchUserSession();
@@ -291,11 +287,10 @@ export class SessionInstrumentation extends BaseInstrumentation {
       return applySessionSampling(nextItem, fallbackSamplingDecision);
     };
 
-    this.beforeSendHook = beforeSendHook;
-    this.beforeSendHookApi = this.api;
-    this.beforeSendHookTransports = registeredTransports;
-    registeredTransports.addBeforeSendHooks(beforeSendHook);
-    activeSessionBeforeSendHooks.set(registeredTransports, beforeSendHook);
+    this.captureHandler = captureHandler;
+    this.captureHandlerApi = this.api;
+    this.captureHandlerTransports = registeredTransports;
+    installSessionCaptureHandler(registeredTransports, captureHandler);
   }
 
   initialize(): void {
@@ -321,7 +316,7 @@ export class SessionInstrumentation extends BaseInstrumentation {
     // instance `unpatch()` cleans up.
     this.sessionManagerInstance = new SessionManagerClass(this.metas);
 
-    this.registerBeforeSendHook(SessionManagerClass);
+    this.registerSessionCaptureHandler(SessionManagerClass);
 
     const { initialSession, emitSessionStartOnInit } = this.createInitialSession(
       SessionManagerClass,
@@ -372,42 +367,39 @@ export class SessionInstrumentation extends BaseInstrumentation {
     this.unregisterDirectSessionActivity?.();
     this.unregisterDirectSessionActivity = undefined;
 
-    const beforeSendHook = this.beforeSendHook;
-    const beforeSendHookApi = this.beforeSendHookApi;
-    const beforeSendHookTransports = this.beforeSendHookTransports;
-    const ownedActiveHook =
-      beforeSendHook != null &&
-      beforeSendHookTransports != null &&
-      activeSessionBeforeSendHooks.get(beforeSendHookTransports) === beforeSendHook;
+    const captureHandler = this.captureHandler;
+    const captureHandlerApi = this.captureHandlerApi;
+    const captureHandlerTransports = this.captureHandlerTransports;
+    const ownsCaptureHandler =
+      captureHandler != null &&
+      captureHandlerTransports != null &&
+      isActiveSessionCaptureHandler(captureHandlerTransports, captureHandler);
 
     // Stop the manager's metas synchronization before removing the internal
-    // sampling marker. Keep the session hook active during that update so any
-    // surviving metas listener that emits telemetry is still attributed and
-    // filtered with the current session.
+    // sampling marker. Keep the capture handler active during that update so
+    // any surviving metas listener that emits telemetry is still attributed
+    // and filtered with the current session.
     this.sessionManagerInstance?.unpatch();
 
     try {
-      if (ownedActiveHook && beforeSendHookApi) {
-        const session = beforeSendHookApi.getSession();
+      if (ownsCaptureHandler && captureHandlerApi) {
+        const session = captureHandlerApi.getSession();
         const sessionWithoutSamplingAttribute = removeInternalSamplingAttribute(session);
         if (sessionWithoutSamplingAttribute !== session) {
           this.isResettingSession = true;
           try {
-            beforeSendHookApi.setSession(sessionWithoutSamplingAttribute);
+            captureHandlerApi.setSession(sessionWithoutSamplingAttribute);
           } finally {
             this.isResettingSession = false;
           }
         }
       }
     } finally {
-      this.beforeSendHook = undefined;
-      this.beforeSendHookApi = undefined;
-      this.beforeSendHookTransports = undefined;
-      if (beforeSendHook && beforeSendHookTransports) {
-        if (ownedActiveHook) {
-          activeSessionBeforeSendHooks.delete(beforeSendHookTransports);
-        }
-        beforeSendHookTransports.removeBeforeSendHooks(beforeSendHook);
+      this.captureHandler = undefined;
+      this.captureHandlerApi = undefined;
+      this.captureHandlerTransports = undefined;
+      if (captureHandler && captureHandlerTransports) {
+        uninstallSessionCaptureHandler(captureHandlerTransports, captureHandler);
       }
 
       this.sessionManagerInstance = undefined;

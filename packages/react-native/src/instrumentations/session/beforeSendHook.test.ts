@@ -331,9 +331,8 @@ describe('SessionInstrumentation beforeSend hook', () => {
       },
     };
 
-    const result = faro.transports
-      .getBeforeSendHooks()
-      .reduce<TransportItem | null>((item, hook) => (item == null ? null : hook(item)), recoveredCrash);
+    faro.transports.execute(recoveredCrash);
+    const result = transport.items.find((item) => item.type === TransportItemType.EXCEPTION);
 
     expect(result?.meta.session).toStrictEqual({ id: 'crashed-session' });
     expect(VolatileSessionsManager.fetchUserSession()).toStrictEqual(currentSession);
@@ -365,11 +364,9 @@ describe('SessionInstrumentation beforeSend hook', () => {
       },
     };
 
-    const result = faro.transports
-      .getBeforeSendHooks()
-      .reduce<TransportItem | null>((item, hook) => (item == null ? null : hook(item)), recoveredCrash);
+    faro.transports.execute(recoveredCrash);
 
-    expect(result).toBeNull();
+    expect(transport.items.filter((item) => item.type === TransportItemType.EXCEPTION)).toHaveLength(0);
     expect(VolatileSessionsManager.fetchUserSession()).toStrictEqual(currentSession);
   });
 });

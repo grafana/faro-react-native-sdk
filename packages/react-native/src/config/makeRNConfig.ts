@@ -18,6 +18,13 @@ import type { ReactNativeConfig, ReactNativeFullConfig } from './types';
 
 const DEFAULT_OFFLINE_CACHE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
+// Batching stays off unless the app opts in, so each item is sent as soon as it is captured.
+const defaultBatchingConfig = {
+  enabled: false,
+  sendTimeout: 250,
+  itemLimit: 50,
+} satisfies NonNullable<Config['batching']>;
+
 /**
  * Resolves `meta.app.bundleId` when it is not already supplied by faro-core from
  * the Metro preamble (`registerInitialMetas` / `__faroBundleId_<appName>`).
@@ -143,9 +150,8 @@ export function makeRNConfig(
     preventGlobalExposure: config.preventGlobalExposure ?? false,
     unpatchedConsole: config.unpatchedConsole ?? defaultUnpatchedConsole,
     batching: {
-      enabled: false,
-      sendTimeout: 250,
-      itemLimit: 50,
+      ...defaultBatchingConfig,
+      ...config.batching,
     },
     sessionTracking: {
       ...defaultSessionTrackingConfig,

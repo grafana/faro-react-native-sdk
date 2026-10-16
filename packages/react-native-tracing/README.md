@@ -506,7 +506,7 @@ function performOperation() {
 2. **Enrichment**: HttpRequestMonitorSpanProcessor notifies for user action correlation; FaroMetaAttributesSpanProcessor adds session and user to spans (device/service come from resource)
 3. **Batching**: BatchSpanProcessor collects spans (max 30 spans or 1000ms delay)
 4. **Export**: FaroTraceExporter converts spans to OTLP format; also sends Faro events (e.g. `faro.tracing.fetch`) for CLIENT spans
-5. **Transmission**: Spans sent to Faro collector via `faro.api.pushTraces()`
+5. **Transmission**: Spans sent to Faro collector via `faro.api.pushTraces()`. When the core SDK's `batching` option is enabled, exported spans are queued with other signals before sending.
 
 ### Span Attributes
 

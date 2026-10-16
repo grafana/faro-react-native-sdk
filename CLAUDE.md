@@ -15,7 +15,7 @@ This is the Grafana Faro React Native SDK - a monorepo containing packages for r
 
 **Critical Dependencies:**
 
-- `@grafana/faro-core@^2.2.3` - Using caret versioning for minor/patch updates.
+- `@grafana/faro-core@^2.8.2` - Using caret versioning for minor/patch updates.
 - React Native 0.82.1+
 - Yarn Berry 4.12.0
 
@@ -126,11 +126,9 @@ Console/Error instrumentations must NOT use console.log or trigger errors intern
 
 ### Transport System
 
-The SDK uses a batched transport system:
-
-- `FetchTransport` - Sends telemetry to Grafana Cloud collector
+- `FetchTransport` - Sends telemetry to Grafana Cloud collector, with rate-limit and failure backoff
 - `ConsoleTransport` - Logs telemetry to console for debugging
-- Both implement circuit breaker pattern to handle offline scenarios
+- Batching is done by faro-core, not the transports. It is off by default and enabled with the `batching` config
 
 **Critical:** Transports must NOT be traced by HttpInstrumentation or TracingInstrumentation. Collector URLs are automatically filtered to prevent infinite loops.
 
@@ -292,7 +290,7 @@ If you see "Metro couldn't find SHA-1 for react-native/index.js":
 
 1. Clear build artifacts: `yarn clean`
 2. Rebuild: `yarn build`
-3. If still failing, check @grafana/faro-core version matches expectations (should be 2.0.2)
+3. If still failing, check @grafana/faro-core version matches expectations (see `packages/react-native/package.json`)
 
 ### Test Failures Due to Timer Interference
 

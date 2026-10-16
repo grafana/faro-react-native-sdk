@@ -1,7 +1,10 @@
 import { type ExceptionEvent, initializeFaro, type TransportItem } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
+import { SamplingRate } from '../../config/sampling';
 import { FetchTransport } from '../../transports/fetch';
+import { SessionInstrumentation } from '../session';
+import { VolatileSessionsManager } from '../session/sessionManager/VolatileSessionManager';
 
 import { AndroidCrashReportingInstrumentation } from './android/AndroidCrashReportingInstrumentation';
 import { CrashReportingInstrumentation } from './index';
@@ -175,6 +178,66 @@ describe('CrashReportingInstrumentation', () => {
     expect(setup.nativeModule.recordCrashSessionContext).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 'session-b' })
     );
+  });
+
+  describe.each([
+    ['Android', AndroidCrashReportingInstrumentation],
+    ['iOS', IosCrashReportingInstrumentation],
+  ] as const)('%s replay with session sampling', (_platform, CrashInstrumentation) => {
+    function setupSampledReplay(reports: CrashReport[], rate: number) {
+      VolatileSessionsManager.removeUserSession();
+      const transport = new FetchTransport({ url: 'http://example.com/collect' });
+      const instrumentation = new CrashInstrumentation({ enabled: false });
+      const sessionInstrumentation = new SessionInstrumentation();
+      initializeFaro(
+        mockConfig({
+          transports: [transport],
+          instrumentations: [sessionInstrumentation, instrumentation],
+          sessionTracking: { enabled: true, persistent: false, sampling: new SamplingRate(rate) },
+        })
+      );
+      const nativeModule = createNativeCrashModule(reports);
+      const sendSpy = jest.spyOn(transport, 'sendWithResult').mockResolvedValue({ outcome: 'accepted', status: 202 });
+      const testable = instrumentation as unknown as TestableAndroidCrashInstrumentation;
+      testable.prepareCrashReporting(nativeModule);
+      return { instrumentation, nativeModule, sendSpy, sessionInstrumentation, testable };
+    }
+
+    it.each([
+      ['drops', 0, 0],
+      ['sends', 1, 1],
+    ] as const)(
+      '%s an older crash without a sampling decision using the live session decision',
+      async (_name, rate, expectedSends) => {
+        const setup = setupSampledReplay([createCrashReport({ sessionId: 'session-a' })], rate);
+
+        try {
+          await setup.testable.processCrashReports(setup.nativeModule);
+
+          expect(setup.sendSpy).toHaveBeenCalledTimes(expectedSends);
+          if (expectedSends === 1) {
+            const item = setup.sendSpy.mock.calls[0]?.[0]?.[0] as TransportItem<ExceptionEvent>;
+            expect(item.meta.session).toStrictEqual({ id: 'session-a' });
+          }
+        } finally {
+          setup.instrumentation.unpatch();
+          setup.sessionInstrumentation.unpatch();
+        }
+      }
+    );
+
+    it('drops a crash recorded as unsampled while the live session is sampled', async () => {
+      const setup = setupSampledReplay([createCrashReport({ sessionId: 'session-a', isSampled: false })], 1);
+
+      try {
+        await setup.testable.processCrashReports(setup.nativeModule);
+
+        expect(setup.sendSpy).not.toHaveBeenCalled();
+      } finally {
+        setup.instrumentation.unpatch();
+        setup.sessionInstrumentation.unpatch();
+      }
+    });
   });
 
   it('retains the crash-time sampling decision across same-session metadata updates', () => {

@@ -1,4 +1,4 @@
-import { getTransportBody, VERSION } from '@grafana/faro-core';
+import { type Config, getTransportBody, type TransportItem, VERSION } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import packageJson from '../package.json';
@@ -264,5 +264,238 @@ describe('initializeFaro', () => {
     );
 
     expect(faro.metas.value.app?.bundleId).toBe('com.example.myapp@42@1.0.0');
+  });
+
+  describe('batching', () => {
+    async function initWithBatching(batching?: Config['batching'], overrides: Partial<Config> = {}) {
+      const transport = new MockTransport();
+      const send = jest.spyOn(transport, 'send');
+      const faro = await initializeFaro(
+        mockConfig({
+          url: 'http://localhost:12345/collect',
+          transports: [transport],
+          sessionTracking: { enabled: true, persistent: false },
+          ...(batching ? { batching } : {}),
+          ...overrides,
+        })
+      );
+      jest.runOnlyPendingTimers();
+      send.mockClear();
+      transport.items = [];
+      return { faro, transport, send };
+    }
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('sends each item immediately when batching is not configured', async () => {
+      const { faro, send } = await initWithBatching();
+
+      faro.api.pushEvent('one');
+      faro.api.pushEvent('two');
+
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('flushes queued items when sendTimeout elapses', async () => {
+      const { faro, transport, send } = await initWithBatching({ enabled: true, sendTimeout: 2_000, itemLimit: 200 });
+
+      faro.api.pushEvent('one');
+      faro.api.pushEvent('two');
+      faro.api.pushEvent('three');
+      jest.advanceTimersByTime(1_999);
+      expect(send).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(1);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(transport.items).toHaveLength(3);
+    });
+
+    it('flushes queued items when itemLimit is reached', async () => {
+      const { faro, transport, send } = await initWithBatching({ enabled: true, sendTimeout: 10_000, itemLimit: 2 });
+
+      faro.api.pushEvent('one');
+      expect(send).not.toHaveBeenCalled();
+
+      faro.api.pushEvent('two');
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(transport.items).toHaveLength(2);
+    });
+
+    it('sends the same item count in every request when batching is disabled explicitly', async () => {
+      const { faro, send } = await initWithBatching({ enabled: false, sendTimeout: 2_000, itemLimit: 200 });
+
+      faro.api.pushEvent('one');
+      faro.api.pushEvent('two');
+
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls.map(([items]) => (items as unknown[]).length)).toEqual([1, 1]);
+    });
+
+    it('sends nothing on timer ticks with an empty queue', async () => {
+      const { send } = await initWithBatching({ enabled: true, sendTimeout: 2_000, itemLimit: 200 });
+
+      jest.advanceTimersByTime(10_000);
+
+      expect(send).not.toHaveBeenCalled();
+    });
+
+    it('keeps flushing on every sendTimeout tick', async () => {
+      const { faro, send } = await initWithBatching({ enabled: true, sendTimeout: 2_000, itemLimit: 200 });
+
+      faro.api.pushEvent('one');
+      jest.advanceTimersByTime(2_000);
+      faro.api.pushEvent('two');
+      faro.api.pushEvent('three');
+      jest.advanceTimersByTime(2_000);
+
+      expect(send.mock.calls.map(([items]) => (items as unknown[]).length)).toEqual([1, 2]);
+    });
+
+    it('sends one request per full batch and leaves the remainder for the timer', async () => {
+      const { faro, send } = await initWithBatching({ enabled: true, sendTimeout: 10_000, itemLimit: 2 });
+
+      for (let i = 0; i < 5; i++) {
+        faro.api.pushEvent(`event-${i}`);
+      }
+      expect(send.mock.calls.map(([items]) => (items as unknown[]).length)).toEqual([2, 2]);
+
+      jest.advanceTimersByTime(10_000);
+      expect(send.mock.calls.map(([items]) => (items as unknown[]).length)).toEqual([2, 2, 1]);
+    });
+
+    it('does not restart the timer after an itemLimit flush', async () => {
+      const { faro, send } = await initWithBatching({ enabled: true, sendTimeout: 2_000, itemLimit: 2 });
+
+      jest.advanceTimersByTime(1_500);
+      faro.api.pushEvent('one');
+      faro.api.pushEvent('two');
+      expect(send).toHaveBeenCalledTimes(1);
+
+      faro.api.pushEvent('three');
+      jest.advanceTimersByTime(500);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls[1]?.[0]).toHaveLength(1);
+    });
+
+    it('sends every item immediately when itemLimit is 1', async () => {
+      const { faro, send } = await initWithBatching({ enabled: true, sendTimeout: 10_000, itemLimit: 1 });
+
+      faro.api.pushEvent('one');
+      faro.api.pushEvent('two');
+
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('only flushes on itemLimit when sendTimeout is 0', async () => {
+      // No session tracking: a fresh session would queue `session_start`, and with no timer it is never flushed.
+      const { faro, send } = await initWithBatching(
+        { enabled: true, sendTimeout: 0, itemLimit: 3 },
+        { sessionTracking: { enabled: false } }
+      );
+
+      faro.api.pushEvent('one');
+      faro.api.pushEvent('two');
+      jest.advanceTimersByTime(60_000);
+      expect(send).not.toHaveBeenCalled();
+
+      faro.api.pushEvent('three');
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send.mock.calls[0]?.[0]).toHaveLength(3);
+    });
+
+    it('splits one flush into separate requests when item metadata differs', async () => {
+      const { faro, send } = await initWithBatching({ enabled: true, sendTimeout: 2_000, itemLimit: 200 });
+
+      faro.api.pushEvent('anonymous');
+      faro.api.setUser({ id: 'user-1' });
+      faro.api.pushEvent('signed-in');
+      jest.advanceTimersByTime(2_000);
+
+      expect(send).toHaveBeenCalledTimes(2);
+      const sentUserIds = send.mock.calls.map(([items]) => (items as TransportItem[])[0]?.meta.user?.id);
+      expect(sentUserIds).toEqual([undefined, 'user-1']);
+    });
+
+    it('applies beforeSend once per item and drops filtered items from the batch', async () => {
+      const beforeSend = jest.fn((item: TransportItem) =>
+        (item.payload as { name?: string }).name === 'drop' ? null : item
+      );
+      const { faro, transport, send } = await initWithBatching(
+        { enabled: true, sendTimeout: 2_000, itemLimit: 200 },
+        { beforeSend }
+      );
+      beforeSend.mockClear();
+
+      faro.api.pushEvent('keep');
+      faro.api.pushEvent('drop');
+      jest.advanceTimersByTime(2_000);
+
+      expect(beforeSend).toHaveBeenCalledTimes(2);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(transport.items.map((item) => (item.payload as { name: string }).name)).toEqual(['keep']);
+    });
+
+    it('sends nothing when every queued item is dropped by beforeSend', async () => {
+      const { faro, send } = await initWithBatching(
+        { enabled: true, sendTimeout: 2_000, itemLimit: 200 },
+        { beforeSend: () => null }
+      );
+
+      faro.api.pushEvent('drop');
+      jest.advanceTimersByTime(2_000);
+
+      expect(send).not.toHaveBeenCalled();
+    });
+
+    it('still sends to unbatched transports immediately', async () => {
+      const unbatched = new MockTransport();
+      jest.spyOn(unbatched, 'isBatched').mockReturnValue(false);
+      const unbatchedSend = jest.spyOn(unbatched, 'send');
+      const batched = new MockTransport();
+      const batchedSend = jest.spyOn(batched, 'send');
+      const faro = await initializeFaro(
+        mockConfig({
+          url: 'http://localhost:12345/collect',
+          transports: [batched, unbatched],
+          sessionTracking: { enabled: true, persistent: false },
+          batching: { enabled: true, sendTimeout: 2_000, itemLimit: 200 },
+        })
+      );
+      jest.runOnlyPendingTimers();
+      unbatchedSend.mockClear();
+      batchedSend.mockClear();
+
+      faro.api.pushEvent('one');
+
+      expect(unbatchedSend).toHaveBeenCalledTimes(1);
+      expect(batchedSend).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(2_000);
+      expect(batchedSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops flushing while paused and resumes on unpause', async () => {
+      const { faro, send } = await initWithBatching({ enabled: true, sendTimeout: 2_000, itemLimit: 200 });
+
+      faro.api.pushEvent('before-pause');
+      faro.pause();
+      faro.api.pushEvent('while-paused');
+      jest.advanceTimersByTime(10_000);
+      expect(send).not.toHaveBeenCalled();
+
+      faro.unpause();
+      faro.api.pushEvent('after-unpause');
+      jest.advanceTimersByTime(2_000);
+
+      expect(send).toHaveBeenCalledTimes(1);
+      const names = (send.mock.calls[0]?.[0] as TransportItem[]).map((item) => (item.payload as { name: string }).name);
+      expect(names).toEqual(['before-pause', 'after-unpause']);
+    });
   });
 });

@@ -95,6 +95,27 @@ describe('makeRNConfig', () => {
     expect(names.at(-1)).toBe(extra.name);
   });
 
+  describe('batching', () => {
+    it('keeps batching disabled when not configured', () => {
+      const cfg = makeRNConfig({ ...base });
+      expect(cfg.batching).toEqual({ enabled: false, sendTimeout: 250, itemLimit: 50 });
+    });
+
+    it.each([
+      { name: 'count triggers first', batching: { enabled: true, sendTimeout: 10_000, itemLimit: 2 } },
+      { name: 'timer triggers first', batching: { enabled: true, sendTimeout: 100, itemLimit: 2_000 } },
+      { name: 'two-second batching', batching: { enabled: true, sendTimeout: 2_000, itemLimit: 200 } },
+    ])('uses supplied batching options ($name)', ({ batching }) => {
+      const cfg = makeRNConfig({ ...base, batching });
+      expect(cfg.batching).toEqual(batching);
+    });
+
+    it('fills omitted batching options with defaults', () => {
+      const cfg = makeRNConfig({ ...base, batching: { enabled: true } });
+      expect(cfg.batching).toEqual({ enabled: true, sendTimeout: 250, itemLimit: 50 });
+    });
+  });
+
   it('merges sessionTracking defaults with user overrides', () => {
     const cfg = makeRNConfig({
       ...base,

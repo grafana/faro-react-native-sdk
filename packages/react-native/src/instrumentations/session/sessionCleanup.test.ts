@@ -107,7 +107,7 @@ describe('session cleanup', () => {
     expect(storeSessionSpy).not.toHaveBeenCalled();
   });
 
-  it('cleans up through destroy while a retained hook still enforces sampling', async () => {
+  it('cleans up through destroy while the sampling hook still enforces queued decisions', async () => {
     const transport = new MockTransport();
     const faro = initializeFaro(
       mockConfig({
@@ -119,21 +119,22 @@ describe('session cleanup', () => {
     );
     const addListenerSpy = jest.spyOn(faro.metas, 'addListener');
     const removeListenerSpy = jest.spyOn(faro.metas, 'removeListener');
-    const removeBeforeSendHooksSpy = jest.spyOn(faro.transports, 'removeBeforeSendHooks');
+    const originalExecute = faro.transports.execute;
     const instrumentation = new SessionInstrumentation();
 
     faro.instrumentations.add(instrumentation);
 
     const registeredListeners = addListenerSpy.mock.calls.map(([listener]) => listener);
     expect(registeredListeners).toHaveLength(2);
+    expect(faro.transports.execute).not.toBe(originalExecute);
 
     const beforeSendHooks = faro.transports.getBeforeSendHooks();
-    expect(beforeSendHooks).toHaveLength(2);
-    const [fallbackHook, beforeSendHook] = beforeSendHooks;
-    if (fallbackHook == null || beforeSendHook == null) {
-      throw new Error('Expected the sampling fallback and session before-send hooks to be registered.');
+    expect(beforeSendHooks).toHaveLength(1);
+    const [samplingHook] = beforeSendHooks;
+    if (samplingHook == null) {
+      throw new Error('Expected the session sampling hook to be registered.');
     }
-    expectSampledItem(beforeSendHook(sessionItem(true)));
+    expectSampledItem(samplingHook(sessionItem(true)));
 
     const storedSession = VolatileSessionsManager.fetchUserSession();
     if (storedSession == null) {
@@ -161,13 +162,11 @@ describe('session cleanup', () => {
     expect(new Set(removeListenerSpy.mock.calls.map(([listener]) => listener))).toStrictEqual(
       new Set(registeredListeners)
     );
-    expect(removeBeforeSendHooksSpy).toHaveBeenCalledWith(beforeSendHook);
-    // A detached session hook must not rotate sessions, but a captured queued
-    // item still carries the sampling decision that the hook must enforce.
-    expect(beforeSendHook(sessionItem(false))).toBeNull();
-    expectSampledItem(beforeSendHook(sessionItem(true)));
-    expect(fallbackHook(sessionItem(false))).toBeNull();
-    expectSampledItem(fallbackHook(sessionItem(true)));
+    expect(faro.transports.execute).toBe(originalExecute);
+    // Teardown stops session bookkeeping, but an item that still carries a
+    // sampling decision, such as a recovered crash, is filtered when sent.
+    expect(samplingHook(sessionItem(false))).toBeNull();
+    expectSampledItem(samplingHook(sessionItem(true)));
 
     expect(faro.api.getSession()?.attributes?.['isSampled']).toBeUndefined();
     const itemsAfterDestroy = transport.items.length;
@@ -186,7 +185,8 @@ describe('session cleanup', () => {
 
     instrumentation.destroy();
     expect(removeListenerSpy).toHaveBeenCalledTimes(2);
-    expect(removeBeforeSendHooksSpy).toHaveBeenCalledTimes(1);
+    expect(faro.transports.execute).toBe(originalExecute);
+    expect(faro.transports.getBeforeSendHooks()).toHaveLength(1);
   });
 
   it.each([
@@ -236,13 +236,10 @@ describe('session cleanup', () => {
   it('finishes cleanup when a metas listener throws during the sampling scrub', async () => {
     const faro = await initializeWithoutInstrumentations();
     const instrumentation = new SessionInstrumentation();
-    const removeBeforeSendHooksSpy = jest.spyOn(faro.transports, 'removeBeforeSendHooks');
+    const originalExecute = faro.transports.execute;
     const checkSessionSpy = jest.spyOn(VolatileSessionsManager.prototype, 'checkSession');
     faro.instrumentations.add(instrumentation);
-    const beforeSendHook = faro.transports.getBeforeSendHooks().at(-1);
-    if (beforeSendHook == null) {
-      throw new Error('Expected a session before-send hook before cleanup.');
-    }
+    expect(faro.transports.execute).not.toBe(originalExecute);
     const throwingListener = jest.fn((meta) => {
       if (meta.session == null) {
         throw new Error('metas listener failed');
@@ -251,8 +248,7 @@ describe('session cleanup', () => {
     faro.metas.addListener(throwingListener);
 
     expect(() => instrumentation.destroy()).toThrow('metas listener failed');
-    expect(removeBeforeSendHooksSpy).toHaveBeenCalledTimes(1);
-    expect(removeBeforeSendHooksSpy).toHaveBeenCalledWith(beforeSendHook);
+    expect(faro.transports.execute).toBe(originalExecute);
 
     faro.metas.removeListener(throwingListener);
     checkSessionSpy.mockClear();
@@ -260,7 +256,7 @@ describe('session cleanup', () => {
     expect(checkSessionSpy).not.toHaveBeenCalled();
 
     expect(() => instrumentation.destroy()).not.toThrow();
-    expect(removeBeforeSendHooksSpy).toHaveBeenCalledTimes(1);
+    expect(faro.transports.execute).toBe(originalExecute);
   });
 
   it('binds a manager listener to the supplied metas instance', async () => {
@@ -313,12 +309,12 @@ describe('session cleanup', () => {
       })
     );
     const firstRemoveListenerSpy = jest.spyOn(firstFaro.metas, 'removeListener');
-    const firstRemoveBeforeSendHooksSpy = jest.spyOn(firstFaro.transports, 'removeBeforeSendHooks');
+    const firstOriginalExecute = firstFaro.transports.execute;
     const firstSetSessionSpy = jest.spyOn(firstFaro.api, 'setSession');
     firstFaro.instrumentations.add(instrumentation);
-    const firstHook = firstFaro.transports.getBeforeSendHooks().at(-1);
-    if (firstHook == null) {
-      throw new Error('Expected the first Faro instance to retain its session hook.');
+    const firstSamplingHook = firstFaro.transports.getBeforeSendHooks().at(-1);
+    if (firstSamplingHook == null) {
+      throw new Error('Expected the first Faro instance to retain its sampling hook.');
     }
 
     const secondTransport = new MockTransport();
@@ -335,14 +331,14 @@ describe('session cleanup', () => {
     secondFaro.instrumentations.add(instrumentation);
 
     expect(firstRemoveListenerSpy).toHaveBeenCalledTimes(2);
-    expect(firstRemoveBeforeSendHooksSpy).toHaveBeenCalledWith(firstHook);
+    expect(firstFaro.transports.execute).toBe(firstOriginalExecute);
     expect(firstSetSessionSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         attributes: expect.not.objectContaining({ isSampled: expect.anything() }),
       })
     );
     expect(secondAddListenerSpy).toHaveBeenCalledTimes(2);
-    const firstHookResult = expectSampledItem(firstHook(sessionItem(true)));
+    const firstHookResult = expectSampledItem(firstSamplingHook(sessionItem(true)));
     expect(firstHookResult.meta.session?.id).toBe('active-session');
 
     const secondSessionStarts = sessionStartCount(secondTransport);
@@ -359,38 +355,39 @@ describe('session cleanup', () => {
     expect(sessionStartCount(secondTransport)).toBe(secondSessionStarts + 1);
   });
 
-  it('lets a replacement hook reattribute items retained by an older Faro Core', async () => {
+  it('lets a replacement instrumentation own session capture on the same transports', async () => {
     const faro = await initializeWithoutInstrumentations();
+    const transport = faro.transports.transports[0] as MockTransport;
+    const originalExecute = faro.transports.execute;
     const firstInstrumentation = new SessionInstrumentation();
     faro.instrumentations.add(firstInstrumentation);
-    const firstHook = faro.transports.getBeforeSendHooks().at(-1);
-    if (firstHook == null) {
-      throw new Error('Expected the first instrumentation to register a session hook.');
-    }
 
     faro.instrumentations.remove(firstInstrumentation);
-    expect(faro.instrumentations.instrumentations).not.toContain(firstInstrumentation);
     expect(faro.instrumentations.instrumentations).toHaveLength(0);
+    expect(faro.transports.execute).toBe(originalExecute);
 
     const replacementInstrumentation = new SessionInstrumentation();
     faro.instrumentations.add(replacementInstrumentation);
-    expect(faro.instrumentations.instrumentations).toContain(replacementInstrumentation);
+    // A stale instance tearing down again must not detach the replacement.
+    firstInstrumentation.destroy();
+    expect(faro.transports.execute).not.toBe(originalExecute);
 
     const activeSession = VolatileSessionsManager.fetchUserSession();
     if (activeSession == null) {
       throw new Error('Expected the replacement instrumentation to own a session.');
     }
 
-    const installedHooks = faro.transports.getBeforeSendHooks();
-    const hooks = installedHooks.includes(firstHook) ? installedHooks : [firstHook, ...installedHooks];
-    const result = hooks.reduce<TransportItem | null>(
-      (item, hook) => (item == null ? null : hook(item)),
-      sessionItem(false)
-    );
-    const sampledResult = expectSampledItem(result);
+    const checkSessionSpy = jest.spyOn(VolatileSessionsManager.prototype, 'checkSession');
+    faro.transports.execute(sessionItem(false));
 
+    // The stale item moves to the live, sampled session, and is checked once.
+    expect(checkSessionSpy).toHaveBeenCalledTimes(1);
+    const sampledResult = expectSampledItem(transport.items.at(-1) ?? null);
     expect(sampledResult.meta.session?.id).toBe(activeSession.sessionId);
+    expect(faro.transports.getBeforeSendHooks()).toHaveLength(1);
+
     replacementInstrumentation.destroy();
+    expect(faro.transports.execute).toBe(originalExecute);
   });
 
   it('registers its manager listener on the instrumentation metas instance', async () => {

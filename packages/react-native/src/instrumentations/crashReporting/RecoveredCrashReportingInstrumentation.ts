@@ -4,6 +4,7 @@ import { TransportItemType } from '@grafana/faro-core';
 import type { ExceptionEvent, Meta, TransportItem } from '@grafana/faro-core';
 
 import { FetchTransport } from '../../transports/fetch';
+import { captureSessionItem } from '../session/sessionCapture';
 
 import { BaseCrashReportingInstrumentation } from './BaseCrashReportingInstrumentation';
 import type { CrashReport } from './types';
@@ -188,8 +189,14 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
 
     // Recovered crashes intentionally bypass transport fan-out. Native storage
     // handles retries, and only FetchTransport reports collector acceptance before ack.
-    let item: TransportItem = this.buildRecoveredCrashItem(crash);
+    // Bypassing `execute` also bypasses session capture, which supplies the
+    // live sampling decision for older reports recorded without one.
+    let item: TransportItem | null = this.buildRecoveredCrashItem(crash);
     try {
+      item = captureSessionItem(this.transports, item);
+      if (!item) {
+        return 'filtered';
+      }
       for (const hook of this.transports.getBeforeSendHooks()) {
         const modifiedItem = hook(item);
         // Match faro-core's filter(Boolean) behavior for invalid hook results.

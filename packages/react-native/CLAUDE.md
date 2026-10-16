@@ -125,6 +125,8 @@ Sessions are managed by `SessionInstrumentation` with two modes:
 - New session each app launch
 - No storage overhead
 
+**Session bookkeeping runs at capture time.** `SessionInstrumentation` wraps `faro.transports.execute` so expiry, activity, attribution, and sampling are handled before faro-core queues an item for batching. Only a stateless sampling `beforeSend` hook remains, as a safety net for items that still carry the internal `isSampled` marker. The wrapper is installed once per transports object, routes to the owning instance's handler, and is restored in `unpatch()`. Code that sends without `transports.execute`, such as recovered crash replay, must call `captureSessionItem()` from `session/sessionCapture.ts` first.
+
 **Session attributes** are automatically collected via `getSessionAttributes()`:
 
 - Device OS, version, manufacturer, model
@@ -209,11 +211,15 @@ this.api.pushError(error, { type: 'react_native_error' });
 
 ### Transport System
 
-Transports implement batched sending with circuit breaker:
+**Batching** is handled by faro-core, not by the transports:
+
+- Off by default; `makeRNConfig` merges the app's `batching` config over `{ enabled: false, sendTimeout: 250, itemLimit: 50 }`
+- When enabled, core queues items and runs `beforeSend` hooks at flush time, not capture time. Session logic must not live in a `beforeSend` hook (see Session Management)
+- With an unbatched transport (such as `ConsoleTransport`) present, faro-core 2.8.2 runs `beforeSend` hooks on both delivery paths, so hooks must be free of side effects
+- Core only flushes early on `document` visibility changes, so nothing is sent early when an RN app goes to the background
 
 **FetchTransport:**
 
-- Batches items (default: 30 items or buffer full)
 - Respects 429 rate limiting
 - Circuit breaker after 3 consecutive failures
 - 30-second backoff when offline
