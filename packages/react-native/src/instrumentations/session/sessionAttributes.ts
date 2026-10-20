@@ -88,13 +88,13 @@ export interface MobileMetaDevice extends MetaDevice {
   /** Total device memory in bytes */
   memory_total?: number;
 
-  /** Physical pixels per density-independent pixel (e.g., 3) */
+  /** Physical pixels per point (iOS) or per density-independent pixel (Android), e.g., 3 */
   screen_density?: number;
 
-  /** Screen height in physical pixels, as the OS reports it when the SDK starts */
+  /** Screen height in physical pixels. iOS: always in portrait. Android: in the orientation when the SDK starts. */
   screen_height?: number;
 
-  /** Screen width in physical pixels, as the OS reports it when the SDK starts */
+  /** Screen width in physical pixels. iOS: always in portrait. Android: in the orientation when the SDK starts. */
   screen_width?: number;
 }
 
@@ -222,8 +222,41 @@ function getDeviceArch(): string | undefined {
 
 type ScreenMeta = Pick<MobileMetaDevice, 'screen_density' | 'screen_height' | 'screen_width'>;
 
+interface ScreenMetricsNativeModule {
+  getScreenMetrics?: () => unknown;
+}
+
+function isPositiveNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function getIosScreenMeta(): ScreenMeta {
+  // UIScreen nativeBounds and nativeScale. Dimensions on iOS is bounds × scale, which rotates with the
+  // interface and is not the panel size on Plus models or with Display Zoom on, so it is no fallback.
+  const nativeModule = NativeModules['FaroReactNativeModule'] as ScreenMetricsNativeModule | undefined;
+  if (typeof nativeModule?.getScreenMetrics !== 'function') {
+    return {};
+  }
+
+  const metrics = nativeModule.getScreenMetrics();
+  if (typeof metrics !== 'object' || metrics === null) {
+    return {};
+  }
+
+  const { width, height, density } = metrics as Record<string, unknown>;
+  if (!isPositiveNumber(width) || !isPositiveNumber(height) || !isPositiveNumber(density)) {
+    return {};
+  }
+
+  return { screen_density: density, screen_height: height, screen_width: width };
+}
+
 function getScreenMeta(): ScreenMeta {
   try {
+    if (Platform.OS === 'ios') {
+      return getIosScreenMeta();
+    }
+
     const { width, height, scale } = Dimensions.get('screen');
     if (!(width > 0 && height > 0 && scale > 0)) {
       return {};

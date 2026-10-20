@@ -410,7 +410,11 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(4000000000);
         (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(2000000000);
         (DeviceInfo.getBuildId as jest.Mock).mockResolvedValue('21C62');
-        NativeModules.FaroReactNativeModule = { ...sessionNativeModule, getCpuArchitecture: () => 'arm64' };
+        NativeModules['FaroReactNativeModule'] = {
+          ...sessionNativeModule,
+          getCpuArchitecture: () => 'arm64',
+          getScreenMetrics: () => ({ width: 1179, height: 2556, density: 3 }),
+        };
 
         const mobileMeta = await loadMobileMetaForInit();
 
@@ -804,8 +808,8 @@ describe('sessionAttributes', () => {
         });
       });
 
-      it('should omit the screen fields when the screen size is unavailable', async () => {
-        mockDevice('ios');
+      it('should omit the Android screen fields when the screen size is unavailable', async () => {
+        mockDevice('android');
         jest.spyOn(Dimensions, 'get').mockReturnValue({ width: 0, height: 0, scale: 0, fontScale: 0 });
 
         const mobileMeta = await loadMobileMetaForInit();
@@ -813,11 +817,11 @@ describe('sessionAttributes', () => {
         expect(mobileMeta.meta.device).not.toHaveProperty('screen_density');
         expect(mobileMeta.meta.device).not.toHaveProperty('screen_height');
         expect(mobileMeta.meta.device).not.toHaveProperty('screen_width');
-        expect(mobileMeta.meta.device?.model_identifier).toBe('iPhone17,1');
+        expect(mobileMeta.meta.device?.model_identifier).toBe('Pixel 9');
       });
 
-      it('should keep other device fields when the screen read throws', async () => {
-        mockDevice('ios');
+      it('should keep other device fields when the Android screen read throws', async () => {
+        mockDevice('android');
         jest.spyOn(Dimensions, 'get').mockImplementation(() => {
           throw new Error('Dimensions unavailable');
         });
@@ -825,7 +829,55 @@ describe('sessionAttributes', () => {
         const mobileMeta = await loadMobileMetaForInit();
 
         expect(mobileMeta.meta.device).not.toHaveProperty('screen_width');
+        expect(mobileMeta.meta.device?.model_identifier).toBe('Pixel 9');
+      });
+
+      it('should report the iOS native screen size instead of Dimensions', async () => {
+        mockDevice('ios');
+        // An iPhone 8 Plus in landscape: bounds × scale is 2208 × 1242, the panel is 1080 × 1920.
+        jest.spyOn(Dimensions, 'get').mockReturnValue({ width: 736, height: 414, scale: 3, fontScale: 1 });
+        NativeModules['FaroReactNativeModule'] = {
+          ...sessionNativeModule,
+          getScreenMetrics: () => ({ width: 1080, height: 1920, density: 2.608 }),
+        };
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device).toMatchObject({
+          screen_density: 2.608,
+          screen_height: 1920,
+          screen_width: 1080,
+        });
+        expect(Dimensions.get).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['is missing', undefined],
+        ['returns null', () => null],
+        ['returns a string', () => '1206x2622'],
+        ['returns a zero width', () => ({ width: 0, height: 2622, density: 3 })],
+        ['returns a negative height', () => ({ width: 1206, height: -1, density: 3 })],
+        ['returns a NaN density', () => ({ width: 1206, height: 2622, density: NaN })],
+        ['returns a string density', () => ({ width: 1206, height: 2622, density: '3' })],
+        ['returns an infinite width', () => ({ width: Infinity, height: 2622, density: 3 })],
+        ['returns no density', () => ({ width: 1206, height: 2622 })],
+        [
+          'throws',
+          () => {
+            throw new Error('screen unavailable');
+          },
+        ],
+      ])('should omit the iOS screen fields when the native call %s', async (_case, getScreenMetrics) => {
+        mockDevice('ios');
+        NativeModules['FaroReactNativeModule'] = { ...sessionNativeModule, getScreenMetrics };
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device).not.toHaveProperty('screen_density');
+        expect(mobileMeta.meta.device).not.toHaveProperty('screen_height');
+        expect(mobileMeta.meta.device).not.toHaveProperty('screen_width');
         expect(mobileMeta.meta.device?.model_identifier).toBe('iPhone17,1');
+        expect(Dimensions.get).not.toHaveBeenCalled();
       });
 
       it('should report the total device memory in bytes', async () => {

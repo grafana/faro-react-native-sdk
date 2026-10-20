@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Faro React Native iOS Native Module
 ///
@@ -45,6 +46,21 @@ public class FaroReactNative: NSObject {
         #else
         return nil
         #endif
+    }
+
+    // MARK: - Screen
+
+    /// The screen size in physical pixels and the native scale, such as 1206 × 2622 at 3.0.
+    ///
+    /// nativeBounds is the physical panel size, always in portrait. bounds × scale rotates with
+    /// the interface and is not the panel size on Plus models or with Display Zoom on.
+    @MainActor @objc public static func getScreenMetrics() -> [String: NSNumber] {
+        let screen = UIScreen.main
+        return [
+            "width": NSNumber(value: Int(screen.nativeBounds.width)),
+            "height": NSNumber(value: Int(screen.nativeBounds.height)),
+            "density": NSNumber(value: Double(screen.nativeScale)),
+        ]
     }
 
     // MARK: - App Startup Time

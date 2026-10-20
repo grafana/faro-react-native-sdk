@@ -16,6 +16,7 @@ static NSLock *FaroSessionPersistenceLock(void)
 static __weak FaroReactNativeModule *FaroSessionPersistenceOwner;
 
 @interface FaroReactNativeModule ()
+@property (nonatomic, copy, nullable) NSDictionary<NSString *, NSNumber *> *screenMetrics;
 - (BOOL)claimSessionPersistenceOwnership;
 - (BOOL)releaseSessionPersistenceOwnership;
 @end
@@ -23,6 +24,23 @@ static __weak FaroReactNativeModule *FaroSessionPersistenceOwner;
 @implementation FaroReactNativeModule
 
 RCT_EXPORT_MODULE(FaroReactNativeModule)
+
+// UIScreen is main-thread-only. With this, React Native creates the module on the main queue, so
+// init can cache the static screen metrics. Synchronous methods run on the JS thread.
++ (BOOL)requiresMainQueueSetup
+{
+  return YES;
+}
+
+- (instancetype)init
+{
+  if (self = [super init]) {
+    if ([NSThread isMainThread]) {
+      _screenMetrics = [FaroReactNative getScreenMetrics];
+    }
+  }
+  return self;
+}
 
 /// Stable process identity used to isolate persisted session chains.
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getSessionProcessIdentifier)
@@ -40,6 +58,13 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isMainSessionProcess)
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCpuArchitecture)
 {
   return [FaroReactNative getCpuArchitecture] ?: [NSNull null];
+}
+
+/// Screen width and height in physical pixels and the native scale, cached at init.
+/// Null when init did not run on the main thread.
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getScreenMetrics)
+{
+  return self.screenMetrics ?: [NSNull null];
 }
 
 /// Allows only one React Native runtime in a process to persist sessions.

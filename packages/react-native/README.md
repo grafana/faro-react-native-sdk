@@ -1407,8 +1407,10 @@ Faro initializes:
 
 - `meta.device`: `manufacturer`, `model_identifier`, `model_name`, `brand`, and `is_physical`
 - `meta.device.arch` - CPU architecture as the platform reports it: the preferred ABI from `Build.SUPPORTED_ABIS` on Android (e.g., "arm64-v8a"), the architecture the app is built for on iOS (e.g., "arm64", or "x86_64" on an Intel simulator). iOS has no runtime call that returns an architecture string, so the compiler sets this value
-- `meta.device.screen_width`, `meta.device.screen_height` - Screen width and height in physical pixels, as the OS reports them when the SDK starts. They are not swapped, so an app that starts in landscape reports a width larger than the height
-- `meta.device.screen_density` - Physical pixels per density-independent pixel (e.g., `3`)
+- `meta.device.screen_width`, `meta.device.screen_height` - Screen width and height in physical pixels, as the OS reports them. They are not swapped.
+  - iOS: `UIScreen.nativeBounds`, which is always in portrait orientation
+  - Android: the real display size in the orientation when the SDK starts, so an app that starts in landscape reports a width larger than the height
+- `meta.device.screen_density` - Physical pixels per point on iOS (`UIScreen.nativeScale`) or per density-independent pixel on Android (e.g., `3`)
 - `meta.device.memory_total` - Total device memory in bytes
 - `meta.os`: `name`, `version`, `build_id`, `detail`
 - `meta.os.api_level` - Android API level (e.g., "35"), Android only
