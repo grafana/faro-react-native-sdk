@@ -91,10 +91,10 @@ export interface MobileMetaDevice extends MetaDevice {
   /** Physical pixels per density-independent pixel (e.g., 3) */
   screen_density?: number;
 
-  /** Screen height in physical pixels, measured in portrait orientation */
+  /** Screen height in physical pixels, as the OS reports it when the SDK starts */
   screen_height?: number;
 
-  /** Screen width in physical pixels, measured in portrait orientation */
+  /** Screen width in physical pixels, as the OS reports it when the SDK starts */
   screen_width?: number;
 }
 
@@ -229,12 +229,11 @@ function getScreenMeta(): ScreenMeta {
       return {};
     }
 
-    // Screen size is a static field, so report it in portrait orientation. A device
-    // started in landscape then reports the same values.
-    const shortSide = Math.round(Math.min(width, height) * scale);
-    const longSide = Math.round(Math.max(width, height) * scale);
-
-    return { screen_density: scale, screen_height: longSide, screen_width: shortSide };
+    return {
+      screen_density: scale,
+      screen_height: Math.round(height * scale),
+      screen_width: Math.round(width * scale),
+    };
   } catch (_error) {
     return {};
   }

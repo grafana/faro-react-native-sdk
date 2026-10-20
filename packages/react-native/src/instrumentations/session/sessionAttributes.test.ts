@@ -789,7 +789,7 @@ describe('sessionAttributes', () => {
         expect(mobileMeta.meta.device?.model_identifier).toBe('Pixel 9');
       });
 
-      it('should report the screen size in portrait orientation when the app starts in landscape', async () => {
+      it('should report the screen width and height unchanged when the app starts in landscape', async () => {
         mockDevice('android');
         jest
           .spyOn(Dimensions, 'get')
@@ -799,8 +799,8 @@ describe('sessionAttributes', () => {
 
         expect(mobileMeta.meta.device).toMatchObject({
           screen_density: 2.625,
-          screen_height: 2400,
-          screen_width: 1080,
+          screen_height: 1080,
+          screen_width: 2400,
         });
       });
 
