@@ -1,4 +1,4 @@
-import { Dimensions, Platform } from 'react-native';
+import { Dimensions, NativeModules, Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 import type { PowerState } from 'react-native-device-info';
 
@@ -82,7 +82,7 @@ export interface SessionAttributes {
  * `meta.device` with the static fields of the mobile metadata contract that `MetaDevice` does not type yet.
  */
 export interface MobileMetaDevice extends MetaDevice {
-  /** CPU architecture as the platform reports it (e.g., "arm64-v8a" on Android) */
+  /** CPU architecture as the platform reports it (e.g., "arm64-v8a" on Android, "arm64" on iOS) */
   arch?: string;
 
   /** Total device memory in bytes */
@@ -190,11 +190,31 @@ function getDeviceOsDetail(systemName: string, systemVersion: string, apiLevel: 
   return apiLevel === undefined ? `${systemName} ${systemVersion}` : `${systemName} ${systemVersion} (SDK ${apiLevel})`;
 }
 
+interface CpuArchitectureNativeModule {
+  getCpuArchitecture?: () => unknown;
+}
+
 function getDeviceArch(): string | undefined {
   try {
-    // Android: Build.SUPPORTED_ABIS, preferred ABI first. iOS: NXGetLocalArchInfo().
-    const preferredAbi = DeviceInfo.supportedAbisSync()[0];
-    return preferredAbi || undefined;
+    if (Platform.OS === 'android') {
+      // Build.SUPPORTED_ABIS, preferred ABI first.
+      const preferredAbi = DeviceInfo.supportedAbisSync()[0];
+      return preferredAbi || undefined;
+    }
+
+    if (Platform.OS === 'ios') {
+      // The architecture the app is built for. supportedAbisSync() on iOS calls the deprecated
+      // NXGetLocalArchInfo() without a NULL check.
+      const nativeModule = NativeModules['FaroReactNativeModule'] as CpuArchitectureNativeModule | undefined;
+      if (typeof nativeModule?.getCpuArchitecture !== 'function') {
+        return undefined;
+      }
+
+      const arch = nativeModule.getCpuArchitecture();
+      return typeof arch === 'string' && arch.length > 0 ? arch : undefined;
+    }
+
+    return undefined;
   } catch (_error) {
     return undefined;
   }

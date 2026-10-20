@@ -410,7 +410,7 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(4000000000);
         (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(2000000000);
         (DeviceInfo.getBuildId as jest.Mock).mockResolvedValue('21C62');
-        (DeviceInfo.supportedAbisSync as jest.Mock).mockReturnValue(['ARM64E']);
+        NativeModules.FaroReactNativeModule = { ...sessionNativeModule, getCpuArchitecture: () => 'arm64' };
 
         const mobileMeta = await loadMobileMetaForInit();
 
@@ -419,7 +419,7 @@ describe('sessionAttributes', () => {
             installationId: STORED_INSTALLATION_ID,
           },
           device: {
-            arch: 'ARM64E',
+            arch: 'arm64',
             brand: 'Apple',
             is_physical: true,
             manufacturer: 'apple',
@@ -726,16 +726,46 @@ describe('sessionAttributes', () => {
       });
 
       it.each([
-        ['android', ['armeabi-v7a', 'armeabi'], 'armeabi-v7a'],
-        ['android', ['riscv64'], 'riscv64'],
-        ['ios', ['ARM64E'], 'ARM64E'],
-      ] as const)('should report the first ABI on %p unchanged for %p', async (os, abis, arch) => {
-        mockDevice(os);
+        [['armeabi-v7a', 'armeabi'], 'armeabi-v7a'],
+        [['riscv64'], 'riscv64'],
+      ] as const)('should report the first Android ABI unchanged for %p', async (abis, arch) => {
+        mockDevice('android');
         (DeviceInfo.supportedAbisSync as jest.Mock).mockReturnValue(abis);
 
         const mobileMeta = await loadMobileMetaForInit();
 
         expect(mobileMeta.meta.device?.arch).toBe(arch);
+      });
+
+      it.each(['arm64', 'x86_64'])('should report the iOS build architecture %p unchanged', async (arch) => {
+        mockDevice('ios');
+        NativeModules.FaroReactNativeModule = { ...sessionNativeModule, getCpuArchitecture: () => arch };
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device?.arch).toBe(arch);
+        expect(DeviceInfo.supportedAbisSync).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['is missing', undefined],
+        ['returns null', () => null],
+        ['returns an empty string', () => ''],
+        [
+          'throws',
+          () => {
+            throw new Error('arch unavailable');
+          },
+        ],
+      ])('should omit the iOS arch when the native call %s', async (_case, getCpuArchitecture) => {
+        mockDevice('ios');
+        NativeModules.FaroReactNativeModule = { ...sessionNativeModule, getCpuArchitecture };
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device).not.toHaveProperty('arch');
+        expect(mobileMeta.meta.device?.model_identifier).toBe('iPhone17,1');
+        expect(DeviceInfo.supportedAbisSync).not.toHaveBeenCalled();
       });
 
       it.each([[[]], [['']]])('should omit the arch for the ABI list %p', async (abis) => {

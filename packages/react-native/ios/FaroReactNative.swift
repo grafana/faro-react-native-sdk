@@ -30,6 +30,23 @@ public class FaroReactNative: NSObject {
         return Bundle.main.object(forInfoDictionaryKey: "NSExtension") == nil
     }
 
+    // MARK: - CPU Architecture
+
+    /// The architecture this process is built for, such as "arm64".
+    ///
+    /// iOS has no runtime call that returns an architecture string, so the
+    /// compiler sets this value. iOS runs no 32-bit apps, so this is also the
+    /// device's architecture, except for an x86_64 simulator under Rosetta.
+    @objc public static func getCpuArchitecture() -> String? {
+        #if arch(arm64)
+        return "arm64"
+        #elseif arch(x86_64)
+        return "x86_64"
+        #else
+        return nil
+        #endif
+    }
+
     // MARK: - App Startup Time
 
     /// Returns the app's cold start duration in milliseconds.

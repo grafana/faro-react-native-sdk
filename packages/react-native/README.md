@@ -1406,7 +1406,7 @@ The SDK also sends device and OS information in typed `meta.device` and `meta.os
 Faro initializes:
 
 - `meta.device`: `manufacturer`, `model_identifier`, `model_name`, `brand`, and `is_physical`
-- `meta.device.arch` - CPU architecture as the platform reports it: the preferred ABI from `Build.SUPPORTED_ABIS` on Android (e.g., "arm64-v8a"), the CPU type from `NXGetLocalArchInfo()` on iOS
+- `meta.device.arch` - CPU architecture as the platform reports it: the preferred ABI from `Build.SUPPORTED_ABIS` on Android (e.g., "arm64-v8a"), the architecture the app is built for on iOS (e.g., "arm64", or "x86_64" on an Intel simulator). iOS has no runtime call that returns an architecture string, so the compiler sets this value
 - `meta.device.screen_width`, `meta.device.screen_height` - Screen size in physical pixels, in portrait orientation
 - `meta.device.screen_density` - Physical pixels per density-independent pixel (e.g., `3`)
 - `meta.device.memory_total` - Total device memory in bytes

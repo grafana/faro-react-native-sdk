@@ -36,6 +36,12 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isMainSessionProcess)
   return @([FaroReactNative isMainSessionProcess]);
 }
 
+/// Architecture the app is built for, such as "arm64" or "x86_64".
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCpuArchitecture)
+{
+  return [FaroReactNative getCpuArchitecture] ?: [NSNull null];
+}
+
 /// Allows only one React Native runtime in a process to persist sessions.
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(claimSessionPersistence)
 {
