@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { NativeModules, Platform } from 'react-native';
+import { Dimensions, NativeModules, Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
 import { getSessionAttributes, loadMobileMetaForInit, minimalSessionDeviceAttributes } from './sessionAttributes';
@@ -39,6 +39,7 @@ jest.mock('react-native-device-info', () => ({
   getCarrier: jest.fn(),
   getApiLevel: jest.fn(),
   getBuildId: jest.fn(),
+  supportedAbisSync: jest.fn(),
 }));
 
 describe('sessionAttributes', () => {
@@ -47,6 +48,7 @@ describe('sessionAttributes', () => {
     NativeModules.FaroReactNativeModule = sessionNativeModule;
     jest.clearAllMocks();
     resetSessionProcessForTests();
+    jest.spyOn(Dimensions, 'get').mockReturnValue({ width: 393, height: 852, scale: 3, fontScale: 1 });
   });
 
   afterAll(() => {
@@ -106,7 +108,6 @@ describe('sessionAttributes', () => {
           device_brand: 'Apple',
           device_is_physical: 'true',
           device_id: STORED_INSTALLATION_ID,
-          device_type: 'mobile',
           device_memory_total: '4000000000',
           device_memory_used: '2000000000',
           device_battery_level: '85',
@@ -276,7 +277,6 @@ describe('sessionAttributes', () => {
           device_brand: 'samsung',
           device_is_physical: 'true',
           device_id: STORED_INSTALLATION_ID,
-          device_type: 'mobile',
           device_memory_total: '8000000000',
           device_memory_used: '4000000000',
           device_battery_level: '85',
@@ -354,6 +354,7 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(4000000000);
         (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(35);
         (DeviceInfo.getBuildId as jest.Mock).mockResolvedValue('AP3A.240905.015.A2');
+        (DeviceInfo.supportedAbisSync as jest.Mock).mockReturnValue(['arm64-v8a', 'armeabi-v7a', 'armeabi']);
 
         const mobileMeta = await loadMobileMetaForInit();
 
@@ -362,14 +363,19 @@ describe('sessionAttributes', () => {
             installationId: STORED_INSTALLATION_ID,
           },
           device: {
+            arch: 'arm64-v8a',
             brand: 'samsung',
             is_physical: true,
             manufacturer: 'Samsung',
+            memory_total: 8000000000,
             model_identifier: 'SM-A155F',
             model_name: 'SM-A155F',
-            type: 'tablet',
+            screen_density: 3,
+            screen_height: 2556,
+            screen_width: 1179,
           },
           os: {
+            api_level: '35',
             build_id: 'AP3A.240905.015.A2',
             detail: 'Android 15 (SDK 35)',
             name: 'Android',
@@ -384,7 +390,6 @@ describe('sessionAttributes', () => {
           device_model_name: 'SM-A155F',
           device_os: 'Android',
           device_os_detail: 'Android 15 (SDK 35)',
-          device_type: 'tablet',
         });
         expect(AsyncStorage.getItem).toHaveBeenCalledWith(INSTALLATION_ID_STORAGE_KEY);
         expect(AsyncStorage.setItem).not.toHaveBeenCalled();
@@ -405,6 +410,7 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(4000000000);
         (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(2000000000);
         (DeviceInfo.getBuildId as jest.Mock).mockResolvedValue('21C62');
+        (DeviceInfo.supportedAbisSync as jest.Mock).mockReturnValue(['ARM64E']);
 
         const mobileMeta = await loadMobileMetaForInit();
 
@@ -413,12 +419,16 @@ describe('sessionAttributes', () => {
             installationId: STORED_INSTALLATION_ID,
           },
           device: {
+            arch: 'ARM64E',
             brand: 'Apple',
             is_physical: true,
             manufacturer: 'apple',
+            memory_total: 4000000000,
             model_identifier: 'iPhone16,1',
             model_name: 'iPhone 15 Pro',
-            type: 'mobile',
+            screen_density: 3,
+            screen_height: 2556,
+            screen_width: 1179,
           },
           os: {
             build_id: '21C62',
@@ -427,6 +437,7 @@ describe('sessionAttributes', () => {
             version: '17.2',
           },
         });
+        expect(DeviceInfo.getApiLevel).not.toHaveBeenCalled();
         expect(mobileMeta.sessionAttributes).toMatchObject({
           device_id: STORED_INSTALLATION_ID,
           device_brand: 'Apple',
@@ -435,11 +446,10 @@ describe('sessionAttributes', () => {
           device_model_name: 'iPhone 15 Pro',
           device_os: 'iOS',
           device_os_detail: 'iOS 17.2',
-          device_type: 'mobile',
         });
       });
 
-      it('should classify iPad structured meta as iPad tablet', async () => {
+      it('should collect iPad structured meta without a device type', async () => {
         (Platform as any).OS = 'ios';
         setStoredInstallationId();
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iPadOS');
@@ -461,35 +471,14 @@ describe('sessionAttributes', () => {
           manufacturer: 'apple',
           model_identifier: 'iPad14,3',
           model_name: 'iPad Pro',
-          type: 'tablet',
         });
+        expect(mobileMeta.meta.device).not.toHaveProperty('type');
         expect(mobileMeta.meta.os).toMatchObject({
           build_id: '22B83',
           detail: 'iPadOS 18.1',
           name: 'iPadOS',
           version: '18.1',
         });
-      });
-
-      it('should omit mobile/tablet type when running on a non-mobile React Native platform', async () => {
-        (Platform as any).OS = 'macos';
-        setStoredInstallationId();
-        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('macOS');
-        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('15.0');
-        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.getModel as jest.Mock).mockReturnValue('MacBookPro18,3');
-        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('MacBookPro18,3');
-        (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
-        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
-        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
-        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(16000000000);
-        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(8000000000);
-        (DeviceInfo.getBuildId as jest.Mock).mockResolvedValue('24A335');
-
-        const mobileMeta = await loadMobileMetaForInit();
-
-        expect(mobileMeta.sessionAttributes.device_type).toBeUndefined();
-        expect(mobileMeta.meta.device).not.toHaveProperty('type');
       });
 
       it('should create and persist an SDK installation id when one does not exist yet', async () => {
@@ -706,6 +695,143 @@ describe('sessionAttributes', () => {
 
         expect(mobileMeta.sessionAttributes.device_manufacturer).toBe('apple');
         expect(mobileMeta.meta.device?.manufacturer).toBe('apple');
+      });
+    });
+
+    describe('Static device fields', () => {
+      function mockDevice(os: 'ios' | 'android'): void {
+        (Platform as any).OS = os;
+        (DeviceInfo.getSystemName as jest.Mock).mockReturnValue(os === 'ios' ? 'iOS' : 'Android');
+        (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue(os === 'ios' ? '27.0' : '16');
+        (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue(os === 'ios' ? 'Apple' : 'Google');
+        (DeviceInfo.getModel as jest.Mock).mockReturnValue(os === 'ios' ? 'iPhone 16 Pro' : 'Pixel 9');
+        (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue(os === 'ios' ? 'iPhone17,1' : 'tokay');
+        (DeviceInfo.getBrand as jest.Mock).mockReturnValue(os === 'ios' ? 'Apple' : 'google');
+        (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.isTablet as jest.Mock).mockReturnValue(false);
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(12000000000);
+        (DeviceInfo.getUsedMemorySync as jest.Mock).mockReturnValue(3000000000);
+        (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(36);
+        (DeviceInfo.supportedAbisSync as jest.Mock).mockReturnValue(['arm64-v8a']);
+      }
+
+      it.each(['ios', 'android'] as const)('should omit the device type on %p', async (os) => {
+        mockDevice(os);
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(DeviceInfo.isTablet).not.toHaveBeenCalled();
+        expect(mobileMeta.sessionAttributes).not.toHaveProperty('device_type');
+        expect(mobileMeta.meta.device).not.toHaveProperty('type');
+      });
+
+      it.each([
+        ['android', ['armeabi-v7a', 'armeabi'], 'armeabi-v7a'],
+        ['android', ['riscv64'], 'riscv64'],
+        ['ios', ['ARM64E'], 'ARM64E'],
+      ] as const)('should report the first ABI on %p unchanged for %p', async (os, abis, arch) => {
+        mockDevice(os);
+        (DeviceInfo.supportedAbisSync as jest.Mock).mockReturnValue(abis);
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device?.arch).toBe(arch);
+      });
+
+      it.each([[[]], [['']]])('should omit the arch for the ABI list %p', async (abis) => {
+        mockDevice('android');
+        (DeviceInfo.supportedAbisSync as jest.Mock).mockReturnValue(abis);
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device).not.toHaveProperty('arch');
+      });
+
+      it('should keep other device fields when the ABI read throws', async () => {
+        mockDevice('android');
+        (DeviceInfo.supportedAbisSync as jest.Mock).mockImplementation(() => {
+          throw new Error('ABIs unavailable');
+        });
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device).not.toHaveProperty('arch');
+        expect(mobileMeta.meta.device?.model_identifier).toBe('Pixel 9');
+      });
+
+      it('should report the screen size in portrait orientation when the app starts in landscape', async () => {
+        mockDevice('android');
+        jest
+          .spyOn(Dimensions, 'get')
+          .mockReturnValue({ width: 914.2857, height: 411.4286, scale: 2.625, fontScale: 1 });
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device).toMatchObject({
+          screen_density: 2.625,
+          screen_height: 2400,
+          screen_width: 1080,
+        });
+      });
+
+      it('should omit the screen fields when the screen size is unavailable', async () => {
+        mockDevice('ios');
+        jest.spyOn(Dimensions, 'get').mockReturnValue({ width: 0, height: 0, scale: 0, fontScale: 0 });
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device).not.toHaveProperty('screen_density');
+        expect(mobileMeta.meta.device).not.toHaveProperty('screen_height');
+        expect(mobileMeta.meta.device).not.toHaveProperty('screen_width');
+        expect(mobileMeta.meta.device?.model_identifier).toBe('iPhone17,1');
+      });
+
+      it('should keep other device fields when the screen read throws', async () => {
+        mockDevice('ios');
+        jest.spyOn(Dimensions, 'get').mockImplementation(() => {
+          throw new Error('Dimensions unavailable');
+        });
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device).not.toHaveProperty('screen_width');
+        expect(mobileMeta.meta.device?.model_identifier).toBe('iPhone17,1');
+      });
+
+      it('should report the total device memory in bytes', async () => {
+        mockDevice('ios');
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device?.memory_total).toBe(12000000000);
+        expect(mobileMeta.sessionAttributes.device_memory_total).toBe('12000000000');
+      });
+
+      it.each([0, -1])('should omit the typed total memory when the platform reports %p', async (totalMemory) => {
+        mockDevice('android');
+        (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(totalMemory);
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.device).not.toHaveProperty('memory_total');
+      });
+
+      it('should report the Android API level as a string', async () => {
+        mockDevice('android');
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.os).toMatchObject({ api_level: '36', detail: 'Android 16 (SDK 36)' });
+      });
+
+      it('should omit the Android API level when the platform reports an invalid value', async () => {
+        mockDevice('android');
+        (DeviceInfo.getApiLevel as jest.Mock).mockResolvedValue(-1);
+
+        const mobileMeta = await loadMobileMetaForInit();
+
+        expect(mobileMeta.meta.os).not.toHaveProperty('api_level');
+        expect(mobileMeta.meta.os?.detail).toBe('Android 16');
       });
     });
 
