@@ -4,11 +4,13 @@
 
 ### Bug Fixes
 
-- **demo:** launch and build on iOS 27 and Xcode 27 ([fc0c7fb](https://github.com/grafana/faro-react-native-sdk/commit/fc0c7fbe822fe353f6ef1433a5013aaf9ea2f042))
 - **react-native:** honor the batching config ([#227](https://github.com/grafana/faro-react-native-sdk/issues/227)) ([1f938e2](https://github.com/grafana/faro-react-native-sdk/commit/1f938e291fd5ab379d3c07d51947b7a50f48ef10))
 - **react-native:** omit bare Apple family model names ([6415701](https://github.com/grafana/faro-react-native-sdk/commit/6415701e78c6bbcb31f105e52e1c8f725d10f2ca)), closes [#209](https://github.com/grafana/faro-react-native-sdk/issues/209)
-- **react-native:** report correct device and SDK metadata ([397f456](https://github.com/grafana/faro-react-native-sdk/commit/397f456b2ba2a12dc6f4491f4812b36ca686e9a7))
 - **react-native:** report correct device and SDK metadata ([3d06f8a](https://github.com/grafana/faro-react-native-sdk/commit/3d06f8ab0ddf3a171849e965bc5d312d2b7ff426)), closes [#209](https://github.com/grafana/faro-react-native-sdk/issues/209)
+
+### Upgrade Notes
+
+- The `react-native-device-info` dependency was upgraded from `^11.1.0` to `^15.0.2`. It is a native module. If your app also depends on `react-native-device-info` directly, upgrade it to `^15` and rebuild the native apps (`pod install` on iOS, a Gradle build on Android). With an older copy in the app, iOS can lose the device model name for newer iPhones.
 
 ## [1.4.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.0...faro-react-native-v1.4.1) (2026-09-25)
 
