@@ -56,6 +56,9 @@ export interface SessionAttributes {
   /** Installation ID, same value as `meta.app.installationId`. Not a hardware device ID. */
   device_id?: string;
 
+  /** @deprecated No longer sent. Android has no reliable phone or tablet signal. */
+  device_type?: string;
+
   /** Total device memory in bytes */
   device_memory_total?: string;
 

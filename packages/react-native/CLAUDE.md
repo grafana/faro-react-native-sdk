@@ -131,9 +131,9 @@ Sessions are managed by `SessionInstrumentation` with two modes:
 
 - Device OS, version, manufacturer, model
 - React Native version
-- Device type (phone/tablet)
+- No device type: Android has no reliable phone or tablet signal, so `device_type` is not sent
 - Emulator detection
-- SDK version
+- No SDK version: it is in `meta.sdk.version` (`getSdkMeta` in `metas/sdk.ts`)
 
 ### User Actions System
 
