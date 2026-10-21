@@ -383,7 +383,7 @@ There is no supported manual release path in this repo. Version bumps, changelog
 
 - Do not hand-edit `CHANGELOG.md` files, add `Unreleased` sections, or bump versions in normal PRs. release-please owns them.
 - Squash-merge with a conventional-commit PR title. Merge commits produce duplicate changelog entries.
-- Call out runtime dependency upgrades, native rebuild needs, and migration steps in the PR title or description so they reach the release notes.
+- Call out runtime dependency upgrades, native rebuild needs, and migration steps in the PR description. Release notes only get the PR title, so add these to the release PR's changelogs and body before merging it.
 - Keep demo-only changes out of package paths where practical. release-please assigns entries by touched paths, so a demo fix that touches a package README shows up in that package's changelog.
 - Before approving a release PR, review each package's generated changelog and the PR body. GitHub release notes come from the release PR body, not the `CHANGELOG.md` files.
 
