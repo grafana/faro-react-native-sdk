@@ -367,7 +367,7 @@ describe('sessionAttributes', () => {
             brand: 'samsung',
             is_physical: true,
             manufacturer: 'Samsung',
-            memory_total: 8000000000,
+            memory_total: 7629,
             model_identifier: 'SM-A155F',
             model_name: 'SM-A155F',
             screen_density: 3,
@@ -375,7 +375,7 @@ describe('sessionAttributes', () => {
             screen_width: 1179,
           },
           os: {
-            api_level: '35',
+            api_level: 35,
             build_id: 'AP3A.240905.015.A2',
             detail: 'Android 15 (SDK 35)',
             name: 'Android',
@@ -427,7 +427,7 @@ describe('sessionAttributes', () => {
             brand: 'Apple',
             is_physical: true,
             manufacturer: 'apple',
-            memory_total: 4000000000,
+            memory_total: 3814,
             model_identifier: 'iPhone16,1',
             model_name: 'iPhone 15 Pro',
             screen_density: 3,
@@ -880,16 +880,16 @@ describe('sessionAttributes', () => {
         expect(Dimensions.get).not.toHaveBeenCalled();
       });
 
-      it('should report the total device memory in bytes', async () => {
+      it('should report the total device memory in whole MB', async () => {
         mockDevice('ios');
 
         const mobileMeta = await loadMobileMetaForInit();
 
-        expect(mobileMeta.meta.device?.memory_total).toBe(12000000000);
+        expect(mobileMeta.meta.device?.memory_total).toBe(11444);
         expect(mobileMeta.sessionAttributes.device_memory_total).toBe('12000000000');
       });
 
-      it.each([0, -1])('should omit the typed total memory when the platform reports %p', async (totalMemory) => {
+      it.each([0, -1, 1000])('should omit the typed total memory when the platform reports %p', async (totalMemory) => {
         mockDevice('android');
         (DeviceInfo.getTotalMemorySync as jest.Mock).mockReturnValue(totalMemory);
 
@@ -898,12 +898,12 @@ describe('sessionAttributes', () => {
         expect(mobileMeta.meta.device).not.toHaveProperty('memory_total');
       });
 
-      it('should report the Android API level as a string', async () => {
+      it('should report the Android API level as a number', async () => {
         mockDevice('android');
 
         const mobileMeta = await loadMobileMetaForInit();
 
-        expect(mobileMeta.meta.os).toMatchObject({ api_level: '36', detail: 'Android 16 (SDK 36)' });
+        expect(mobileMeta.meta.os).toMatchObject({ api_level: 36, detail: 'Android 16 (SDK 36)' });
       });
 
       it('should omit the Android API level when the platform reports an invalid value', async () => {

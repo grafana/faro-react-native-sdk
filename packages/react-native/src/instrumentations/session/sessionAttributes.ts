@@ -85,7 +85,7 @@ export interface MobileMetaDevice extends MetaDevice {
   /** CPU architecture as the platform reports it (e.g., "arm64-v8a" on Android, "arm64" on iOS) */
   arch?: string;
 
-  /** Total device memory in bytes */
+  /** Total device memory in whole MB, where 1 MB is 1,048,576 bytes */
   memory_total?: number;
 
   /** Physical pixels per point (iOS) or per density-independent pixel (Android), e.g., 3 */
@@ -102,8 +102,8 @@ export interface MobileMetaDevice extends MetaDevice {
  * `meta.os` with the static fields of the mobile metadata contract that `MetaOS` does not type yet.
  */
 export interface MobileMetaOS extends MetaOS {
-  /** Android API level (e.g., "35"), same as OTel `android.os.api_level`. Android only. */
-  api_level?: string;
+  /** Android API level (e.g., 35). Android only. */
+  api_level?: number;
 }
 
 export interface PreloadedMobileMeta {
@@ -323,6 +323,14 @@ async function getDevicePowerAttributes(): Promise<DevicePowerAttributes> {
   };
 }
 
+const BYTES_PER_MB = 1024 * 1024;
+
+// The typed field is in whole MB. The legacy flat device_memory_total key stays in bytes.
+function getMemoryTotalMb(totalMemory: number): number | undefined {
+  const memoryTotalMb = Math.floor(totalMemory / BYTES_PER_MB);
+  return memoryTotalMb > 0 ? memoryTotalMb : undefined;
+}
+
 // Apple deprecated CTCarrier, so iOS 16.4 and later return "--" for every carrier.
 const UNAVAILABLE_CARRIER_NAMES = new Set(['', '--', 'unknown']);
 
@@ -393,6 +401,7 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     // Memory info
     const totalMemory = DeviceInfo.getTotalMemorySync();
     const usedMemory = DeviceInfo.getUsedMemorySync();
+    const memoryTotal = getMemoryTotalMb(totalMemory);
 
     const [power, carrier] = await Promise.all([getDevicePowerAttributes(), getCarrier()]);
 
@@ -416,7 +425,7 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     };
     const appMeta = installationId ? { installationId } : {};
     const osMeta = {
-      ...(apiLevel === undefined ? {} : { api_level: String(apiLevel) }),
+      ...(apiLevel === undefined ? {} : { api_level: apiLevel }),
       ...(deviceOsBuildId ? { build_id: deviceOsBuildId } : {}),
       detail: deviceOsDetail,
       name: systemName,
@@ -432,7 +441,7 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
           brand,
           is_physical: !isEmulator,
           manufacturer: deviceManufacturer,
-          ...(totalMemory > 0 ? { memory_total: totalMemory } : {}),
+          ...(memoryTotal === undefined ? {} : { memory_total: memoryTotal }),
           ...(modelIdentifier ? { model_identifier: modelIdentifier } : {}),
           ...(modelName ? { model_name: modelName } : {}),
           ...screenMeta,

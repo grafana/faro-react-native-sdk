@@ -1411,9 +1411,9 @@ Faro initializes:
   - iOS: `UIScreen.nativeBounds`, which is always in portrait orientation
   - Android: the real display size in the orientation when the SDK starts, so an app that starts in landscape reports a width larger than the height
 - `meta.device.screen_density` - Physical pixels per point on iOS (`UIScreen.nativeScale`) or per density-independent pixel on Android (e.g., `3`)
-- `meta.device.memory_total` - Total device memory in bytes
+- `meta.device.memory_total` - Total device memory in whole MB (1 MB is 1,048,576 bytes)
 - `meta.os`: `name`, `version`, `build_id`, `detail`
-- `meta.os.api_level` - Android API level (e.g., "35"), Android only
+- `meta.os.api_level` - Android API level (e.g., 35), Android only
 
 The Faro payload specification does not define `arch`, `screen_width`, `screen_height`, `screen_density`,
 `memory_total`, and `api_level` yet, so Grafana Cloud does not store them yet.
