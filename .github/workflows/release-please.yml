@@ -252,4 +252,13 @@ jobs:
         run: npm install -g npm@11.13.0 --ignore-scripts
 
       - name: Publish packages to NPM
-        run: npm run publish -- from-package --yes --no-private
+        env:
+          RELEASE_REF: ${{ needs.release-please.outputs.release_ref }}
+        run: |
+          set -euo pipefail
+          # npm provenance reads GITHUB_SHA; Lerna reads checkout HEAD for gitHead.
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" || "$RELEASE_REF" != "$GITHUB_SHA" ]]; then
+            echo 'Refusing to publish: checkout, verified source and provenance must use the same commit.' >&2
+            exit 1
+          fi
+          npm run publish -- from-package --yes --no-private

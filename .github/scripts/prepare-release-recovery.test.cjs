@@ -20,17 +20,37 @@ function fixture() {
     },
     release: { draft: false, prerelease: false, published_at: '2026-10-22T15:00:14Z' },
     tagSha: sha,
+    releaseTree: [
+      { path: 'package.json', type: 'blob', mode: '100644', sha: '1'.repeat(40) },
+      { path: 'yarn.lock', type: 'blob', mode: '100644', sha: '2'.repeat(40) },
+      { path: 'packages/react-native/src/index.ts', type: 'blob', mode: '100644', sha: '3'.repeat(40) },
+    ],
+    workflowTree: null,
+    truncated: false,
   };
+  state.workflowTree = [
+    ...state.releaseTree.map((entry) => ({ ...entry })),
+    { path: '.github/scripts/prepare-release-recovery.cjs', type: 'blob', mode: '100644', sha: '4'.repeat(40) },
+  ];
   const input = {
     sha,
     context: {
       eventName: 'workflow_dispatch',
       ref: 'refs/heads/main',
+      sha: mainSha,
       repo: { owner: 'grafana', repo: 'faro-react-native-sdk' },
     },
     core: { info() {}, setOutput: (key, value) => (outputs[key] = value) },
     github: {
       rest: {
+        git: {
+          async getTree({ tree_sha, recursive }) {
+            calls.push(['tree', tree_sha, recursive]);
+            return {
+              data: { tree: tree_sha === sha ? state.releaseTree : state.workflowTree, truncated: state.truncated },
+            };
+          },
+        },
         repos: {
           async getCommit({ ref }) {
             calls.push(['commit', ref]);
@@ -63,10 +83,10 @@ function fixture() {
   return { input, state, calls, outputs };
 }
 
-test('checks both releases and pins subsequent jobs to the release commit', async () => {
+test('checks both releases and publishes the workflow commit with unchanged release inputs', async () => {
   const { input, calls, outputs } = fixture();
   await prepareReleaseRecovery(input);
-  assert.deepEqual(outputs, { release_ref: sha, releases_created: 'true' });
+  assert.deepEqual(outputs, { release_ref: mainSha, releases_created: 'true' });
   assert.ok(calls.some((call) => call[0] === 'compare' && call[1] === `${sha}...${mainSha}`));
   assert.deepEqual(
     calls.filter(([kind]) => kind === 'release').map(([, tag]) => tag),
@@ -75,17 +95,120 @@ test('checks both releases and pins subsequent jobs to the release commit', asyn
   assert.ok(
     calls.filter(([kind, path]) => kind === 'file' && path.endsWith('/package.json')).every(([, , ref]) => ref === sha)
   );
+  assert.deepEqual(
+    calls.filter(([kind]) => kind === 'tree'),
+    [
+      ['tree', sha, '1'],
+      ['tree', mainSha, '1'],
+    ]
+  );
 });
 
 test('accepts a release that is still the latest commit on main', async () => {
   const { input, state, outputs } = fixture();
   state.comparison = 'identical';
+  input.context.sha = sha;
   input.github.rest.repos.getCommit = async () => ({ data: { sha } });
   await prepareReleaseRecovery(input);
   assert.deepEqual(outputs, { release_ref: sha, releases_created: 'true' });
 });
 
+test('uses the workflow snapshot even if main advances while recovery is running', async () => {
+  const { input, calls, outputs } = fixture();
+  input.context.sha = 'b'.repeat(40);
+  await prepareReleaseRecovery(input);
+  assert.equal(outputs.release_ref, input.context.sha);
+  assert.ok(calls.some(([kind, basehead]) => kind === 'compare' && basehead === `${sha}...${input.context.sha}`));
+});
+
+test('allows only the documented recovery files to differ', async () => {
+  const { input, state } = fixture();
+  for (const path of [
+    '.github/scripts/prepare-release-recovery.test.cjs',
+    '.github/scripts/publish-release.test.cjs',
+    '.github/workflows/pull-request.yml',
+    '.github/workflows/release-please.yml',
+    'CONTRIBUTING.md',
+  ]) {
+    state.workflowTree.push({ path, type: 'blob', mode: '100644', sha: '4'.repeat(40) });
+  }
+  await prepareReleaseRecovery(input);
+});
+
 const rejected = [
+  [
+    'a missing workflow SHA',
+    ({ input }) => {
+      delete input.context.sha;
+    },
+  ],
+  [
+    'a changed package source',
+    ({ state }) => {
+      state.workflowTree[2].sha = '5'.repeat(40);
+    },
+  ],
+  [
+    'a changed dependency lockfile',
+    ({ state }) => {
+      state.workflowTree[1].sha = '5'.repeat(40);
+    },
+  ],
+  [
+    'a deleted build input',
+    ({ state }) => {
+      state.workflowTree.shift();
+    },
+  ],
+  [
+    'an added build input',
+    ({ state }) => {
+      state.workflowTree.push({ path: '.npmrc', type: 'blob', mode: '100644', sha: '5'.repeat(40) });
+    },
+  ],
+  [
+    'an unrelated workflow change',
+    ({ state }) => {
+      state.workflowTree.push({
+        path: '.github/workflows/other.yml',
+        type: 'blob',
+        mode: '100644',
+        sha: '5'.repeat(40),
+      });
+    },
+  ],
+  [
+    'a file mode change',
+    ({ state }) => {
+      state.workflowTree[0].mode = '100755';
+    },
+  ],
+  [
+    'a recovery script symlink',
+    ({ state }) => {
+      state.workflowTree[3].mode = '120000';
+    },
+  ],
+  [
+    'a deleted recovery file',
+    ({ state }) => {
+      state.releaseTree.push(state.workflowTree.pop());
+    },
+  ],
+  [
+    'a truncated tree',
+    ({ state }) => {
+      state.truncated = true;
+    },
+  ],
+  [
+    'a source tree API failure',
+    ({ input }) => {
+      input.github.rest.git.getTree = async () => {
+        throw new Error('GitHub unavailable');
+      };
+    },
+  ],
   [
     'a non-manual run',
     ({ input }) => {

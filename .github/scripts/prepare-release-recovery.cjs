@@ -9,18 +9,49 @@ const packages = [
   },
 ];
 
+// Recovery may change its own tooling, but not the source or inputs used to build the release.
+const recoveryFiles = new Set([
+  '.github/scripts/prepare-release-recovery.cjs',
+  '.github/scripts/prepare-release-recovery.test.cjs',
+  '.github/scripts/publish-release.test.cjs',
+  '.github/workflows/pull-request.yml',
+  '.github/workflows/release-please.yml',
+  'CONTRIBUTING.md',
+]);
+
 async function prepareReleaseRecovery({ github, context, core, sha }) {
   assert.equal(context.eventName, 'workflow_dispatch', 'Release recovery must be started manually');
   assert.equal(context.ref, 'refs/heads/main', 'Release recovery must run from main');
   assert.match(sha || '', /^[a-f0-9]{40}$/, 'Provide the full release commit SHA');
+  assert.match(context.sha || '', /^[a-f0-9]{40}$/, 'Missing workflow commit SHA');
 
   const repo = context.repo;
   const { data: main } = await github.rest.repos.getCommit({ ...repo, ref: 'main' });
   const { data: comparison } = await github.rest.repos.compareCommitsWithBasehead({
     ...repo,
-    basehead: `${sha}...${main.sha}`,
+    basehead: `${sha}...${context.sha}`,
   });
-  assert.ok(['ahead', 'identical'].includes(comparison.status), 'Release commit must be on main');
+  assert.ok(['ahead', 'identical'].includes(comparison.status), 'Release commit must be an ancestor of this workflow');
+
+  async function readTree(ref) {
+    const { data } = await github.rest.git.getTree({ ...repo, tree_sha: ref, recursive: '1' });
+    assert.equal(data.truncated, false, `Cannot verify the complete source tree at ${ref}`);
+    return new Map(data.tree.filter((entry) => entry.type !== 'tree').map((entry) => [entry.path, entry]));
+  }
+
+  const releaseTree = await readTree(sha);
+  const workflowTree = await readTree(context.sha);
+  for (const path of new Set([...releaseTree.keys(), ...workflowTree.keys()])) {
+    const released = releaseTree.get(path);
+    const current = workflowTree.get(path);
+    if (released?.sha === current?.sha && released?.mode === current?.mode && released?.type === current?.type)
+      continue;
+    assert.ok(recoveryFiles.has(path), `Release inputs changed at ${path}; prepare a new release instead`);
+    assert.ok(
+      current?.type === 'blob' && current.mode === '100644',
+      `Recovery file must remain a regular file: ${path}`
+    );
+  }
 
   async function readJson(path, ref) {
     const { data } = await github.rest.repos.getContent({ ...repo, path, ref });
@@ -56,8 +87,9 @@ async function prepareReleaseRecovery({ github, context, core, sha }) {
     core.info(`Verified ${tag} at ${sha}`);
   }
 
-  // Publish only after both tags have been checked, using the same commit for verification and packaging.
-  core.setOutput('release_ref', sha);
+  // npm provenance uses the workflow SHA, not checkout HEAD. Build that SHA after verifying release inputs match.
+  core.info(`Recovering release ${sha} from workflow commit ${context.sha}; package and build inputs are unchanged`);
+  core.setOutput('release_ref', context.sha);
   core.setOutput('releases_created', 'true');
 }
 

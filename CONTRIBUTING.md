@@ -273,8 +273,15 @@ ad-hoc publishes.
 If GitHub releases were created but npm publishing was skipped or interrupted,
 run `release-please` from `main` with `recover_release_sha` set to the full release
 commit SHA. Recovery checks that both stable release tags point to that commit
-and that no newer version is recorded on `main`. Verification and publishing use
-that exact commit in the same job, behind the `npm-publish` approval gate.
+and that no newer version is recorded on `main`. It also compares the complete
+release and workflow source trees. Only the recovery scripts, the two affected
+workflow files and this guide may differ; SDK, dependency or other changes require
+a new release instead.
+
+Verification and publishing use the workflow commit, behind the `npm-publish`
+approval gate. Both npm provenance and Lerna's `gitHead` therefore identify the
+commit actually built, not the older release tag. The validated package and build
+inputs are unchanged from that tag. GitHub identity variables are not overridden.
 Already published package versions are skipped by `lerna publish from-package`.
 
 Do not delete or recreate release tags to retry publishing. Leave the recovery
