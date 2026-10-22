@@ -269,6 +269,16 @@ Maintainers do not run manual `lerna version` or tag pushes for releases. If
 release-please or CI is broken, fix the workflow rather than bypassing it with
 ad-hoc publishes.
 
+If GitHub releases were created but npm publishing was skipped or interrupted,
+run `release-please` from `main` with `recover_release_sha` set to the full release
+commit SHA. Recovery checks that both stable release tags point to that commit
+and that no newer version is recorded on `main`. Verification and publishing use
+that exact commit and retain the `npm-publish` approval gate. Already published
+package versions are skipped by `lerna publish from-package`.
+
+Do not delete or recreate release tags to retry publishing. Leave the recovery
+input empty for a normal release-please run.
+
 ### Preparing a release
 
 Use the existing release-please PR. The two packages are versioned independently;

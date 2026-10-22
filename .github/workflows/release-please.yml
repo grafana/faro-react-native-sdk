@@ -6,6 +6,11 @@ on:
       - main
   # Manual retry when a push to main does not enqueue this workflow (rare GitHub delivery miss).
   workflow_dispatch:
+    inputs:
+      recover_release_sha:
+        description: 'Commit of an existing GitHub release whose npm publish was skipped'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -20,18 +25,39 @@ jobs:
       pull-requests: write
       id-token: write
     outputs:
-      releases_created: ${{ steps.release.outputs.releases_created }}
+      releases_created: ${{ steps.recovery.outputs.releases_created || steps.release.outputs.releases_created }}
+      release_ref: ${{ steps.recovery.outputs.release_ref || github.sha }}
       release_pr_branch: ${{ steps.release-branch.outputs.branch }}
       should_refresh_release_pr: ${{ steps.release-branch.outputs.should_refresh }}
 
     steps:
+      - name: Checkout recovery checks
+        if: inputs.recover_release_sha != ''
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate existing release
+        if: inputs.recover_release_sha != ''
+        id: recovery
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RELEASE_SHA: ${{ inputs.recover_release_sha }}
+        with:
+          script: |
+            const { prepareReleaseRecovery } = require('./.github/scripts/prepare-release-recovery.cjs');
+            await prepareReleaseRecovery({ github, context, core, sha: process.env.RELEASE_SHA });
+
       - name: Mint GitHub App token
+        if: inputs.recover_release_sha == ''
         id: get-github-app-token
         uses: grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e # create-github-app-token/v0.3.1
         with:
           github_app: app-o11y-kwl-ci
 
       - uses: googleapis/release-please-action@64d83e95d898ede84e4555719aba555c3244d469
+        if: inputs.recover_release_sha == ''
         id: release
         with:
           token: ${{ steps.get-github-app-token.outputs.token }}
@@ -184,7 +210,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-          ref: main
+          ref: ${{ needs.release-please.outputs.release_ref }}
           fetch-depth: 0
 
       - name: Enable corepack
@@ -232,7 +258,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-          ref: main
+          ref: ${{ needs.release-please.outputs.release_ref }}
           fetch-depth: 0
 
       - name: Enable corepack
