@@ -257,11 +257,12 @@ Releases are automated with
 2. release-please opens a release PR with version bumps, per-package changelogs,
    and updated `release-please-manifest.json`.
 3. After the release PR merges, the workflow creates package tags and GitHub
-   releases, then runs build, lint, circular-dependency, and unit-test checks.
+   releases.
 4. Approve the `npm-publish` environment when the publish job waits for review.
    An eligible `mobile-o11y-engineers` reviewer other than the run initiator must
-   approve it; self-review is disabled. Publishing uses npm Trusted Publishing
-   with provenance.
+   approve it; self-review is disabled. The approved job runs build, lint,
+   circular-dependency, and unit-test checks before publishing with npm Trusted
+   Publishing and provenance. Any failed check stops publishing.
 5. Confirm both package versions are available on npm. GitHub releases are
    created before publishing, so their existence alone does not confirm success.
 
@@ -273,8 +274,8 @@ If GitHub releases were created but npm publishing was skipped or interrupted,
 run `release-please` from `main` with `recover_release_sha` set to the full release
 commit SHA. Recovery checks that both stable release tags point to that commit
 and that no newer version is recorded on `main`. Verification and publishing use
-that exact commit and retain the `npm-publish` approval gate. Already published
-package versions are skipped by `lerna publish from-package`.
+that exact commit in the same job, behind the `npm-publish` approval gate.
+Already published package versions are skipped by `lerna publish from-package`.
 
 Do not delete or recreate release tags to retry publishing. Leave the recovery
 input empty for a normal release-please run.
