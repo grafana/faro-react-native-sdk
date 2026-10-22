@@ -164,6 +164,9 @@ This project is licensed under the Apache License 2.0 - see the
 
 - Documentation: [Grafana Faro Documentation](https://grafana.com/docs/grafana-cloud/monitor-applications/frontend-observability/)
 - GitHub Issues: [Report bugs or request features](https://github.com/grafana/faro-react-native-sdk/issues)
+- Grafana Community Slack:
+  [#mobile-o11y](https://grafana.slack.com/archives/C0C9WH7JRPB) -
+  questions and feedback on Grafana mobile observability
 - Grafana Community: [Join the discussion](https://community.grafana.com/)
 
 ## Related Projects
