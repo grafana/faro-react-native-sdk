@@ -296,6 +296,9 @@ core SDK release. Review each package changelog and call out migration requireme
 Before merging:
 
 - Check that the PR includes the intended fixes and its checks pass.
+- Check each generated package changelog and the release PR body for duplicate
+  or demo-only entries and missing dependency or migration notes. GitHub release
+  notes come from the PR body, not the `CHANGELOG.md` files.
 - Confirm `src/generated/faroRNPackageMeta.ts` matches the core package version.
   The refresh job updates this file, the lockfile, and changelog formatting, then
   commits through GitHub's API to satisfy the verified-signature rule.

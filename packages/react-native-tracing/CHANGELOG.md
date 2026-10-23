@@ -1,18 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Breaking Changes
-
-- Fetch spans use stable HTTP conventions only. Update queries from `HTTP GET` / `HTTP POST`
-  to `GET` / `POST`, and replace `http.method`, `http.url`, and `http.status_code` with
-  `http.request.method`, `url.full`, and `http.response.status_code`. Faro fetch event
-  fields stay unchanged; there is no legacy span mode.
-
-### Bug Fixes
-
-- Correct HTTP request timing and capture the active user action before request monitoring halts it.
-
 ## [2.0.3](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v2.0.2...faro-react-native-tracing-v2.0.3) (2026-10-21)
 
 ### Dependencies
@@ -26,7 +13,6 @@
 ### Bug Fixes
 
 - **react-native:** honor the batching config ([#227](https://github.com/grafana/faro-react-native-sdk/issues/227)) ([1f938e2](https://github.com/grafana/faro-react-native-sdk/commit/1f938e291fd5ab379d3c07d51947b7a50f48ef10))
-- **react-native:** report correct device and SDK metadata ([397f456](https://github.com/grafana/faro-react-native-sdk/commit/397f456b2ba2a12dc6f4491f4812b36ca686e9a7))
 - **react-native:** report correct device and SDK metadata ([3d06f8a](https://github.com/grafana/faro-react-native-sdk/commit/3d06f8ab0ddf3a171849e965bc5d312d2b7ff426)), closes [#209](https://github.com/grafana/faro-react-native-sdk/issues/209)
 
 ### Dependencies
@@ -48,6 +34,9 @@
 ### ⚠ BREAKING CHANGES
 
 - **tracing:** Fetch spans use stable OpenTelemetry HTTP names and attributes only. Update legacy span queries; no legacy fetch mode is available.
+  Update queries from `HTTP GET` / `HTTP POST` to `GET` / `POST`, and replace `http.method`, `http.url`, and
+  `http.status_code` with `http.request.method`, `url.full`, and `http.response.status_code`. Faro fetch event
+  fields stay unchanged.
 
 ### Features
 
@@ -55,6 +44,7 @@
 
 ### Bug Fixes
 
+- **tracing:** correct HTTP request timing and capture the active user action before request monitoring halts it ([#196](https://github.com/grafana/faro-react-native-sdk/issues/196))
 - **tracing:** clean up instrumentation on removal ([5ecfa70](https://github.com/grafana/faro-react-native-sdk/commit/5ecfa701c4e3bbd3dd55573d1cf7d592334d7186))
 - **tracing:** clean up instrumentation on removal ([f9357d4](https://github.com/grafana/faro-react-native-sdk/commit/f9357d43fd6f36decb7a1191aa10a13e670f062a))
 - **tracing:** preserve reusable OpenTelemetry components ([4122984](https://github.com/grafana/faro-react-native-sdk/commit/4122984b2ed41957fdaf8fcb55d6409a19af263e))
