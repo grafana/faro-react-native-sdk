@@ -283,7 +283,7 @@ export class FetchTransport extends BaseTransport {
   }
 }
 
-function groupItemsByMeta(items: TransportItem[]): TransportItem[][] {
+export function groupItemsByMeta(items: TransportItem[]): TransportItem[][] {
   const groups = new Map<string, TransportItem[]>();
   for (const item of items) {
     const key = JSON.stringify(item.meta);
