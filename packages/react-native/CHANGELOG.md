@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.3](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.2...faro-react-native-v1.4.3) (2026-10-21)
+
+### Bug Fixes
+
+- **deps:** patch vulnerable development tooling ([fdb310c](https://github.com/grafana/faro-react-native-sdk/commit/fdb310ca9cd51424eb5ee9f77957536afe5bf925))
+- **security/medium/:** update dependency ip-address to v10.7.1 [security] ([dbfd302](https://github.com/grafana/faro-react-native-sdk/commit/dbfd302eb895e4f6ba8832e3f1cb915670a5fa92))
+
 ## [1.4.2](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.1...faro-react-native-v1.4.2) (2026-10-19)
 
 ### Bug Fixes

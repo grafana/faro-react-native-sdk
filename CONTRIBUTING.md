@@ -257,17 +257,35 @@ Releases are automated with
 2. release-please opens a release PR with version bumps, per-package changelogs,
    and updated `release-please-manifest.json`.
 3. After the release PR merges, the workflow creates package tags and GitHub
-   releases, then runs build, lint, circular-dependency, and unit-test checks.
+   releases.
 4. Approve the `npm-publish` environment when the publish job waits for review.
    An eligible `mobile-o11y-engineers` reviewer other than the run initiator must
-   approve it; self-review is disabled. Publishing uses npm Trusted Publishing
-   with provenance.
+   approve it; self-review is disabled. The approved job runs build, lint,
+   circular-dependency, and unit-test checks before publishing with npm Trusted
+   Publishing and provenance. Any failed check stops publishing.
 5. Confirm both package versions are available on npm. GitHub releases are
    created before publishing, so their existence alone does not confirm success.
 
 Maintainers do not run manual `lerna version` or tag pushes for releases. If
 release-please or CI is broken, fix the workflow rather than bypassing it with
 ad-hoc publishes.
+
+If GitHub releases were created but npm publishing was skipped or interrupted,
+run `release-please` from `main` with `recover_release_sha` set to the full release
+commit SHA. Recovery checks that both stable release tags point to that commit
+and that no newer version is recorded on `main`. It also compares the complete
+release and workflow source trees. Only the recovery scripts, the two affected
+workflow files and this guide may differ; SDK, dependency or other changes require
+a new release instead.
+
+Verification and publishing use the workflow commit, behind the `npm-publish`
+approval gate. Both npm provenance and Lerna's `gitHead` therefore identify the
+commit actually built, not the older release tag. The validated package and build
+inputs are unchanged from that tag. GitHub identity variables are not overridden.
+Already published package versions are skipped by `lerna publish from-package`.
+
+Do not delete or recreate release tags to retry publishing. Leave the recovery
+input empty for a normal release-please run.
 
 ### Preparing a release
 

@@ -28,6 +28,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Test release recovery checks
+        run: node --test .github/scripts/*.test.cjs
+
       - name: Build
         run: yarn build
 
