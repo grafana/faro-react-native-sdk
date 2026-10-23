@@ -1,8 +1,8 @@
-import { Platform } from 'react-native';
+import { Dimensions, NativeModules, Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 import type { PowerState } from 'react-native-device-info';
 
-import type { Meta } from '@grafana/faro-core';
+import type { Meta, MetaDevice, MetaOS } from '@grafana/faro-core';
 
 import { getInstallationId } from './installationId';
 import { isConnectedToPower } from './powerSource';
@@ -13,7 +13,7 @@ import { getSessionProcessInfo } from './sessionProcess';
  * These attributes are automatically included with every telemetry event
  *
  * Core mobile session attributes, with additional monitoring fields
- * (memory, device type, battery, etc.)
+ * (memory, battery, etc.)
  *
  * SDK name and version are on Faro meta `sdk` (`getSdkMeta` in `metas/sdk.ts`).
  *
@@ -53,10 +53,10 @@ export interface SessionAttributes {
   /** Whether device is physical or emulator ("true" or "false") */
   device_is_physical?: string;
 
-  /** Temporary flat attribute mirroring `app.installationId` during migration. */
+  /** @deprecated Use `meta.app.installationId`, which holds the same value. Not a hardware device ID. */
   device_id?: string;
 
-  /** Device type ("mobile" or "tablet") */
+  /** @deprecated No longer sent. Android has no reliable phone or tablet signal. */
   device_type?: string;
 
   /** Total device memory in bytes */
@@ -81,9 +81,37 @@ export interface SessionAttributes {
   device_carrier?: string;
 }
 
+/**
+ * `meta.device` with the static fields of the mobile metadata contract that `MetaDevice` does not type yet.
+ */
+export interface MobileMetaDevice extends MetaDevice {
+  /** CPU architecture as the platform reports it (e.g., "arm64-v8a" on Android, "arm64" on iOS) */
+  arch?: string;
+
+  /** Total device memory in whole MB, where 1 MB is 1,048,576 bytes */
+  memory_total?: number;
+
+  /** Physical pixels per point (iOS) or per density-independent pixel (Android), e.g., 3 */
+  screen_density?: number;
+
+  /** Screen height in physical pixels. iOS: always in portrait. Android: in the orientation when the SDK starts. */
+  screen_height?: number;
+
+  /** Screen width in physical pixels. iOS: always in portrait. Android: in the orientation when the SDK starts. */
+  screen_width?: number;
+}
+
+/**
+ * `meta.os` with the static fields of the mobile metadata contract that `MetaOS` does not type yet.
+ */
+export interface MobileMetaOS extends MetaOS {
+  /** Android API level (e.g., 35). Android only. */
+  api_level?: number;
+}
+
 export interface PreloadedMobileMeta {
   sessionAttributes: SessionAttributes;
-  meta: Pick<Meta, 'app' | 'device' | 'os'>;
+  meta: Pick<Meta, 'app'> & { device?: MobileMetaDevice; os?: MobileMetaOS };
 }
 
 /**
@@ -143,14 +171,17 @@ function getDeviceModelIdentifier(model: string): string | undefined {
   return undefined;
 }
 
-function getMobileDeviceType(isTablet: boolean): 'mobile' | 'tablet' | undefined {
-  // iPadOS is still reported as Platform.OS === 'ios'; DeviceInfo.isTablet()
-  // distinguishes iPad/tablet form factor from phone form factor.
-  if (Platform.OS === 'ios' || Platform.OS === 'android') {
-    return isTablet ? 'tablet' : 'mobile';
+async function getAndroidApiLevel(): Promise<number | undefined> {
+  if (Platform.OS !== 'android') {
+    return undefined;
   }
 
-  return undefined;
+  try {
+    const apiLevel = await DeviceInfo.getApiLevel();
+    return typeof apiLevel === 'number' && apiLevel > 0 ? apiLevel : undefined;
+  } catch (_error) {
+    return undefined;
+  }
 }
 
 /**
@@ -158,20 +189,90 @@ function getMobileDeviceType(isTablet: boolean): 'mobile' | 'tablet' | undefined
  * iOS: "iOS 17.0"
  * Android: "Android 15 (SDK 35)"
  */
-async function getDeviceOsDetail(): Promise<string> {
-  const systemName = DeviceInfo.getSystemName();
-  const systemVersion = DeviceInfo.getSystemVersion();
+function getDeviceOsDetail(systemName: string, systemVersion: string, apiLevel: number | undefined): string {
+  return apiLevel === undefined ? `${systemName} ${systemVersion}` : `${systemName} ${systemVersion} (SDK ${apiLevel})`;
+}
 
-  if (Platform.OS === 'android') {
-    try {
-      const apiLevel = await DeviceInfo.getApiLevel();
-      return `${systemName} ${systemVersion} (SDK ${apiLevel})`;
-    } catch (_error) {
-      return `${systemName} ${systemVersion}`;
+interface CpuArchitectureNativeModule {
+  getCpuArchitecture?: () => unknown;
+}
+
+function getDeviceArch(): string | undefined {
+  try {
+    if (Platform.OS === 'android') {
+      // Build.SUPPORTED_ABIS, preferred ABI first.
+      const preferredAbi = DeviceInfo.supportedAbisSync()[0];
+      return preferredAbi || undefined;
     }
+
+    if (Platform.OS === 'ios') {
+      // The architecture the app is built for. supportedAbisSync() on iOS calls the deprecated
+      // NXGetLocalArchInfo() without a NULL check.
+      const nativeModule = NativeModules['FaroReactNativeModule'] as CpuArchitectureNativeModule | undefined;
+      if (typeof nativeModule?.getCpuArchitecture !== 'function') {
+        return undefined;
+      }
+
+      const arch = nativeModule.getCpuArchitecture();
+      return typeof arch === 'string' && arch.length > 0 ? arch : undefined;
+    }
+
+    return undefined;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
+type ScreenMeta = Pick<MobileMetaDevice, 'screen_density' | 'screen_height' | 'screen_width'>;
+
+interface ScreenMetricsNativeModule {
+  getScreenMetrics?: () => unknown;
+}
+
+function isPositiveNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function getIosScreenMeta(): ScreenMeta {
+  // UIScreen nativeBounds and nativeScale. Dimensions on iOS is bounds × scale, which rotates with the
+  // interface and is not the panel size on Plus models or with Display Zoom on, so it is no fallback.
+  const nativeModule = NativeModules['FaroReactNativeModule'] as ScreenMetricsNativeModule | undefined;
+  if (typeof nativeModule?.getScreenMetrics !== 'function') {
+    return {};
   }
 
-  return `${systemName} ${systemVersion}`;
+  const metrics = nativeModule.getScreenMetrics();
+  if (typeof metrics !== 'object' || metrics === null) {
+    return {};
+  }
+
+  const { width, height, density } = metrics as Record<string, unknown>;
+  if (!isPositiveNumber(width) || !isPositiveNumber(height) || !isPositiveNumber(density)) {
+    return {};
+  }
+
+  return { screen_density: density, screen_height: height, screen_width: width };
+}
+
+function getScreenMeta(): ScreenMeta {
+  try {
+    if (Platform.OS === 'ios') {
+      return getIosScreenMeta();
+    }
+
+    const { width, height, scale } = Dimensions.get('screen');
+    if (!(width > 0 && height > 0 && scale > 0)) {
+      return {};
+    }
+
+    return {
+      screen_density: scale,
+      screen_height: Math.round(height * scale),
+      screen_width: Math.round(width * scale),
+    };
+  } catch (_error) {
+    return {};
+  }
 }
 
 async function getDeviceOsBuildId(): Promise<string | undefined> {
@@ -225,6 +326,14 @@ async function getDevicePowerAttributes(): Promise<DevicePowerAttributes> {
   };
 }
 
+const BYTES_PER_MB = 1024 * 1024;
+
+// The typed field is in whole MB. The legacy flat device_memory_total key stays in bytes.
+function getMemoryTotalMb(totalMemory: number): number | undefined {
+  const memoryTotalMb = Math.floor(totalMemory / BYTES_PER_MB);
+  return memoryTotalMb > 0 ? memoryTotalMb : undefined;
+}
+
 // Apple deprecated CTCarrier, so iOS 16.4 and later return "--" for every carrier.
 const UNAVAILABLE_CARRIER_NAMES = new Set(['', '--', 'unknown']);
 
@@ -262,7 +371,6 @@ export function minimalSessionDeviceAttributes(): SessionAttributes {
  * - device_brand, device_is_physical, device_id
  *
  * Additional monitoring attributes:
- * - device_type (mobile/tablet)
  * - device_memory_total, device_memory_used
  * - device_battery_level, device_is_charging, device_low_power_mode
  * - device_carrier
@@ -273,8 +381,8 @@ export async function getSessionAttributes(): Promise<SessionAttributes> {
 
 async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
   try {
-    const [deviceOsDetail, deviceOsBuildId, installationId] = await Promise.all([
-      getDeviceOsDetail(),
+    const [apiLevel, deviceOsBuildId, installationId] = await Promise.all([
+      getAndroidApiLevel(),
       getDeviceOsBuildId(),
       getInstallationId(),
     ]);
@@ -282,19 +390,21 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     // Get synchronous device info
     const systemName = DeviceInfo.getSystemName();
     const systemVersion = DeviceInfo.getSystemVersion();
+    const deviceOsDetail = getDeviceOsDetail(systemName, systemVersion, apiLevel);
     const manufacturer = DeviceInfo.getManufacturerSync();
     const model = DeviceInfo.getModel();
     const modelIdentifier = getDeviceModelIdentifier(model);
     const modelName = getDeviceModelName(model);
     const brand = DeviceInfo.getBrand();
     const isEmulator = DeviceInfo.isEmulatorSync();
-    const isTablet = DeviceInfo.isTablet();
-    const deviceType = getMobileDeviceType(isTablet);
     const deviceManufacturer = getDeviceManufacturer(manufacturer);
+    const arch = getDeviceArch();
+    const screenMeta = getScreenMeta();
 
     // Memory info
     const totalMemory = DeviceInfo.getTotalMemorySync();
     const usedMemory = DeviceInfo.getUsedMemorySync();
+    const memoryTotal = getMemoryTotalMb(totalMemory);
 
     const [power, carrier] = await Promise.all([getDevicePowerAttributes(), getCarrier()]);
 
@@ -309,7 +419,6 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
       device_brand: brand,
       device_is_physical: String(!isEmulator),
       ...(installationId ? { device_id: installationId } : {}),
-      ...(deviceType ? { device_type: deviceType } : {}),
       device_memory_total: String(totalMemory),
       device_memory_used: String(usedMemory),
       device_battery_level: power.batteryLevel,
@@ -319,6 +428,7 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     };
     const appMeta = installationId ? { installationId } : {};
     const osMeta = {
+      ...(apiLevel === undefined ? {} : { api_level: apiLevel }),
       ...(deviceOsBuildId ? { build_id: deviceOsBuildId } : {}),
       detail: deviceOsDetail,
       name: systemName,
@@ -330,12 +440,14 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
       meta: {
         app: appMeta,
         device: {
+          ...(arch ? { arch } : {}),
           brand,
           is_physical: !isEmulator,
           manufacturer: deviceManufacturer,
+          ...(memoryTotal === undefined ? {} : { memory_total: memoryTotal }),
           ...(modelIdentifier ? { model_identifier: modelIdentifier } : {}),
           ...(modelName ? { model_name: modelName } : {}),
-          ...(deviceType ? { type: deviceType } : {}),
+          ...screenMeta,
         },
         os: osMeta,
       },

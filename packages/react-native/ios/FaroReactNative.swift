@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Faro React Native iOS Native Module
 ///
@@ -28,6 +29,38 @@ public class FaroReactNative: NSObject {
     /// App extensions have an NSExtension dictionary in their main bundle.
     @objc public static func isMainSessionProcess() -> Bool {
         return Bundle.main.object(forInfoDictionaryKey: "NSExtension") == nil
+    }
+
+    // MARK: - CPU Architecture
+
+    /// The architecture this process is built for, such as "arm64".
+    ///
+    /// iOS has no runtime call that returns an architecture string, so the
+    /// compiler sets this value. iOS runs no 32-bit apps, so this is also the
+    /// device's architecture, except for an x86_64 simulator under Rosetta.
+    @objc public static func getCpuArchitecture() -> String? {
+        #if arch(arm64)
+        return "arm64"
+        #elseif arch(x86_64)
+        return "x86_64"
+        #else
+        return nil
+        #endif
+    }
+
+    // MARK: - Screen
+
+    /// The screen size in physical pixels and the native scale, such as 1206 × 2622 at 3.0.
+    ///
+    /// nativeBounds is the physical panel size, always in portrait. bounds × scale rotates with
+    /// the interface and is not the panel size on Plus models or with Display Zoom on.
+    @MainActor @objc public static func getScreenMetrics() -> [String: NSNumber] {
+        let screen = UIScreen.main
+        return [
+            "width": NSNumber(value: Int(screen.nativeBounds.width)),
+            "height": NSNumber(value: Int(screen.nativeBounds.height)),
+            "density": NSNumber(value: Double(screen.nativeScale)),
+        ]
     }
 
     // MARK: - App Startup Time
