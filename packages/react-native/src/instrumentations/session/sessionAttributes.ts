@@ -53,7 +53,7 @@ export interface SessionAttributes {
   /** Whether device is physical or emulator ("true" or "false") */
   device_is_physical?: string;
 
-  /** Installation ID, same value as `meta.app.installationId`. Not a hardware device ID. */
+  /** @deprecated Use `meta.app.installationId`, which holds the same value. Not a hardware device ID. */
   device_id?: string;
 
   /** @deprecated No longer sent. Android has no reliable phone or tablet signal. */

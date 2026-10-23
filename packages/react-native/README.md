@@ -1018,9 +1018,10 @@ Every telemetry event automatically includes default session attributes with dev
 \*Android does not provide a mapping from model codes to marketing names, so `device_model_name` equals `device_model`.
 On iOS, `device_model_name` is omitted when `react-native-device-info` does not know the model identifier yet.
 
-`device_id` is not a device ID. It holds the installation ID, the same value as `meta.app.installationId`. The SDK
-keeps it in AsyncStorage. A reinstall usually creates a new ID. On Android, Auto Backup can restore the old ID when the
-app is reinstalled. A backup restore to a new device can also keep the old ID.
+`device_id` is deprecated. Use `meta.app.installationId`, which holds the same value. The SDK still sends `device_id`.
+It is not a device ID. It holds the installation ID, which the SDK keeps in AsyncStorage. A reinstall usually creates
+a new ID. On Android, Auto Backup can restore the old ID when the app is reinstalled. A backup restore to a new device
+can also keep the old ID.
 
 The SDK version is not a session attribute. It is in `meta.sdk.version` (for example `1.4.1`). The `@grafana/faro-core`
 version is in `meta.sdk.integrations`.
@@ -1386,7 +1387,7 @@ All device information is sent as session attributes (not browser meta):
 - `device_model_name` - Human-readable name (e.g., "iPhone 15 Pro"); omitted for iOS models unknown to `react-native-device-info`
 - `device_brand` - Device brand (e.g., "Apple", "samsung")
 - `device_is_physical` - Physical device or emulator ("true" or "false")
-- `device_id` - Installation ID (UUID), the same value as `meta.app.installationId`. It identifies the app installation, not the device. A reinstall usually creates a new ID, but a backup restore can keep the old one
+- `device_id` - Deprecated: use `meta.app.installationId`, which holds the same value. Installation ID (UUID). It identifies the app installation, not the device. A reinstall usually creates a new ID, but a backup restore can keep the old one
 
 **Additional Monitoring Attributes (React Native specific):**
 
