@@ -376,8 +376,16 @@ There is no supported manual release path in this repo. Version bumps, changelog
 1. All tests pass: `yarn quality:test`
 2. Builds succeed: `yarn build`
 3. No circular dependencies: `yarn quality:circular-deps`
-4. CHANGELOG.md updated
+4. Generated changelogs and release PR body reviewed (see below)
 5. README.md reflects changes
+
+**Release notes:**
+
+- Do not hand-edit `CHANGELOG.md` files, add `Unreleased` sections, or bump versions in normal PRs. release-please owns them.
+- Squash-merge with a conventional-commit PR title. Merge commits produce duplicate changelog entries.
+- Call out runtime dependency upgrades, native rebuild needs, and migration steps in the PR description. Release notes only get the PR title, so add these to the release PR's changelogs and body before merging it.
+- Keep demo-only changes out of package paths where practical. release-please assigns entries by touched paths, so a demo fix that touches a package README shows up in that package's changelog.
+- Before approving a release PR, review each package's generated changelog and the PR body. GitHub release notes come from the release PR body, not the `CHANGELOG.md` files.
 
 ## Key Files Reference
 
