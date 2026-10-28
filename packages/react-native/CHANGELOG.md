@@ -2,15 +2,13 @@
 
 ## [1.5.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.3...faro-react-native-v1.5.0) (2026-10-28)
 
-
 ### Features
 
-* **meta:** add Android API level, CPU architecture, screen size and density, and total device memory to typed meta ([d5a517a](https://github.com/grafana/faro-react-native-sdk/commit/d5a517a8da42f99f755d52d3428dfbac9f97bf8b))
-
+- **meta:** add Android API level, CPU architecture, screen size and density, and total device memory to typed meta ([d5a517a](https://github.com/grafana/faro-react-native-sdk/commit/d5a517a8da42f99f755d52d3428dfbac9f97bf8b))
 
 ### Bug Fixes
 
-* **meta:** stop sending device type on iOS and Android, because Android has no reliable phone or tablet signal ([d5a517a](https://github.com/grafana/faro-react-native-sdk/commit/d5a517a8da42f99f755d52d3428dfbac9f97bf8b))
+- **meta:** stop sending device type on iOS and Android, because Android has no reliable phone or tablet signal ([d5a517a](https://github.com/grafana/faro-react-native-sdk/commit/d5a517a8da42f99f755d52d3428dfbac9f97bf8b))
 
 ## [1.4.3](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.2...faro-react-native-v1.4.3) (2026-10-21)
 
