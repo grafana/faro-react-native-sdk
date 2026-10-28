@@ -10539,14 +10539,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"js-yaml@npm:~5.2.1":
-  version: 5.2.3
-  resolution: "js-yaml@npm:5.2.3"
+"js-yaml@npm:5.4.3":
+  version: 5.4.3
+  resolution: "js-yaml@npm:5.4.3"
   dependencies:
     argparse: "npm:^2.0.1"
   bin:
     js-yaml: bin/js-yaml.mjs
-  checksum: 10c0/55cd6310c8eee88d432ae038d451ac9d6aa0eb9e5d38a94df3d6c4a4015d08c9dad7c18669e0e8854e4173a615d6b6b7448bd0aac408773f8a46122ffd863c69
+  checksum: 10c0/7180bf35feef9815a06cb2f8845c1196f1e4264430a04623884d87c3d21475de7d46a86c9c5142dcc1646c788bc0e676eb09ba817810707e0b4e984f7cf93a5f
   languageName: node
   linkType: hard
 
