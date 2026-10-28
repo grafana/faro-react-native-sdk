@@ -162,7 +162,6 @@ describe('initializeFaro', () => {
         device_brand: 'Apple',
         device_is_physical: 'true',
         device_id: 'preloaded-device-id',
-        device_type: 'mobile',
         device_memory_total: '100',
         device_memory_used: '50',
       },
@@ -176,7 +175,6 @@ describe('initializeFaro', () => {
           manufacturer: 'apple',
           model_identifier: 'test-model-identifier',
           model_name: 'Test Phone',
-          type: 'mobile',
         },
         os: {
           detail: 'iOS 17.0',

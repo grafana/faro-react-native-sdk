@@ -1013,10 +1013,15 @@ Every telemetry event automatically includes default session attributes with dev
 | `device_model_name`    | Human-readable model | `iPhone 15 Pro`  | `SM-A155F`\*          |
 | `device_brand`         | Device brand         | `Apple`          | `samsung`             |
 | `device_is_physical`   | Physical or emulator | `true`           | `true`                |
-| `device_id`            | Unique device ID     | `uuid`           | `uuid`                |
+| `device_id`            | Installation ID      | `uuid`           | `uuid`                |
 
 \*Android does not provide a mapping from model codes to marketing names, so `device_model_name` equals `device_model`.
 On iOS, `device_model_name` is omitted when `react-native-device-info` does not know the model identifier yet.
+
+`device_id` is deprecated. Use `meta.app.installationId`, which holds the same value. The SDK still sends `device_id`.
+It is not a device ID. It holds the installation ID, which the SDK keeps in AsyncStorage. A reinstall usually creates
+a new ID. On Android, Auto Backup can restore the old ID when the app is reinstalled. A backup restore to a new device
+can also keep the old ID.
 
 The SDK version is not a session attribute. It is in `meta.sdk.version` (for example `1.4.1`). The `@grafana/faro-core`
 version is in `meta.sdk.integrations`.
@@ -1359,7 +1364,7 @@ The Faro React Native SDK automatically collects comprehensive device informatio
 
 The SDK collects the following device information synchronously:
 
-- **Device Info**: Brand, model, device ID, type (mobile/tablet)
+- **Device Info**: Brand, model, installation ID, CPU architecture, screen size and density, total memory
 - **System Info**: OS name, OS version, app version
 - **Locale/Language**: Device locales, timezone, primary language
 
@@ -1382,11 +1387,10 @@ All device information is sent as session attributes (not browser meta):
 - `device_model_name` - Human-readable name (e.g., "iPhone 15 Pro"); omitted for iOS models unknown to `react-native-device-info`
 - `device_brand` - Device brand (e.g., "Apple", "samsung")
 - `device_is_physical` - Physical device or emulator ("true" or "false")
-- `device_id` - Unique device identifier (UUID)
+- `device_id` - Deprecated: use `meta.app.installationId`, which holds the same value. Installation ID (UUID). It identifies the app installation, not the device. A reinstall usually creates a new ID, but a backup restore can keep the old one
 
 **Additional Monitoring Attributes (React Native specific):**
 
-- `device_type` - Device type ("mobile" or "tablet")
 - `device_memory_total` - Total device memory in bytes
 - `device_memory_used` - Memory used by the app process in bytes, not by the whole device
 - `device_battery_level` - Battery percentage (e.g., "85") - if available
@@ -1397,6 +1401,24 @@ All device information is sent as session attributes (not browser meta):
 Battery, charging, and low power mode are captured once when Faro initializes.
 
 These attributes are automatically collected during Faro initialization and included with all telemetry events.
+
+### Typed Device and OS Meta
+
+The SDK also sends device and OS information in typed `meta.device` and `meta.os`. These fields are read once when
+Faro initializes:
+
+- `meta.device`: `manufacturer`, `model_identifier`, `model_name`, `brand`, and `is_physical`
+- `meta.device.arch` - CPU architecture as the platform reports it: the preferred ABI from `Build.SUPPORTED_ABIS` on Android (e.g., "arm64-v8a"), the architecture the app is built for on iOS (e.g., "arm64", or "x86_64" on an Intel simulator). iOS has no runtime call that returns an architecture string, so the compiler sets this value
+- `meta.device.screen_width`, `meta.device.screen_height` - Screen width and height in physical pixels, as the OS reports them. They are not swapped.
+  - iOS: `UIScreen.nativeBounds`, which is always in portrait orientation
+  - Android: the real display size in the orientation when the SDK starts, so an app that starts in landscape reports a width larger than the height
+- `meta.device.screen_density` - Physical pixels per point on iOS (`UIScreen.nativeScale`) or per density-independent pixel on Android (e.g., `3`)
+- `meta.device.memory_total` - Total device memory in whole MB (1 MB is 1,048,576 bytes)
+- `meta.os`: `name`, `version`, `build_id`, `detail`
+- `meta.os.api_level` - Android API level (e.g., 35), Android only
+
+The Faro payload specification does not define `arch`, `screen_width`, `screen_height`, `screen_density`,
+`memory_total`, and `api_level` yet, so Grafana Cloud does not store them yet.
 
 ### Querying Device Information
 
