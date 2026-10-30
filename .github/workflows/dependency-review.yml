@@ -26,3 +26,8 @@ jobs:
             BlueOak-1.0.0, Unlicense, CC0-1.0,
             CC-BY-4.0,
             Artistic-2.0
+          # Demo-only CocoaPods tooling (demo/Gemfile.lock). The Ruby license
+          # lets users take the code under BSD-2-Clause instead.
+          allow-dependencies-licenses: >-
+            pkg:gem/json,
+            pkg:gem/concurrent-ruby
