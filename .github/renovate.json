@@ -39,12 +39,22 @@
     },
     {
       "description": "Hold OpenTelemetry JS 3.0 (stable 3.x, experimental 0.300.x, API 1.10). otlp-transformer 0.300 drops the deep import faroTraceExporter.ts uses, and the 2.x packages accept only @opentelemetry/api <1.10.0. Remove these three rules when we migrate to OpenTelemetry JS 3.0.",
-      "matchPackageNames": ["@opentelemetry/core", "@opentelemetry/resources", "@opentelemetry/sdk-trace-base", "@opentelemetry/sdk-trace-web"],
+      "matchPackageNames": [
+        "@opentelemetry/core",
+        "@opentelemetry/resources",
+        "@opentelemetry/sdk-trace-base",
+        "@opentelemetry/sdk-trace-web"
+      ],
       "allowedVersions": "<3.0.0"
     },
     {
       "description": "See the OpenTelemetry JS 3.0 hold above.",
-      "matchPackageNames": ["@opentelemetry/instrumentation", "@opentelemetry/instrumentation-fetch", "@opentelemetry/instrumentation-xml-http-request", "@opentelemetry/otlp-transformer"],
+      "matchPackageNames": [
+        "@opentelemetry/instrumentation",
+        "@opentelemetry/instrumentation-fetch",
+        "@opentelemetry/instrumentation-xml-http-request",
+        "@opentelemetry/otlp-transformer"
+      ],
       "allowedVersions": "<0.300.0"
     },
     {
