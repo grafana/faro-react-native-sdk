@@ -33,6 +33,26 @@
       "groupName": "patch updates"
     },
     {
+      "description": "Gradle 9.7+ bundles Kotlin 2.4. @react-native/gradle-plugin compiles with its own pinned Kotlin 2.2, which cannot read Kotlin 2.4 metadata, so the demo's Android build fails. React Native main moved to Kotlin 2.3 (facebook/react-native#59535). Lift this cap when the demo is on React Native 0.89.",
+      "matchManagers": ["gradle-wrapper"],
+      "allowedVersions": "<9.7.0"
+    },
+    {
+      "description": "Hold OpenTelemetry JS 3.0 (stable 3.x, experimental 0.300.x, API 1.10). otlp-transformer 0.300 drops the deep import faroTraceExporter.ts uses, and the 2.x packages accept only @opentelemetry/api <1.10.0. Remove these three rules when we migrate to OpenTelemetry JS 3.0.",
+      "matchPackageNames": ["@opentelemetry/core", "@opentelemetry/resources", "@opentelemetry/sdk-trace-base", "@opentelemetry/sdk-trace-web"],
+      "allowedVersions": "<3.0.0"
+    },
+    {
+      "description": "See the OpenTelemetry JS 3.0 hold above.",
+      "matchPackageNames": ["@opentelemetry/instrumentation", "@opentelemetry/instrumentation-fetch", "@opentelemetry/instrumentation-xml-http-request", "@opentelemetry/otlp-transformer"],
+      "allowedVersions": "<0.300.0"
+    },
+    {
+      "description": "See the OpenTelemetry JS 3.0 hold above.",
+      "matchPackageNames": ["@opentelemetry/api"],
+      "allowedVersions": "<1.10.0"
+    },
+    {
       "description": "Enforce the org-default 3-day release-age cooldown on ALL npm depTypes (incl @grafana/*, which the injected Grafana org preset exempts) to match yarn's npmMinimalAgeGate in .yarnrc.yml. Placed last so it overrides that preset. Keep this value in sync with that .yarnrc.yml, otherwise Renovate proposes versions yarn refuses to lock and the renovate/artifacts check fails.",
       "matchDatasources": ["npm"],
       "minimumReleaseAge": "3 days"
