@@ -44,7 +44,7 @@
     "@react-native/typescript-config": "0.87.1",
     "@types/react": "19.2.18",
     "@types/react-test-renderer": "19.1.0",
-    "eslint": "8.57.1",
+    "eslint": "9.39.5",
     "prettier": "2.8.8",
     "react-native-dotenv": "3.4.12",
     "react-test-renderer": "19.2.3",
