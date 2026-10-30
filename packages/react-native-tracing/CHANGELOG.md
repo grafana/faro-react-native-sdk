@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.5](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v2.0.4...faro-react-native-tracing-v2.0.5) (2026-10-30)
+
+### Dependencies
+
+- The following workspace dependencies were updated
+  - dependencies
+    - @grafana/faro-react-native bumped to 1.5.1
+
 ## [2.0.4](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v2.0.3...faro-react-native-tracing-v2.0.4) (2026-10-28)
 
 ### Dependencies

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.5.0...faro-react-native-v1.5.1) (2026-10-30)
+
+### Bug Fixes
+
+- **react-native:** find the Swift header when built as a framework ([#243](https://github.com/grafana/faro-react-native-sdk/issues/243)) ([7730381](https://github.com/grafana/faro-react-native-sdk/commit/77303818e0036140e1d591d69611aadc592157c3)), closes [#135](https://github.com/grafana/faro-react-native-sdk/issues/135)
+
 ## [1.5.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.3...faro-react-native-v1.5.0) (2026-10-28)
 
 ### Features
