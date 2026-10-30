@@ -1,6 +1,10 @@
 #import "FaroReactNativeModule.h"
 #import <React/RCTBridgeModule.h>
+#if __has_include(<FaroReactNative/FaroReactNative-Swift.h>)
+#import <FaroReactNative/FaroReactNative-Swift.h>
+#else
 #import "FaroReactNative-Swift.h"
+#endif
 
 static NSLock *FaroSessionPersistenceLock(void)
 {
