@@ -4,6 +4,7 @@ import { makeRNConfig } from './config/makeRNConfig';
 import type { ReactNativeConfig } from './config/types';
 import { loadMobileMetaForInit } from './instrumentations/session/sessionAttributes';
 import { loadAppSymbolsBundleIdForInit } from './metas/appBuildIdentity';
+import { OfflineTransport } from './transports/offline';
 
 /**
  * Awaits async device/session attribute collection and the build identity used
@@ -17,5 +18,15 @@ export async function initializeFaro(config: ReactNativeConfig): Promise<Faro> {
     loadAppSymbolsBundleIdForInit(),
   ]);
   const fullConfig = makeRNConfig(config, preloadedMobileMeta, appSymbolsBundleId);
-  return initializeFaroCore(fullConfig);
+  const faro = initializeFaroCore(fullConfig);
+  for (const transport of faro?.transports.transports ?? []) {
+    if (transport instanceof OfflineTransport) {
+      transport.setOtherTransports(() => {
+        const transports = faro.transports.transports;
+        return faro.transports.isPaused() || !transports.includes(transport) ? [] : transports;
+      });
+      void transport.forceReplay();
+    }
+  }
+  return faro;
 }
