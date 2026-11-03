@@ -4,6 +4,7 @@ import { BaseInstrumentation } from '@grafana/faro-core';
 import type { ExceptionStackFrame } from '@grafana/faro-core';
 
 import { looksLikeNativeTombstoneTrace } from './android/nativeTombstoneTrace';
+import { omitRelaunchDeviceState } from './omitRelaunchDeviceState';
 import type { CrashReport, CrashReportingOptions } from './types';
 
 interface CrashReportDetails {
@@ -278,12 +279,19 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
     const error = new Error(errorMessage);
     error.stack = undefined;
 
-    this.api.pushError(error, {
-      stackFrames,
-      context,
-      type: 'crash',
-      fatal: true,
-    });
+    // The push builds the item from the live meta, which holds the relaunch's dynamic values.
+    const execute = this.transports.execute;
+    this.transports.execute = (item) => execute(omitRelaunchDeviceState(item));
+    try {
+      this.api.pushError(error, {
+        stackFrames,
+        context,
+        type: 'crash',
+        fatal: true,
+      });
+    } finally {
+      this.transports.execute = execute;
+    }
 
     this.logDebug(`Sent crash report: ${errorMessage}`);
   }

@@ -10,6 +10,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.WritableMap
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 
@@ -40,6 +41,11 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
 
     private var anrTracker: ANRTracker? = null
     private val sessionPersistenceOwner = Any()
+
+    init {
+        // Listeners keep the battery and thermal values current before the first read.
+        FaroDynamicDeviceState.start(reactContext.applicationContext)
+    }
 
     override fun getName(): String = NAME
 
@@ -113,6 +119,17 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun isConnectedToPower(promise: Promise) {
         promise.resolve(FaroPowerSource.isConnected(reactApplicationContext))
+    }
+
+    /**
+     * Battery, thermal and network values that change while the app runs.
+     *
+     * Reads values that system listeners keep current, plus one cheap network read. Omits every
+     * value that cannot be read.
+     */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun getDynamicDeviceState(): WritableMap {
+        return Arguments.makeNativeMap(FaroDynamicDeviceState.current(reactApplicationContext))
     }
 
     /**

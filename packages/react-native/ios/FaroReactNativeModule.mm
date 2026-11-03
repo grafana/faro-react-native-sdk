@@ -41,6 +41,11 @@ RCT_EXPORT_MODULE(FaroReactNativeModule)
   if (self = [super init]) {
     if ([NSThread isMainThread]) {
       _screenMetrics = [FaroReactNative getScreenMetrics];
+      [FaroDynamicDeviceState start];
+    } else {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [FaroDynamicDeviceState start];
+      });
     }
   }
   return self;
@@ -69,6 +74,13 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCpuArchitecture)
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getScreenMetrics)
 {
   return self.screenMetrics ?: [NSNull null];
+}
+
+/// Battery, thermal and network values that change while the app runs, read from a cache that
+/// system notifications keep current. Omits every value that cannot be read. There is no carrier on iOS.
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getDynamicDeviceState)
+{
+  return [FaroDynamicDeviceState current];
 }
 
 /// Allows only one React Native runtime in a process to persist sessions.

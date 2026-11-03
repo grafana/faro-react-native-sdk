@@ -2,6 +2,11 @@ import { type ExceptionEvent, initializeFaro, type TransportItem } from '@grafan
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import { SamplingRate } from '../../config/sampling';
+import {
+  DYNAMIC_DEVICE_STATE_TTL_MS,
+  DynamicDeviceStateProvider,
+  getDynamicDeviceStateMeta,
+} from '../../metas/dynamicDeviceState';
 import { FetchTransport } from '../../transports/fetch';
 import { SessionInstrumentation } from '../session';
 import { VolatileSessionsManager } from '../session/sessionManager/VolatileSessionManager';
@@ -529,5 +534,73 @@ describe('CrashReportingInstrumentation', () => {
 
     expect(setup.sendSpy).not.toHaveBeenCalled();
     expect(setup.nativeModule.acknowledgeCrashReports).toHaveBeenCalledWith(['report-a']);
+  });
+
+  describe('relaunch device state', () => {
+    const relaunchState = new DynamicDeviceStateProvider(
+      () => 0,
+      DYNAMIC_DEVICE_STATE_TTL_MS,
+      () => ({
+        device: { battery_level: 9, is_charging: true, low_power_mode: true, thermal_state: 'serious' },
+        network: { connection_type: 'wifi', reachable: true },
+      })
+    );
+    const dynamicMetas = [getDynamicDeviceStateMeta({ is_physical: true, brand: 'Apple' }, relaunchState)];
+    const relaunchSessionAttributes = {
+      device_battery_level: '9',
+      device_is_charging: 'true',
+      device_low_power_mode: 'true',
+      device_carrier: 'Verizon',
+      device_brand: 'Apple',
+    };
+
+    it('does not send the relaunch values with a crash sent through the legacy path', () => {
+      const transport = new MockTransport();
+      const instrumentation = new CrashReportingInstrumentation({ enabled: false });
+      const faro = initializeFaro(
+        mockConfig({ metas: dynamicMetas, transports: [transport], instrumentations: [instrumentation] })
+      );
+      faro.api.setSession({ id: 'session-b', attributes: relaunchSessionAttributes });
+      const execute = faro.transports.execute;
+
+      (instrumentation as unknown as { sendCrashReport: (crash: CrashReport) => void }).sendCrashReport(
+        createCrashReport()
+      );
+      faro.api.pushLog(['live']);
+
+      const [crash, live] = transport.items;
+      expect(crash?.type).toBe('exception');
+      expect(crash?.meta.device).toEqual({ is_physical: true, brand: 'Apple' });
+      expect(crash?.meta).not.toHaveProperty('network');
+      expect(crash?.meta.session?.attributes).toEqual({ device_brand: 'Apple' });
+      expect(live?.meta.device).toMatchObject({ battery_level: 9, thermal_state: 'serious' });
+      expect(live?.meta).toHaveProperty('network', { connection_type: 'wifi', reachable: true });
+      expect(live?.meta.session?.attributes).toEqual(relaunchSessionAttributes);
+      expect(faro.transports.execute).toBe(execute);
+    });
+
+    it('does not send the relaunch values with a crash replayed from its original session', async () => {
+      const transport = new FetchTransport({ url: 'http://example.com/collect' });
+      const instrumentation = new AndroidCrashReportingInstrumentation({ enabled: false });
+      const faro = initializeFaro(
+        mockConfig({ metas: dynamicMetas, transports: [transport], instrumentations: [instrumentation] })
+      );
+      faro.api.setSession({ id: 'session-b', attributes: relaunchSessionAttributes });
+      androidInstrumentations.push(instrumentation);
+      const nativeModule = createNativeCrashModule([createCrashReport()]);
+      const sendSpy = jest.spyOn(transport, 'sendWithResult').mockResolvedValue({ outcome: 'accepted', status: 202 });
+      const testable = instrumentation as unknown as TestableAndroidCrashInstrumentation;
+      testable.prepareCrashReporting(nativeModule);
+
+      expect(faro.metas.value.device).toMatchObject({ battery_level: 9 });
+
+      await testable.processCrashReports(nativeModule);
+
+      const item = sendSpy.mock.calls[0]?.[0]?.[0] as TransportItem<ExceptionEvent>;
+      expect(item.meta.session?.id).toBe('session-a');
+      expect(item.meta.device).toEqual({ is_physical: true, brand: 'Apple' });
+      expect(item.meta).not.toHaveProperty('network');
+      expect(item.meta.session?.attributes?.['device_battery_level']).toBeUndefined();
+    });
   });
 });
