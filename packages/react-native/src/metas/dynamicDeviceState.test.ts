@@ -112,9 +112,9 @@ describe('DynamicDeviceStateProvider', () => {
     const read = jest.fn(() => state);
     const provider = new DynamicDeviceStateProvider(() => now, DYNAMIC_DEVICE_STATE_TTL_MS, read);
 
-    provider.current;
+    expect(provider.current).toBe(state);
     now = 1000;
-    provider.current;
+    expect(provider.current).toBe(state);
 
     expect(read).toHaveBeenCalledTimes(2);
   });
@@ -197,9 +197,9 @@ describe('DynamicDeviceStateProvider while native works out the network state', 
     const clock = { now: 0 };
     const provider = providerWith(() => ({ connectionType: 'wifi', reachable: true }), clock);
 
-    provider.current;
+    expect(provider.current?.network.reachable).toBe(true);
     clock.now = DYNAMIC_DEVICE_STATE_TTL_MS;
-    provider.current;
+    expect(provider.current?.network.reachable).toBe(true);
 
     expect(NativeModules.FaroReactNativeModule.getDynamicDeviceState).toHaveBeenCalledTimes(1);
   });
