@@ -35,7 +35,7 @@ import UIKit
     private static var cachedIsCharging: Bool?
     private static var cachedLowPowerMode: Bool?
     private static var cachedThermalState: String?
-    private static var cachedRadioTechnologies: [String] = []
+    private static var cachedDataRadioTechnology: String?
     private static let telephonyInfo = CTTelephonyNetworkInfo()
 
     // The endpoint Android uses to validate a network, over HTTPS to satisfy App Transport Security.
@@ -87,7 +87,7 @@ import UIKit
         let processInfo = ProcessInfo.processInfo
         cachedLowPowerMode = processInfo.isLowPowerModeEnabled
         cachedThermalState = thermalStateName(processInfo.thermalState)
-        cachedRadioTechnologies = currentRadioTechnologies()
+        cachedDataRadioTechnology = currentDataRadioTechnology()
         observers.append(
             center.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: nil) { _ in
                 lock.lock()
@@ -106,10 +106,10 @@ import UIKit
             center.addObserver(
                 forName: .CTServiceRadioAccessTechnologyDidChange, object: nil, queue: nil
             ) { _ in
-                let technologies = currentRadioTechnologies()
+                let technology = currentDataRadioTechnology()
                 lock.lock()
                 defer { lock.unlock() }
-                cachedRadioTechnologies = technologies
+                cachedDataRadioTechnology = technology
             }
         )
 
@@ -117,6 +117,7 @@ import UIKit
         monitor.pathUpdateHandler = { path in
             lock.lock()
             latestPath = path
+            cachedDataRadioTechnology = currentDataRadioTechnology()
             // A result for the previous network says nothing about this one.
             probeGeneration += 1
             probedReachability = nil
@@ -136,7 +137,7 @@ import UIKit
         let probedReachability = probedReachability
         let lowPowerMode = cachedLowPowerMode
         let thermalState = cachedThermalState
-        let radioTechnologies = cachedRadioTechnologies
+        let dataRadioTechnology = cachedDataRadioTechnology
         lock.unlock()
 
         var state: [String: Any] = [:]
@@ -154,10 +155,7 @@ import UIKit
         }
 
         if let path {
-            let type = connectionType(
-                status: path.status,
-                interfaceType: path.availableInterfaces.first?.type
-            )
+            let type = connectionType(for: path)
             state[connectionTypeKey] = type
             // NWPath only says whether a route exists, so a satisfied path waits for the probe.
             if path.status != .satisfied {
@@ -168,7 +166,7 @@ import UIKit
                 state[reachabilityPendingKey] = true
             }
             if type == "cell" {
-                if let subtype = connectionSubtypeName(radioTechnologies: radioTechnologies) {
+                if let subtype = connectionSubtypeName(radioTechnology: dataRadioTechnology) {
                     state[connectionSubtypeKey] = subtype
                 }
             }
@@ -219,8 +217,18 @@ import UIKit
         }.resume()
     }
 
-    private static func currentRadioTechnologies() -> [String] {
-        telephonyInfo.serviceCurrentRadioAccessTechnology.map { Array($0.values) } ?? []
+    /// The radio technology of the SIM that carries mobile data. On a dual-SIM phone the other SIM
+    /// can report a different technology, so it must not decide the subtype. Without a known data
+    /// SIM and with more than one SIM reporting, there is nothing safe to pick.
+    private static func currentDataRadioTechnology() -> String? {
+        guard let technologies = telephonyInfo.serviceCurrentRadioAccessTechnology else {
+            return nil
+        }
+        if let dataServiceIdentifier = telephonyInfo.dataServiceIdentifier,
+            let technology = technologies[dataServiceIdentifier] {
+            return technology
+        }
+        return technologies.count == 1 ? technologies.values.first : nil
     }
 
     // The caller holds `lock`.
@@ -264,33 +272,28 @@ import UIKit
         }
     }
 
-    static func connectionType(
-        status: NWPath.Status,
-        interfaceType: NWInterface.InterfaceType?
-    ) -> String {
-        guard status == .satisfied else {
+    /// Checks the interface types in the same order as Android: wifi, then cell, then wired. A VPN
+    /// shows up as an `other` interface and `usesInterfaceType` also reports the interface under it,
+    /// so a VPN does not hide the underlying connection.
+    static func connectionType(for path: NWPath) -> String {
+        guard path.status == .satisfied else {
             return "unavailable"
         }
-        switch interfaceType {
-        case .wifi:
+        if path.usesInterfaceType(.wifi) {
             return "wifi"
-        case .cellular:
-            return "cell"
-        case .wiredEthernet:
-            return "wired"
-        default:
-            return "unknown"
         }
+        if path.usesInterfaceType(.cellular) {
+            return "cell"
+        }
+        if path.usesInterfaceType(.wiredEthernet) {
+            return "wired"
+        }
+        return "unknown"
     }
 
     /// Maps a `CTRadioAccessTechnology` value to an OpenTelemetry subtype name.
-    static func connectionSubtypeName(radioTechnologies: [String]) -> String? {
-        for technology in radioTechnologies.sorted() {
-            if let name = radioTechnologyNames[technology] {
-                return name
-            }
-        }
-        return nil
+    static func connectionSubtypeName(radioTechnology: String?) -> String? {
+        radioTechnology.flatMap { radioTechnologyNames[$0] }
     }
 
     private static let radioTechnologyNames: [String: String] = {

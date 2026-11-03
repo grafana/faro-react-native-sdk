@@ -579,6 +579,32 @@ describe('CrashReportingInstrumentation', () => {
       expect(faro.transports.execute).toBe(execute);
     });
 
+    it('does not send the relaunch values with a crash whose JSON cannot be parsed', async () => {
+      const transport = new MockTransport();
+      const instrumentation = new IosCrashReportingInstrumentation({ enabled: false });
+      const faro = initializeFaro(
+        mockConfig({ metas: dynamicMetas, transports: [transport], instrumentations: [instrumentation] })
+      );
+      faro.api.setSession({ id: 'session-b', attributes: relaunchSessionAttributes });
+      iosInstrumentations.push(instrumentation);
+      const nativeModule = {
+        getCrashReport: jest.fn().mockResolvedValue(['{not json']),
+      } as unknown as NativeCrashModule;
+      const testable = instrumentation as unknown as TestableIosCrashInstrumentation;
+      testable.prepareCrashReporting(nativeModule);
+      const execute = faro.transports.execute;
+
+      await testable.processCrashReports(nativeModule);
+
+      expect(transport.items).toHaveLength(1);
+      const [crash] = transport.items;
+      expect((crash?.payload as ExceptionEvent).value).toBe('Application crash (parse error)');
+      expect(crash?.meta.device).toEqual({ is_physical: true, brand: 'Apple' });
+      expect(crash?.meta).not.toHaveProperty('network');
+      expect(crash?.meta.session?.attributes).toEqual({ device_brand: 'Apple' });
+      expect(faro.transports.execute).toBe(execute);
+    });
+
     it('does not send the relaunch values with a crash replayed from its original session', async () => {
       const transport = new FetchTransport({ url: 'http://example.com/collect' });
       const instrumentation = new AndroidCrashReportingInstrumentation({ enabled: false });

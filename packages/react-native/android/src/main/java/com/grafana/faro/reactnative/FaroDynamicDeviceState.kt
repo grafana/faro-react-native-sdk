@@ -84,7 +84,11 @@ internal object FaroDynamicDeviceState {
             filter.addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(receiverContext: Context?, intent: Intent?) {
-                    readBattery(intent)
+                    // Only the battery broadcast has battery extras. Reading them from the
+                    // Battery Saver broadcast would clear the level and the charging state.
+                    if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
+                        readBattery(intent)
+                    }
                     readLowPowerMode(receiverContext)
                 }
             }
@@ -245,6 +249,21 @@ internal object FaroDynamicDeviceState {
         } catch (_: RuntimeException) {
             null
         }
+    }
+
+    /** Forgets the listeners and the cache, so a test can start from the beginning. */
+    @VisibleForTesting
+    fun resetForTests() {
+        synchronized(lock) {
+            started = false
+        }
+        batteryLevel = null
+        isCharging = null
+        lowPowerMode = null
+        thermalState = null
+        connectionType = null
+        reachable = null
+        defaultNetwork = null
     }
 
     /** Whole percent from 0 to 100, or null when the system reports no level. */

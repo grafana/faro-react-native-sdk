@@ -3,12 +3,14 @@ package com.grafana.faro.reactnative
 import android.content.Context
 import android.content.Intent
 import android.os.BatteryManager
+import android.os.PowerManager
 import android.telephony.TelephonyManager
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -20,6 +22,12 @@ import org.robolectric.annotation.Config
 class FaroDynamicDeviceStateTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
+
+    // The state is a singleton that registers its listeners once, on the first context it sees.
+    @Before
+    fun resetState() {
+        FaroDynamicDeviceState.resetForTests()
+    }
 
 
     @Test
@@ -121,6 +129,19 @@ class FaroDynamicDeviceStateTest {
 
         assertEquals(79, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
         assertEquals(true, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.IS_CHARGING_KEY])
+    }
+
+    @Test
+    fun current_keepsTheBatteryStateWhenBatterySaverChanges() {
+        sendBattery(level = 64, plugged = BatteryManager.BATTERY_PLUGGED_AC)
+        assertEquals(64, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
+
+        context.sendBroadcast(Intent(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        val state = FaroDynamicDeviceState.current(context)
+        assertEquals(64, state[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
+        assertEquals(true, state[FaroDynamicDeviceState.IS_CHARGING_KEY])
     }
 
     @Suppress("DEPRECATION")
