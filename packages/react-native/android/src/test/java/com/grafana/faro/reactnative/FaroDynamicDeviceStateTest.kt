@@ -2,6 +2,7 @@ package com.grafana.faro.reactnative
 
 import android.content.Context
 import android.content.Intent
+import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.PowerManager
 import android.telephony.TelephonyManager
@@ -13,8 +14,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowNetworkCapabilities
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -142,6 +146,45 @@ class FaroDynamicDeviceStateTest {
         val state = FaroDynamicDeviceState.current(context)
         assertEquals(64, state[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
         assertEquals(true, state[FaroDynamicDeviceState.IS_CHARGING_KEY])
+    }
+
+    @Test
+    fun current_neverPairsTheTypeOfOneNetworkWithTheReachabilityOfAnother() {
+        val wifi = capabilities(NetworkCapabilities.TRANSPORT_WIFI, validated = true)
+        val cell = capabilities(NetworkCapabilities.TRANSPORT_CELLULAR, validated = false)
+        val reachabilityOf = mapOf("wifi" to true, "cell" to false)
+        // The first read starts the listeners and seeds the cache, so do it before the writer runs.
+        FaroDynamicDeviceState.current(context)
+
+        val stop = AtomicBoolean(false)
+        val writer = thread {
+            var flip = false
+            while (!stop.get()) {
+                FaroDynamicDeviceState.applyCapabilities(if (flip) wifi else cell)
+                flip = !flip
+            }
+        }
+        try {
+            repeat(20_000) {
+                val state = FaroDynamicDeviceState.current(context)
+                val type = state[FaroDynamicDeviceState.CONNECTION_TYPE_KEY]
+                if (type in reachabilityOf) {
+                    assertEquals(reachabilityOf[type], state[FaroDynamicDeviceState.REACHABLE_KEY])
+                }
+            }
+        } finally {
+            stop.set(true)
+            writer.join()
+        }
+    }
+
+    private fun capabilities(transport: Int, validated: Boolean): NetworkCapabilities {
+        val capabilities = ShadowNetworkCapabilities.newInstance()
+        shadowOf(capabilities).addTransportType(transport)
+        if (validated) {
+            shadowOf(capabilities).addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        }
+        return capabilities
     }
 
     @Suppress("DEPRECATION")
