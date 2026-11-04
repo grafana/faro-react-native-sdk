@@ -36,7 +36,7 @@ describe('StartupInstrumentation', () => {
       listeners.add(listener);
       return { remove: jest.fn(() => listeners.delete(listener)) };
     });
-    NativeModules['FaroReactNativeModule'].getAppStartDuration.mockReturnValue(0);
+    NativeModules['FaroReactNativeModule'].getAppStartDuration.mockReset().mockReturnValue(0);
     instrumentation = new StartupInstrumentation();
     transport = new MockTransport();
   });
@@ -161,10 +161,13 @@ describe('StartupInstrumentation', () => {
   it('keeps initialization and teardown idempotent', () => {
     NativeModules['FaroReactNativeModule'].getAppStartDuration.mockReturnValue(120);
     initialize();
+    const listener = Array.from(listeners)[0];
+    jest.advanceTimersByTime(50);
     instrumentation.initialize();
-    expect(listeners.size).toBe(1);
+    expect(Array.from(listeners)).toEqual([listener]);
+    expect(NativeModules['FaroReactNativeModule'].getAppStartDuration).toHaveBeenCalledTimes(1);
     expect(jest.getTimerCount()).toBe(1);
-    jest.advanceTimersByTime(100);
+    jest.advanceTimersByTime(50);
     expect(transport.items).toHaveLength(1);
     expect(transport.items[0]?.payload).toMatchObject({
       type: 'app_startup',
@@ -219,6 +222,95 @@ describe('StartupInstrumentation', () => {
     expect(frames.size).toBe(0);
     drawFrame();
 
+    expect(transport.items).toHaveLength(0);
+  });
+
+  it('captures a fresh cold start when registered with another Faro instance', () => {
+    const getter = NativeModules['FaroReactNativeModule'].getAppStartDuration;
+    getter.mockReturnValueOnce(120).mockReturnValueOnce(240);
+    initialize();
+    jest.advanceTimersByTime(100);
+    expect(transport.items).toHaveLength(1);
+
+    const nextTransport = new MockTransport();
+    initializeFaro(mockConfig({ transports: [nextTransport], instrumentations: [instrumentation] }));
+    jest.advanceTimersByTime(100);
+
+    expect(nextTransport.items).toHaveLength(1);
+    expect(nextTransport.items[0]?.payload).toMatchObject({
+      type: 'app_startup',
+      values: { appStartDuration: 240, coldStart: 1 },
+    });
+    expect(transport.items).toHaveLength(1);
+    expect(listeners.size).toBe(1);
+  });
+
+  it('drops pending work and retained callbacks when registered with another Faro instance', () => {
+    const getter = NativeModules['FaroReactNativeModule'].getAppStartDuration;
+    getter.mockReturnValueOnce(120).mockReturnValueOnce(240);
+    const timers = jest.spyOn(global, 'setTimeout');
+    initialize();
+    const oldColdCallback = timers.mock.calls.find(([, delay]) => delay === 100)?.[0];
+    const oldListener = Array.from(listeners)[0];
+    changeState('background');
+    changeState('active');
+    const oldFrame = Array.from(frames.values())[0];
+    expect(oldColdCallback).toEqual(expect.any(Function));
+    expect(oldListener).toEqual(expect.any(Function));
+    expect(oldFrame).toEqual(expect.any(Function));
+
+    const nextTransport = new MockTransport();
+    const nextFaro = initializeFaro(mockConfig({ transports: [nextTransport], instrumentations: [instrumentation] }));
+    expect(listeners.size).toBe(1);
+    expect(Array.from(listeners)).not.toContain(oldListener);
+    expect(frames.size).toBe(0);
+    expect(jest.getTimerCount()).toBe(1);
+    jest.advanceTimersByTime(16);
+    oldListener?.('background');
+    oldListener?.('active');
+    oldFrame?.(16);
+    if (typeof oldColdCallback === 'function') {
+      oldColdCallback();
+    }
+    expect(transport.items).toHaveLength(0);
+    expect(nextTransport.items).toHaveLength(0);
+    expect(frames.size).toBe(0);
+
+    jest.advanceTimersByTime(84);
+    expect(nextTransport.items).toHaveLength(1);
+    expect(nextTransport.items[0]?.payload).toMatchObject({
+      values: { appStartDuration: 240, coldStart: 1 },
+    });
+    changeState('background');
+    changeState('active');
+    drawFrame();
+    expect(nextTransport.items).toHaveLength(2);
+    expect(nextTransport.items[1]?.payload).toMatchObject({
+      values: { appStartDuration: 16, coldStart: 0 },
+    });
+    expect(transport.items).toHaveLength(0);
+
+    nextFaro.instrumentations.remove(instrumentation);
+    expect(listeners.size).toBe(0);
+    expect(frames.size).toBe(0);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('does not carry background eligibility into another Faro instance', () => {
+    initialize();
+    changeState('background');
+    const nextTransport = new MockTransport();
+    initializeFaro(mockConfig({ transports: [nextTransport], instrumentations: [instrumentation] }));
+    changeState('active');
+    expect(frames.size).toBe(0);
+    drawFrame();
+
+    expect(transport.items).toHaveLength(0);
+    expect(nextTransport.items).toHaveLength(0);
+    changeState('background');
+    changeState('active');
+    drawFrame();
+    expect(nextTransport.items).toHaveLength(1);
     expect(transport.items).toHaveLength(0);
   });
 

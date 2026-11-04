@@ -1,6 +1,7 @@
 import { AppState, NativeModules } from 'react-native';
 
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
+import type { API } from '@grafana/faro-core';
 
 import type { StartupInstrumentationOptions } from './types';
 
@@ -45,7 +46,7 @@ export class StartupInstrumentation extends BaseInstrumentation {
   private warmStartFrame: ReturnType<typeof requestAnimationFrame> | undefined;
   private warmStartGeneration = 0;
   private coldStartTimer: ReturnType<typeof setTimeout> | undefined;
-  private initialized = false;
+  private initializedApi: API | undefined;
   private lifecycleGeneration = 0;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | undefined;
 
@@ -54,11 +55,12 @@ export class StartupInstrumentation extends BaseInstrumentation {
   }
 
   initialize(): void {
-    if (this.options.enabled === false || this.initialized) {
+    if (this.options.enabled === false || this.initializedApi === this.api) {
       return;
     }
 
-    this.initialized = true;
+    this.unpatch();
+    this.initializedApi = this.api;
     this.captureColdStartMetrics();
     this.setupWarmStartTracking();
   }
@@ -157,7 +159,7 @@ export class StartupInstrumentation extends BaseInstrumentation {
   }
 
   unpatch(): void {
-    this.initialized = false;
+    this.initializedApi = undefined;
     this.lifecycleGeneration++;
     this.warmStartEligible = false;
     this.cancelWarmStart();
