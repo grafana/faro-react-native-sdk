@@ -84,7 +84,6 @@ function createFetchInstrumentationOptions(
     ignoreNetworkEvents: true,
     // Keep this here to overwrite the defaults above if provided by the users
     ...fetchInstrumentationOptions,
-    semconvStabilityOptIn: 'http',
     // Always keep this function
     applyCustomAttributesOnSpan: fetchCustomAttributeFunctionWithDefaults(
       fetchInstrumentationOptions?.applyCustomAttributesOnSpan
