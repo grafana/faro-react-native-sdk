@@ -36,23 +36,17 @@ export interface MetaNetwork {
   /** Mobile carrier name. Android only. */
   carrier_name?: string;
 
-  /** Whether the internet is reachable. A wifi connection without internet is `false`. */
+  /** Whether the internet is reachable. A wifi connection without internet is `false`. Android only. */
   reachable?: boolean;
 }
 
 export interface DynamicDeviceState {
   device: DynamicMetaDevice;
   network: MetaNetwork;
-
-  /** Native is still working out the network state, so this read is incomplete and must not be kept for long. */
-  pending?: boolean;
 }
 
 /** The longest a native read is reused. It bounds the bridge calls, not the age of a value: native listeners keep their cache current. */
 export const DYNAMIC_DEVICE_STATE_TTL_MS = 5000;
-
-/** How long an incomplete read is reused. The native work ends within a few seconds, so this keeps the gap short. */
-export const DYNAMIC_DEVICE_STATE_PENDING_RETRY_MS = 250;
 
 const DYNAMIC_DEVICE_KEYS = ['battery_level', 'is_charging', 'low_power_mode', 'thermal_state'] as const;
 
@@ -106,7 +100,6 @@ export function parseDynamicDeviceState(native: unknown): DynamicDeviceState {
       carrier_name: Platform.OS === 'android' ? asText(raw['carrierName']) : undefined,
       reachable: asBoolean(raw['reachable']),
     }),
-    ...(raw['reachabilityPending'] === true ? { pending: true } : {}),
   };
 }
 
@@ -127,8 +120,7 @@ function readNativeDynamicDeviceState(): DynamicDeviceState | undefined {
 
 /**
  * Serves the dynamic device and network values from memory and re-reads the native cache at most
- * once per time-to-live. A read that native marks as pending is kept for a much shorter time, so a
- * field that is still being worked out is not missing for a whole time-to-live. Never throws.
+ * once per time-to-live. Never throws.
  */
 export class DynamicDeviceStateProvider {
   private state: DynamicDeviceState | undefined;
@@ -137,14 +129,12 @@ export class DynamicDeviceStateProvider {
   constructor(
     private readonly now: () => number = Date.now,
     private readonly timeToLiveMs: number = DYNAMIC_DEVICE_STATE_TTL_MS,
-    private readonly read: () => DynamicDeviceState | undefined = readNativeDynamicDeviceState,
-    private readonly pendingRetryMs: number = DYNAMIC_DEVICE_STATE_PENDING_RETRY_MS
+    private readonly read: () => DynamicDeviceState | undefined = readNativeDynamicDeviceState
   ) {}
 
   get current(): DynamicDeviceState | undefined {
     const now = this.now();
-    const timeToLiveMs = this.state?.pending ? this.pendingRetryMs : this.timeToLiveMs;
-    if (this.readAt !== undefined && now >= this.readAt && now - this.readAt <= timeToLiveMs) {
+    if (this.readAt !== undefined && now >= this.readAt && now - this.readAt <= this.timeToLiveMs) {
       return this.state;
     }
 

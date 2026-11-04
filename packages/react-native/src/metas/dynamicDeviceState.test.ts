@@ -1,7 +1,6 @@
 import { NativeModules, Platform } from 'react-native';
 
 import {
-  DYNAMIC_DEVICE_STATE_PENDING_RETRY_MS,
   DYNAMIC_DEVICE_STATE_TTL_MS,
   DynamicDeviceStateProvider,
   getDynamicDeviceStateMeta,
@@ -159,53 +158,6 @@ describe('DynamicDeviceStateProvider', () => {
     NativeModules.FaroReactNativeModule = nativeModule;
 
     expect(new DynamicDeviceStateProvider().current).toBeUndefined();
-  });
-});
-
-describe('DynamicDeviceStateProvider while native works out the network state', () => {
-  function providerWith(readNative: () => Record<string, unknown>, clock: { now: number }) {
-    NativeModules.FaroReactNativeModule = { getDynamicDeviceState: jest.fn(readNative) };
-    return new DynamicDeviceStateProvider(() => clock.now);
-  }
-
-  it('reads the pending flag and keeps it out of the meta', () => {
-    setPlatform('ios');
-    const provider = providerWith(() => ({ connectionType: 'wifi', reachabilityPending: true }), { now: 0 });
-
-    expect(provider.current).toEqual({ device: {}, network: { connection_type: 'wifi' }, pending: true });
-    expect(getDynamicDeviceStateMeta(undefined, provider)()).toEqual({ network: { connection_type: 'wifi' } });
-  });
-
-  it('reads again after the short retry time, not the whole time-to-live', () => {
-    setPlatform('ios');
-    const clock = { now: 0 };
-    let native: Record<string, unknown> = { connectionType: 'wifi', reachabilityPending: true };
-    const provider = providerWith(() => native, clock);
-
-    expect(provider.current?.network.reachable).toBeUndefined();
-
-    native = { connectionType: 'wifi', reachable: true };
-    clock.now = DYNAMIC_DEVICE_STATE_PENDING_RETRY_MS;
-    expect(provider.current?.network.reachable).toBeUndefined();
-
-    clock.now += 1;
-    expect(provider.current?.network.reachable).toBe(true);
-  });
-
-  it('goes back to the full time-to-live once the read is complete', () => {
-    setPlatform('ios');
-    const clock = { now: 0 };
-    const provider = providerWith(() => ({ connectionType: 'wifi', reachable: true }), clock);
-
-    expect(provider.current?.network.reachable).toBe(true);
-    clock.now = DYNAMIC_DEVICE_STATE_TTL_MS;
-    expect(provider.current?.network.reachable).toBe(true);
-
-    expect(NativeModules.FaroReactNativeModule.getDynamicDeviceState).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([false, 'true', 1])('ignores the pending value %p', (reachabilityPending) => {
-    expect(parseDynamicDeviceState({ reachabilityPending })).not.toHaveProperty('pending');
   });
 });
 
