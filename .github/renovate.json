@@ -48,19 +48,24 @@
       "allowedVersions": "<3.0.0"
     },
     {
-      "description": "See the OpenTelemetry JS 3.0 hold above.",
+      "description": "Hold the experimental OpenTelemetry packages at 0.220.x. 0.221 drops legacy HTTP attributes from XHR spans, which changes the telemetry SDK consumers receive, so that upgrade ships in its own PR with the exporter changes and a changelog note. Raise this to <0.300.0 (the OpenTelemetry JS 3.0 hold above) in that PR.",
       "matchPackageNames": [
         "@opentelemetry/instrumentation",
         "@opentelemetry/instrumentation-fetch",
         "@opentelemetry/instrumentation-xml-http-request",
         "@opentelemetry/otlp-transformer"
       ],
-      "allowedVersions": "<0.300.0"
+      "allowedVersions": "<0.221.0"
     },
     {
       "description": "See the OpenTelemetry JS 3.0 hold above.",
       "matchPackageNames": ["@opentelemetry/api"],
       "allowedVersions": "<1.10.0"
+    },
+    {
+      "description": "Keep @types/node on the Node major the repo targets (engines >=24.5.0, .nvmrc 24). Raise this together with those when moving to a newer Node line.",
+      "matchPackageNames": ["@types/node"],
+      "allowedVersions": "<25"
     },
     {
       "description": "Enforce the org-default 3-day release-age cooldown on ALL npm depTypes (incl @grafana/*, which the injected Grafana org preset exempts) to match yarn's npmMinimalAgeGate in .yarnrc.yml. Placed last so it overrides that preset. Keep this value in sync with that .yarnrc.yml, otherwise Renovate proposes versions yarn refuses to lock and the renovate/artifacts check fails.",
