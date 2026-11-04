@@ -1426,7 +1426,11 @@ platform cannot read it.
 Native listeners keep these values current, and the SDK reads them from a native cache without waiting, at most every
 5 seconds. Two Android fields have no listener that works without a runtime permission, so the SDK reads them from the
 system on each of those reads: `connection_subtype` and `carrier_name`. Android reads the connection with
-`ACCESS_NETWORK_STATE`, which the SDK adds to the manifest.
+`ACCESS_NETWORK_STATE`, which the SDK adds to the manifest. On Android 13 (API 33) and later,
+`connection_subtype` comes from `TelephonyManager` and needs `READ_BASIC_PHONE_STATE`. The SDK adds this normal,
+install-time permission to the manifest, so the user sees no prompt. An app that removes it loses
+`connection_subtype`. Older Android versions read the subtype from the deprecated `NetworkInfo`, which needs no
+permission.
 
 iOS has no OS-level check that the internet works, so `meta.network.reachable` there comes from a small background
 request to `https://connectivitycheck.gstatic.com/generate_204`, the endpoint Android uses for the same check. It runs

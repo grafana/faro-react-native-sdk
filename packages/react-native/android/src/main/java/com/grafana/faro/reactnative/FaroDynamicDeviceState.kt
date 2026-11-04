@@ -1,9 +1,11 @@
 package com.grafana.faro.reactnative
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -11,6 +13,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import android.telephony.TelephonyManager
+import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
 
 /**
@@ -19,7 +22,9 @@ import androidx.annotation.VisibleForTesting
  * Battery, Battery Saver, thermal state, connection type and reachability come from system
  * listeners that update cached values. The connection subtype and the carrier name are read on
  * demand: the listeners for them need the `READ_PHONE_STATE` runtime permission from API 31, and
- * this SDK asks for no runtime permission. Every value is omitted when it cannot be read.
+ * this SDK asks for no runtime permission. The subtype comes from `TelephonyManager` on API 33+,
+ * where the install-time `READ_BASIC_PHONE_STATE` permission allows it, and from the deprecated
+ * `NetworkInfo` below. Every value is omitted when it cannot be read.
  *
  * Ported from the Faro Flutter SDK's `DynamicDeviceState`.
  */
@@ -236,16 +241,38 @@ internal object FaroDynamicDeviceState {
         }
     }
 
-    // The deprecated NetworkInfo is the only subtype source that needs no permission.
-    @Suppress("DEPRECATION")
-    private fun readConnectionSubtype(context: Context): String? {
+    @VisibleForTesting
+    internal fun readConnectionSubtype(context: Context): String? {
         return try {
-            val connectivityManager =
-                context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            connectivityManager?.activeNetworkInfo?.let { connectionSubtypeName(it.subtype) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                readDataNetworkType(context)
+            } else {
+                readNetworkInfoSubtype(context)
+            }
         } catch (_: RuntimeException) {
             null
         }
+    }
+
+    // READ_BASIC_PHONE_STATE is a normal permission, but an app can remove it from its manifest.
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun readDataNetworkType(context: Context): String? {
+        if (context.checkSelfPermission(Manifest.permission.READ_BASIC_PHONE_STATE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return null
+        }
+
+        val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        return telephonyManager?.dataNetworkType?.let { connectionSubtypeName(it) }
+    }
+
+    // Before API 33 the deprecated NetworkInfo is the only subtype source that needs no permission.
+    @Suppress("DEPRECATION")
+    private fun readNetworkInfoSubtype(context: Context): String? {
+        val connectivityManager =
+            context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        return connectivityManager?.activeNetworkInfo?.let { connectionSubtypeName(it.subtype) }
     }
 
     // getNetworkOperatorName needs no permission, unlike the SIM and data-network calls that need

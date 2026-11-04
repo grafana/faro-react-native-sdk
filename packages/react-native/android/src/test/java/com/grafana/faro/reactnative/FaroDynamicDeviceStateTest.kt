@@ -1,5 +1,6 @@
 package com.grafana.faro.reactnative
 
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.NetworkCapabilities
@@ -195,5 +196,27 @@ class FaroDynamicDeviceStateTest {
                 .putExtra(BatteryManager.EXTRA_SCALE, 100)
                 .putExtra(BatteryManager.EXTRA_PLUGGED, plugged),
         )
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [33])
+    fun connectionSubtype_usesTheDataNetworkTypeWhenReadBasicPhoneStateIsGranted() {
+        val application = context as Application
+        shadowOf(application).grantPermissions("android.permission.READ_BASIC_PHONE_STATE")
+        val telephonyManager = application.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        shadowOf(telephonyManager).setDataNetworkType(TelephonyManager.NETWORK_TYPE_LTE)
+
+        assertEquals("lte", FaroDynamicDeviceState.readConnectionSubtype(application))
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [33])
+    fun connectionSubtype_isOmittedWhenReadBasicPhoneStateIsDenied() {
+        val application = context as Application
+        shadowOf(application).denyPermissions("android.permission.READ_BASIC_PHONE_STATE")
+        val telephonyManager = application.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        shadowOf(telephonyManager).setDataNetworkType(TelephonyManager.NETWORK_TYPE_LTE)
+
+        assertNull(FaroDynamicDeviceState.readConnectionSubtype(application))
     }
 }
