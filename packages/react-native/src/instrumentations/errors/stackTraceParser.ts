@@ -65,12 +65,7 @@ export interface ParsedStackFrame {
 
 /** Which parser branch handled a stack line (internal). */
 type ParsedStackLineKind =
-  | 'react_native_paren'
-  | 'metro_paren'
-  | 'anonymous_paren'
-  | 'native'
-  | 'release_func_at'
-  | 'unparsed';
+  'react_native_paren' | 'metro_paren' | 'anonymous_paren' | 'native' | 'release_func_at' | 'unparsed';
 
 const UNKNOWN_RELEASE_FILENAME = '<unknown>';
 
