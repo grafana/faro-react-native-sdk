@@ -49,8 +49,11 @@ The startup instrumentation captures both cold and warm starts (matches Faro Flu
 
 - **Cold start** (`coldStart: 1`): `appStartDuration` from process start to Faro SDK initialization
   - Native module init, RN runtime, JS bundle load, JS execution, Faro init
-- **Warm start** (`coldStart: 0`): `appStartDuration` from app resume to first frame
-  - Automatic via AppState (background → active)
+- **Warm start** (`coldStart: 0`): `appStartDuration` from the active AppState notification to the next JavaScript animation-frame callback
+  - Requires an observed background transition; an inactive interruption alone does not count
+  - Discarded if the app leaves the active state before the callback runs
+
+These are legacy timing intervals, not measurements of the first displayed app frame. Calling `destroy()` or `unpatch()` cancels pending startup measurements and removes the AppState listener.
 
 ## Installation
 
