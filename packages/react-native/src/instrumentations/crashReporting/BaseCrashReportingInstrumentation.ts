@@ -4,6 +4,7 @@ import { BaseInstrumentation } from '@grafana/faro-core';
 import type { ExceptionStackFrame } from '@grafana/faro-core';
 
 import { looksLikeNativeTombstoneTrace } from './android/nativeTombstoneTrace';
+import { omitRelaunchDeviceState } from './omitRelaunchDeviceState';
 import type { CrashReport, CrashReportingOptions } from './types';
 
 interface CrashReportDetails {
@@ -197,7 +198,7 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
           this.sendCrashReport(crash);
         } catch (parseError) {
           this.logError('Failed to parse crash report JSON', parseError);
-          this.api.pushError(new Error('Application crash (parse error)'), {
+          this.pushCrashError(new Error('Application crash (parse error)'), {
             context: {
               mechanism: 'crash',
               parseError: String(parseError),
@@ -273,12 +274,26 @@ export abstract class BaseCrashReportingInstrumentation extends BaseInstrumentat
     };
   }
 
+  /**
+   * Pushes a crash from a previous launch. The push builds the item from the live meta, which holds
+   * the relaunch's dynamic device and network values, so they are removed before the item is sent.
+   */
+  protected pushCrashError(error: Error, options: Parameters<typeof this.api.pushError>[1]): void {
+    const execute = this.transports.execute;
+    this.transports.execute = (item) => execute(omitRelaunchDeviceState(item));
+    try {
+      this.api.pushError(error, options);
+    } finally {
+      this.transports.execute = execute;
+    }
+  }
+
   protected sendCrashReport(crash: CrashReport): void {
     const { context, errorMessage, stackFrames } = this.buildCrashReportDetails(crash);
     const error = new Error(errorMessage);
     error.stack = undefined;
 
-    this.api.pushError(error, {
+    this.pushCrashError(error, {
       stackFrames,
       context,
       type: 'crash',

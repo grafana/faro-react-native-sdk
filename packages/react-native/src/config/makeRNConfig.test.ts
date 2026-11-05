@@ -1,4 +1,5 @@
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
+import type { Meta } from '@grafana/faro-core';
 
 import {
   minimalSessionDeviceAttributes,
@@ -11,7 +12,7 @@ import { OfflineTransport } from '../transports/offline';
 
 import { getRNInstrumentations } from './getRNInstrumentations';
 import { makeRNConfig } from './makeRNConfig';
-import type { ReactNativeConfig } from './types';
+import type { ReactNativeConfig, ReactNativeFullConfig } from './types';
 
 class ExtraInstrumentation extends BaseInstrumentation {
   readonly name = '@test/extra-instrumentation';
@@ -26,6 +27,10 @@ function disposeOfflineTransportsFromConfig(cfg: { transports?: unknown[] }): vo
       t.dispose();
     }
   }
+}
+
+function metaValue(metas: ReactNativeFullConfig['metas']): Meta {
+  return (metas ?? []).reduce<Meta>((acc, item) => Object.assign(acc, typeof item === 'function' ? item() : item), {});
 }
 
 describe('makeRNConfig', () => {
@@ -178,14 +183,14 @@ describe('makeRNConfig', () => {
       (cfg as { preloadedSessionDeviceAttributes?: { device_id: string } }).preloadedSessionDeviceAttributes?.device_id
     ).toBe('test-preloaded-id');
     expect(cfg.metas).toContainEqual({
-      device: {
-        is_physical: true,
-        model_identifier: 'iPhone16,1',
-      },
       os: {
         name: 'iOS',
         version: '17.0',
       },
+    });
+    expect(metaValue(cfg.metas).device).toEqual({
+      is_physical: true,
+      model_identifier: 'iPhone16,1',
     });
   });
 

@@ -3,6 +3,7 @@ import { NativeModules } from 'react-native';
 import { TransportItemType } from '@grafana/faro-core';
 import type { ExceptionEvent, Meta, TransportItem } from '@grafana/faro-core';
 
+import { omitDynamicDeviceFields } from '../../metas/dynamicDeviceState';
 import { FetchTransport } from '../../transports/fetch';
 import { captureSessionItem } from '../session/sessionCapture';
 
@@ -228,7 +229,8 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
         ...(crash.appBundleId ? { bundleId: crash.appBundleId } : {}),
       },
       ...(currentMeta.os ? { os: { ...currentMeta.os } } : {}),
-      ...(currentMeta.device ? { device: { ...currentMeta.device } } : {}),
+      // Dynamic values are the relaunch's, so only the static device fields describe the crashed process.
+      ...(currentMeta.device ? { device: omitDynamicDeviceFields(currentMeta.device) } : {}),
       session: {
         id: crash.sessionId,
         ...(isSampledAttribute ? { attributes: isSampledAttribute } : {}),

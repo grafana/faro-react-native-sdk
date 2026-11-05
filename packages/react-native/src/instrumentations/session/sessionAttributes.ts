@@ -65,19 +65,29 @@ export interface SessionAttributes {
   /** Memory used by the app process in bytes, not by the whole device */
   device_memory_used?: string;
 
-  /** Battery level percentage at SDK start (e.g., "85") - empty if unavailable */
+  /**
+   * Legacy snapshot at SDK start, so it goes stale. Current values are on `meta.device`.
+   * Battery level percentage (e.g., "85") - empty if unavailable
+   */
   device_battery_level?: string;
 
   /**
-   * Whether the device is connected to external power at SDK start ("true" or "false"), including when the
+   * Legacy snapshot at SDK start. Current values are on `meta.device`.
+   * Whether the device is connected to external power ("true" or "false"), including when the
    * battery is full or charging is paused - empty if unavailable
    */
   device_is_charging?: string;
 
-  /** Whether iOS Low Power Mode or Android Battery Saver is on at SDK start ("true" or "false") - empty if unavailable */
+  /**
+   * Legacy snapshot at SDK start. Current values are on `meta.device`.
+   * Whether iOS Low Power Mode or Android Battery Saver is on ("true" or "false") - empty if unavailable
+   */
   device_low_power_mode?: string;
 
-  /** Mobile carrier name (e.g., "Verizon") - empty if unavailable, which is always the case on iOS 16.4 and later */
+  /**
+   * Legacy snapshot at SDK start. The current value is on `meta.network.carrier_name`.
+   * Mobile carrier name (e.g., "Verizon") - empty if unavailable, which is always the case on iOS
+   */
   device_carrier?: string;
 }
 
@@ -286,6 +296,17 @@ async function getDeviceOsBuildId(): Promise<string | undefined> {
   }
 }
 
+/**
+ * Flat session attributes that hold values of the process that wrote them. A crash sent on the
+ * next launch must not carry the ones from the relaunch.
+ */
+export const DYNAMIC_SESSION_ATTRIBUTE_KEYS = [
+  'device_battery_level',
+  'device_is_charging',
+  'device_low_power_mode',
+  'device_carrier',
+] as const satisfies ReadonlyArray<keyof SessionAttributes>;
+
 interface DevicePowerAttributes {
   batteryLevel?: string;
   isCharging?: string;
@@ -334,10 +355,14 @@ function getMemoryTotalMb(totalMemory: number): number | undefined {
   return memoryTotalMb > 0 ? memoryTotalMb : undefined;
 }
 
-// Apple deprecated CTCarrier, so iOS 16.4 and later return "--" for every carrier.
 const UNAVAILABLE_CARRIER_NAMES = new Set(['', '--', 'unknown']);
 
 async function getCarrier(): Promise<string | undefined> {
+  // Apple deprecated CTCarrier. Before iOS 16.4 it still returned a name, which is not collected either.
+  if (Platform.OS === 'ios') {
+    return undefined;
+  }
+
   try {
     const carrierName = await DeviceInfo.getCarrier();
     const trimmedCarrierName = typeof carrierName === 'string' ? carrierName.trim() : '';

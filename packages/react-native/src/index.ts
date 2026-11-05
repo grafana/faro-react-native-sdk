@@ -72,6 +72,7 @@ export type {
 export { getPageMeta } from './metas/page';
 export { getScreenMeta } from './metas/screen';
 export { getSdkMeta } from './metas/sdk';
+export type { ConnectionType, DynamicMetaDevice, MetaNetwork, ThermalState } from './metas/dynamicDeviceState';
 export { FARO_REACT_NATIVE_NPM_VERSION } from './generated/faroRNPackageMeta';
 
 // Export transports

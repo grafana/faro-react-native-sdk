@@ -1396,11 +1396,43 @@ All device information is sent as session attributes (not browser meta):
 - `device_battery_level` - Battery percentage (e.g., "85") - if available
 - `device_is_charging` - Whether the device is connected to power ("true" or "false"), also when the battery is full or charging is paused - if available
 - `device_low_power_mode` - iOS Low Power Mode or Android Battery Saver on ("true" or "false") - if available
-- `device_carrier` - Mobile carrier name (e.g., "Verizon") - if available. iOS 16.4 and later do not expose the carrier, so it is always omitted there
+- `device_carrier` - Mobile carrier name (e.g., "Verizon") - if available. Android only: the SDK never collects a carrier on iOS
 
-Battery, charging, and low power mode are captured once when Faro initializes.
+These four legacy attributes are a snapshot from when Faro initializes, so they go stale. Read the current values from
+`meta.device` and `meta.network`, described in [Dynamic device and network metadata](#dynamic-device-and-network-metadata).
 
 These attributes are automatically collected during Faro initialization and included with all telemetry events.
+
+### Dynamic device and network metadata
+
+Values that change while the app runs are in typed `meta`, not in session attributes. Each signal carries the values
+that were current when it was captured, so two signals sent seconds apart can differ.
+
+| Field                             | Value                                                    |
+| --------------------------------- | -------------------------------------------------------- |
+| `meta.device.battery_level`       | Integer percent, 0–100                                   |
+| `meta.device.is_charging`         | Connected to AC, USB or wireless power, charging or full |
+| `meta.device.low_power_mode`      | iOS Low Power Mode or Android Battery Saver              |
+| `meta.device.thermal_state`       | `nominal`, `fair`, `serious` or `critical`               |
+| `meta.network.connection_type`    | `wifi`, `cell`, `wired`, `unavailable` or `unknown`      |
+| `meta.network.connection_subtype` | Cellular technology, for example `lte` or `nr`           |
+| `meta.network.carrier_name`       | Carrier name. Android only.                              |
+
+Android API 29 and later map the system thermal status `NONE`, `LIGHT`, `MODERATE`, and `SEVERE` and above to
+`nominal`, `fair`, `serious`, and `critical`. Older Android versions omit `thermal_state`. A field is omitted when the
+platform cannot read it.
+
+Native listeners keep these values current, and the SDK reads them from a native cache without waiting, at most every
+5 seconds. Two Android fields have no listener that works without a runtime permission, so the SDK reads them from the
+system on each of those reads: `connection_subtype` and `carrier_name`. Android reads the connection with
+`ACCESS_NETWORK_STATE`, which the SDK adds to the manifest. On Android 13 (API 33) and later,
+`connection_subtype` comes from `TelephonyManager` and needs `READ_BASIC_PHONE_STATE`. The SDK adds this normal,
+install-time permission to the manifest, so the user sees no prompt. An app that removes it loses
+`connection_subtype`. Older Android versions read the subtype from the deprecated `NetworkInfo`, which needs no
+permission.
+
+A crash sent on the next launch does not carry these values or the legacy `device_battery_level`, `device_is_charging`,
+`device_low_power_mode` and `device_carrier` attributes. They would describe the relaunch, not the crashed process.
 
 ### Typed Device and OS Meta
 
