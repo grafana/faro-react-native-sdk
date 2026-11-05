@@ -68,6 +68,12 @@
       "allowedVersions": "<25"
     },
     {
+      "description": "Keep js-yaml 5.x below 5.5.0 (pinned for markdownlint-cli in root resolutions). 5.5.0 depends on argparse 3, which is PSF-2.0 and rejected by dependency-review. Remove when that license is allowed.",
+      "matchPackageNames": ["js-yaml"],
+      "matchCurrentVersion": ">=5.0.0",
+      "allowedVersions": "<5.5.0"
+    },
+    {
       "description": "Enforce the org-default 3-day release-age cooldown on ALL npm depTypes (incl @grafana/*, which the injected Grafana org preset exempts) to match yarn's npmMinimalAgeGate in .yarnrc.yml. Placed last so it overrides that preset. Keep this value in sync with that .yarnrc.yml, otherwise Renovate proposes versions yarn refuses to lock and the renovate/artifacts check fails.",
       "matchDatasources": ["npm"],
       "minimumReleaseAge": "3 days"
