@@ -19,8 +19,8 @@ import androidx.annotation.VisibleForTesting
 /**
  * Device and network values that change while the app runs.
  *
- * Battery, Battery Saver, thermal state, connection type and reachability come from system
- * listeners that update cached values. The connection subtype and the carrier name are read on
+ * Battery, Battery Saver, thermal state and connection type come from system listeners that
+ * update cached values. The connection subtype and the carrier name are read on
  * demand: the listeners for them need the `READ_PHONE_STATE` runtime permission from API 31, and
  * this SDK asks for no runtime permission. The subtype comes from `TelephonyManager` on API 33+,
  * where the install-time `READ_BASIC_PHONE_STATE` permission allows it, and from the deprecated
@@ -36,7 +36,6 @@ internal object FaroDynamicDeviceState {
     const val CONNECTION_TYPE_KEY = "connectionType"
     const val CONNECTION_SUBTYPE_KEY = "connectionSubtype"
     const val CARRIER_NAME_KEY = "carrierName"
-    const val REACHABLE_KEY = "reachable"
 
     private val lock = Any()
     private var started = false
@@ -45,11 +44,7 @@ internal object FaroDynamicDeviceState {
     @Volatile private var isCharging: Boolean? = null
     @Volatile private var lowPowerMode: Boolean? = null
     @Volatile private var thermalState: String? = null
-    // The type and the reachability describe one network, so they are replaced together. Two
-    // separate fields would let a read see the new type with the old reachability.
-    private data class ConnectionState(val type: String?, val reachable: Boolean?)
-
-    @Volatile private var connection = ConnectionState(type = null, reachable = null)
+    @Volatile private var connectionType: String? = null
 
     // Only read and written on the connectivity callback thread, so the default network's loss is
     // not confused with the loss of a network it replaced.
@@ -69,10 +64,9 @@ internal object FaroDynamicDeviceState {
         isCharging?.let { state[IS_CHARGING_KEY] = it }
         lowPowerMode?.let { state[LOW_POWER_MODE_KEY] = it }
         thermalState?.let { state[THERMAL_STATE_KEY] = it }
-        val connection = connection
-        connection.type?.let { state[CONNECTION_TYPE_KEY] = it }
-        connection.reachable?.let { state[REACHABLE_KEY] = it }
-        if (connection.type == "cell") {
+        val type = connectionType
+        type?.let { state[CONNECTION_TYPE_KEY] = it }
+        if (type == "cell") {
             readConnectionSubtype(applicationContext)?.let { state[CONNECTION_SUBTYPE_KEY] = it }
         }
         readCarrierName(applicationContext)?.let { state[CARRIER_NAME_KEY] = it }
@@ -173,7 +167,7 @@ internal object FaroDynamicDeviceState {
                         override fun onLost(network: Network) {
                             if (network == defaultNetwork) {
                                 defaultNetwork = null
-                                connection = ConnectionState(type = "unavailable", reachable = false)
+                                connectionType = "unavailable"
                             }
                         }
                     },
@@ -197,19 +191,14 @@ internal object FaroDynamicDeviceState {
 
     @VisibleForTesting
     internal fun applyCapabilities(capabilities: NetworkCapabilities) {
-        connection = ConnectionState(
-            type = connectionTypeName(
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR),
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET),
-            ),
-            // VALIDATED is the system's own internet check, which is how a wifi network without
-            // internet reads as unreachable.
-            reachable = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+        connectionType = connectionTypeName(
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR),
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET),
         )
     }
 
-    /** Reads the active network once. Before API 23 there is no internet check, so reachability is omitted. */
+    /** Reads the active network once. */
     @Suppress("DEPRECATION")
     private fun readConnection(connectivityManager: ConnectivityManager) {
         try {
@@ -224,17 +213,13 @@ internal object FaroDynamicDeviceState {
 
             val info = connectivityManager.activeNetworkInfo
             if (info?.isConnected != true) {
-                connection = ConnectionState(type = "unavailable", reachable = false)
+                connectionType = "unavailable"
                 return
             }
-            connection = ConnectionState(
-                type = connectionTypeName(
-                    info.type == ConnectivityManager.TYPE_WIFI,
-                    info.type == ConnectivityManager.TYPE_MOBILE,
-                    info.type == ConnectivityManager.TYPE_ETHERNET,
-                ),
-                // Before API 23 there is no internet check.
-                reachable = null,
+            connectionType = connectionTypeName(
+                info.type == ConnectivityManager.TYPE_WIFI,
+                info.type == ConnectivityManager.TYPE_MOBILE,
+                info.type == ConnectivityManager.TYPE_ETHERNET,
             )
         } catch (_: RuntimeException) {
             // Unknown, so omitted.
@@ -296,7 +281,7 @@ internal object FaroDynamicDeviceState {
         isCharging = null
         lowPowerMode = null
         thermalState = null
-        connection = ConnectionState(type = null, reachable = null)
+        connectionType = null
         defaultNetwork = null
     }
 

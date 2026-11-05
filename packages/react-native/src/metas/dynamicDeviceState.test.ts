@@ -34,20 +34,19 @@ describe('parseDynamicDeviceState', () => {
         connectionType: 'cell',
         connectionSubtype: 'lte',
         carrierName: ' Verizon ',
-        reachable: true,
       })
     ).toEqual({
       device: { battery_level: 85, is_charging: true, low_power_mode: false, thermal_state: 'serious' },
-      network: { connection_type: 'cell', connection_subtype: 'lte', carrier_name: 'Verizon', reachable: true },
+      network: { connection_type: 'cell', connection_subtype: 'lte', carrier_name: 'Verizon' },
     });
   });
 
   it('keeps false values', () => {
     setPlatform('android');
 
-    expect(parseDynamicDeviceState({ isCharging: false, lowPowerMode: false, reachable: false })).toEqual({
+    expect(parseDynamicDeviceState({ isCharging: false, lowPowerMode: false })).toEqual({
       device: { is_charging: false, low_power_mode: false },
-      network: { reachable: false },
+      network: {},
     });
   });
 
@@ -63,11 +62,10 @@ describe('parseDynamicDeviceState', () => {
         connectionType: 'satellite',
         connectionSubtype: '',
         carrierName: '   ',
-        reachable: true,
       })
     ).toEqual({
       device: { low_power_mode: true },
-      network: { reachable: true },
+      network: {},
     });
   });
 
@@ -171,20 +169,20 @@ describe('getDynamicDeviceStateMeta', () => {
       { is_physical: true, model_identifier: 'iPhone16,1' },
       providerFor(() => ({
         device: { battery_level: 80, thermal_state: 'fair' },
-        network: { connection_type: 'wifi', reachable: true },
+        network: { connection_type: 'wifi' },
       }))
     );
 
     expect(getMeta()).toEqual({
       device: { is_physical: true, model_identifier: 'iPhone16,1', battery_level: 80, thermal_state: 'fair' },
-      network: { connection_type: 'wifi', reachable: true },
+      network: { connection_type: 'wifi' },
     });
   });
 
   it('returns a new object each time, so a captured signal is never changed', () => {
     const getMeta = getDynamicDeviceStateMeta(
       { is_physical: true },
-      providerFor(() => ({ device: { battery_level: 80 }, network: { reachable: true } }))
+      providerFor(() => ({ device: { battery_level: 80 }, network: { connection_type: 'wifi' } }))
     );
 
     const first = getMeta() as { device: object; network: object };

@@ -542,7 +542,7 @@ describe('CrashReportingInstrumentation', () => {
       DYNAMIC_DEVICE_STATE_TTL_MS,
       () => ({
         device: { battery_level: 9, is_charging: true, low_power_mode: true, thermal_state: 'serious' },
-        network: { connection_type: 'wifi', reachable: true },
+        network: { connection_type: 'wifi' },
       })
     );
     const dynamicMetas = [getDynamicDeviceStateMeta({ is_physical: true, brand: 'Apple' }, relaunchState)];
@@ -574,7 +574,7 @@ describe('CrashReportingInstrumentation', () => {
       expect(crash?.meta).not.toHaveProperty('network');
       expect(crash?.meta.session?.attributes).toEqual({ device_brand: 'Apple' });
       expect(live?.meta.device).toMatchObject({ battery_level: 9, thermal_state: 'serious' });
-      expect(live?.meta).toHaveProperty('network', { connection_type: 'wifi', reachable: true });
+      expect(live?.meta).toHaveProperty('network', { connection_type: 'wifi' });
       expect(live?.meta.session?.attributes).toEqual(relaunchSessionAttributes);
       expect(faro.transports.execute).toBe(execute);
     });

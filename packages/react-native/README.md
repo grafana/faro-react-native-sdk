@@ -1408,16 +1408,15 @@ These attributes are automatically collected during Faro initialization and incl
 Values that change while the app runs are in typed `meta`, not in session attributes. Each signal carries the values
 that were current when it was captured, so two signals sent seconds apart can differ.
 
-| Field                             | Value                                                                              |
-| --------------------------------- | ---------------------------------------------------------------------------------- |
-| `meta.device.battery_level`       | Integer percent, 0–100                                                             |
-| `meta.device.is_charging`         | Connected to AC, USB or wireless power, charging or full                           |
-| `meta.device.low_power_mode`      | iOS Low Power Mode or Android Battery Saver                                        |
-| `meta.device.thermal_state`       | `nominal`, `fair`, `serious` or `critical`                                         |
-| `meta.network.connection_type`    | `wifi`, `cell`, `wired`, `unavailable` or `unknown`                                |
-| `meta.network.connection_subtype` | Cellular technology, for example `lte` or `nr`                                     |
-| `meta.network.carrier_name`       | Carrier name. Android only.                                                        |
-| `meta.network.reachable`          | Whether the internet is reachable. Wifi without internet is `false`. Android only. |
+| Field                             | Value                                                    |
+| --------------------------------- | -------------------------------------------------------- |
+| `meta.device.battery_level`       | Integer percent, 0–100                                   |
+| `meta.device.is_charging`         | Connected to AC, USB or wireless power, charging or full |
+| `meta.device.low_power_mode`      | iOS Low Power Mode or Android Battery Saver              |
+| `meta.device.thermal_state`       | `nominal`, `fair`, `serious` or `critical`               |
+| `meta.network.connection_type`    | `wifi`, `cell`, `wired`, `unavailable` or `unknown`      |
+| `meta.network.connection_subtype` | Cellular technology, for example `lte` or `nr`           |
+| `meta.network.carrier_name`       | Carrier name. Android only.                              |
 
 Android API 29 and later map the system thermal status `NONE`, `LIGHT`, `MODERATE`, and `SEVERE` and above to
 `nominal`, `fair`, `serious`, and `critical`. Older Android versions omit `thermal_state`. A field is omitted when the

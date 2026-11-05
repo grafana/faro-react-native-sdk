@@ -35,9 +35,6 @@ export interface MetaNetwork {
 
   /** Mobile carrier name. Android only. */
   carrier_name?: string;
-
-  /** Whether the internet is reachable. A wifi connection without internet is `false`. Android only. */
-  reachable?: boolean;
 }
 
 export interface DynamicDeviceState {
@@ -98,7 +95,6 @@ export function parseDynamicDeviceState(native: unknown): DynamicDeviceState {
       connection_subtype: asText(raw['connectionSubtype']),
       // Apple deprecated the carrier API, so iOS never reports a carrier on any version.
       carrier_name: Platform.OS === 'android' ? asText(raw['carrierName']) : undefined,
-      reachable: asBoolean(raw['reachable']),
     }),
   };
 }
