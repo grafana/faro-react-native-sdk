@@ -1,6 +1,7 @@
 import { AppState, NativeModules } from 'react-native';
 
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
+import type { API } from '@grafana/faro-core';
 
 import type { StartupInstrumentationOptions } from './types';
 
@@ -16,7 +17,7 @@ const { FaroReactNativeModule } = NativeModules;
  * **Key Features**:
  * - ✅ NO AppDelegate/MainActivity setup required - OS tracks process start automatically!
  * - ✅ Cold start: appStartDuration from native, coldStart: 1
- * - ✅ Warm start: appStartDuration (time to first frame after resume), coldStart: 0
+ * - ✅ Warm start: appStartDuration (time to the next JS animation callback after resume), coldStart: 0
  *
  * **Metrics Captured**:
  * - Cold start: `appStartDuration`, `coldStart: 1`
@@ -41,8 +42,12 @@ export class StartupInstrumentation extends BaseInstrumentation {
   readonly name = '@grafana/faro-react-native:instrumentation-startup';
   readonly version = VERSION;
 
-  /** 0 = came from background (warm start eligible), null = never backgrounded */
-  private warmStartTimestamp: number | null = null;
+  private warmStartEligible = false;
+  private warmStartFrame: ReturnType<typeof requestAnimationFrame> | undefined;
+  private warmStartGeneration = 0;
+  private coldStartTimer: ReturnType<typeof setTimeout> | undefined;
+  private initializedApi: API | undefined;
+  private lifecycleGeneration = 0;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | undefined;
 
   constructor(private options: StartupInstrumentationOptions = {}) {
@@ -50,10 +55,12 @@ export class StartupInstrumentation extends BaseInstrumentation {
   }
 
   initialize(): void {
-    if (this.options.enabled === false) {
+    if (this.options.enabled === false || this.initializedApi === this.api) {
       return;
     }
 
+    this.unpatch();
+    this.initializedApi = this.api;
     this.captureColdStartMetrics();
     this.setupWarmStartTracking();
   }
@@ -87,7 +94,12 @@ export class StartupInstrumentation extends BaseInstrumentation {
         coldStart: 1,
       };
 
-      setTimeout(() => {
+      const generation = this.lifecycleGeneration;
+      this.coldStartTimer = setTimeout(() => {
+        if (generation !== this.lifecycleGeneration) {
+          return;
+        }
+        this.coldStartTimer = undefined;
         this.api.pushMeasurement({ type: 'app_startup', values }, { skipDedupe: true });
       }, 100);
 
@@ -98,18 +110,29 @@ export class StartupInstrumentation extends BaseInstrumentation {
   }
 
   /**
-   * Tracks warm start: when app resumes from background, measures time to first frame.
+   * Tracks the legacy resume-to-JS-animation-callback interval after a background transition.
    */
   private setupWarmStartTracking(): void {
+    const generation = this.lifecycleGeneration;
     this.appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'background' || nextAppState === 'inactive') {
-        this.warmStartTimestamp = 0; // Sentinel: next 'active' is a warm start
-      } else if (nextAppState === 'active' && this.warmStartTimestamp === 0) {
-        // Came from background: measure time from resume to first frame
+      if (generation !== this.lifecycleGeneration) {
+        return;
+      }
+      if (nextAppState !== 'active') {
+        this.cancelWarmStart();
+        if (nextAppState === 'background') {
+          this.warmStartEligible = true;
+        }
+      } else if (this.warmStartEligible) {
         const resumeTimestamp = Date.now();
-        this.warmStartTimestamp = null;
+        this.warmStartEligible = false;
+        const generation = this.warmStartGeneration;
 
-        requestAnimationFrame(() => {
+        this.warmStartFrame = requestAnimationFrame(() => {
+          if (generation !== this.warmStartGeneration) {
+            return;
+          }
+          this.warmStartFrame = undefined;
           const appStartDuration = Date.now() - resumeTimestamp;
           if (appStartDuration > 0) {
             this.api.pushMeasurement(
@@ -126,11 +149,31 @@ export class StartupInstrumentation extends BaseInstrumentation {
     });
   }
 
+  private cancelWarmStart(): void {
+    // Invalidate callbacks that may already have been queued for delivery.
+    this.warmStartGeneration++;
+    if (this.warmStartFrame !== undefined) {
+      global.cancelAnimationFrame(this.warmStartFrame);
+      this.warmStartFrame = undefined;
+    }
+  }
+
   unpatch(): void {
+    this.initializedApi = undefined;
+    this.lifecycleGeneration++;
+    this.warmStartEligible = false;
+    this.cancelWarmStart();
+    if (this.coldStartTimer !== undefined) {
+      clearTimeout(this.coldStartTimer);
+      this.coldStartTimer = undefined;
+    }
     if (this.appStateSubscription) {
       this.appStateSubscription.remove();
       this.appStateSubscription = undefined;
-      this.warmStartTimestamp = null;
     }
+  }
+
+  destroy(): void {
+    this.unpatch();
   }
 }
