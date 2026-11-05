@@ -122,6 +122,30 @@ describe('span-derived event pipeline', () => {
     expect(event?.attributes?.['http.status_code']).toBe('0');
     expect(event?.attributes?.['http.url']).toBe('https://example.com/xhr');
   });
+  it('reports the original method of a non-standard XHR request', () => {
+    const { events } = setup();
+    send(
+      fixture(['/xhr'], '@opentelemetry/instrumentation-xml-http-request', '207', {
+        'http.request.method': '_OTHER',
+        'http.request.method_original': 'PROPFIND',
+      })
+    );
+    const [event] = events();
+    expect(event?.attributes?.['http.method']).toBe('PROPFIND');
+    expect(event?.attributes?.['http.request.method_original']).toBeUndefined();
+  });
+  it('keeps the normalized method of a non-standard fetch request', () => {
+    const { events } = setup();
+    send(
+      fixture(['/fetch'], '@opentelemetry/instrumentation-fetch', '207', {
+        'http.request.method': '_OTHER',
+        'http.request.method_original': 'PROPFIND',
+      })
+    );
+    const [event] = events();
+    expect(event?.attributes?.['http.method']).toBe('_OTHER');
+    expect(event?.attributes?.['http.request.method_original']).toBe('PROPFIND');
+  });
   it('does not invent a status for fetch events', () => {
     const { events } = setup();
     send(fixture(['/fetch'], '@opentelemetry/instrumentation-fetch', null, { 'error.type': 'TypeError' }));

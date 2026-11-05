@@ -61,7 +61,9 @@ instrumentations, but different attributes:
 The `faro.tracing.fetch` and `faro.tracing.xml-http-request` events keep
 `http.method`, `http.url`, `http.status_code`, `http.host`, and `http.scheme`.
 `http.status_code` is `0` when no response arrived. Events copy `error.type`
-from the span when it is set. Fetch events also carry `component: fetch`.
+from the span when it is set. XHR events report non-standard methods as sent
+(for example `PROPFIND`); fetch events report them as `_OTHER` and keep
+`http.request.method_original`. Fetch events also carry `component: fetch`.
 Event attributes, including `duration_ns`, are strings. Events retain session
 and trace/span context and use the shared event pipeline for deduplication and
 transport hooks. XHR spans and events do not include `http.user_agent`,

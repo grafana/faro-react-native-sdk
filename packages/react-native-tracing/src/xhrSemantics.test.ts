@@ -38,12 +38,15 @@ describe('XHR tracing semantics', () => {
       requestHeaders.push(req.headers);
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Headers', '*');
+      res.setHeader('Access-Control-Allow-Methods', '*');
       if (req.method === 'OPTIONS') {
         res.writeHead(204).end();
       } else if (req.url === '/ok') {
         res.writeHead(200).end('ok');
       } else if (req.url === '/fail') {
         res.writeHead(500).end('fail');
+      } else if (req.url === '/dav') {
+        res.writeHead(207).end('multi');
       } else if (req.url === '/slow') {
         setTimeout(() => res.writeHead(200).end('late'), 2000);
       } else {
@@ -93,10 +96,10 @@ describe('XHR tracing semantics', () => {
 
   type Outcome = 'load' | 'error' | 'timeout' | 'abort';
 
-  function send(url: string, configure?: (xhr: XMLHttpRequest) => void): Promise<Outcome> {
+  function send(url: string, configure?: (xhr: XMLHttpRequest) => void, method = 'GET'): Promise<Outcome> {
     return new Promise((resolve) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('GET', url);
+      xhr.open(method, url);
       xhr.addEventListener('load', () => resolve('load'));
       xhr.addEventListener('error', () => resolve('error'));
       xhr.addEventListener('timeout', () => resolve('timeout'));
@@ -176,6 +179,21 @@ describe('XHR tracing semantics', () => {
     // Trace context is propagated to the server.
     const traceparent = requestHeaders.find((headers) => headers['traceparent'])?.['traceparent'];
     expect(traceparent).toContain(span.traceId);
+  });
+
+  it('keeps the original method of a non-standard request in the event', async () => {
+    expect(await send(origin + '/dav', undefined, 'PROPFIND')).toBe('load');
+    const { span, attributes, eventAttributes } = await exported();
+
+    expect(span.name).toBe('_OTHER');
+    expect(attributes).toMatchObject({
+      'http.request.method': { stringValue: '_OTHER' },
+      'http.request.method_original': { stringValue: 'PROPFIND' },
+      'http.response.status_code': { intValue: 207 },
+    });
+    expect(eventAttributes['http.method']).toBe('PROPFIND');
+    expect(eventAttributes['http.request.method_original']).toBeUndefined();
+    expect(eventAttributes['http.status_code']).toBe('207');
   });
 
   it.each([

@@ -39,6 +39,13 @@ function projectHttpEventAttributes(attributes: FaroEventAttributes, isFetch: bo
   if (isFetch) {
     attributes['component'] = attributes['component'] ?? 'fetch';
   } else {
+    // Stable XHR spans name non-standard methods `_OTHER`. Faro XHR events have
+    // always reported the method as sent, so use the original when present.
+    const originalMethod = attributes['http.request.method_original'];
+    if (originalMethod != null) {
+      attributes['http.method'] = originalMethod;
+      delete attributes['http.request.method_original'];
+    }
     // Stable XHR spans omit the status when no response arrived (error, timeout,
     // abort). Faro XHR events have always reported those requests as status 0.
     attributes['http.status_code'] = attributes['http.status_code'] ?? '0';
