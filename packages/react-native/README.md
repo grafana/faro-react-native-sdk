@@ -1431,6 +1431,27 @@ install-time permission to the manifest, so the user sees no prompt. An app that
 `connection_subtype`. Older Android versions read the subtype from the deprecated `NetworkInfo`, which needs no
 permission.
 
+#### Turn off a group
+
+Every group is on by default. Set a group to `false` in `dynamicDeviceState` to stop collecting it:
+
+```ts
+initializeFaro({
+  // ...
+  dynamicDeviceState: { battery: false, thermal: true, network: false },
+});
+```
+
+| Group     | Fields it controls                                                              | Legacy attributes it controls                                         |
+| --------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `battery` | `device.battery_level`, `device.is_charging`, `device.low_power_mode`           | `device_battery_level`, `device_is_charging`, `device_low_power_mode` |
+| `thermal` | `device.thermal_state`                                                          | none                                                                  |
+| `network` | `network.connection_type`, `network.connection_subtype`, `network.carrier_name` | `device_carrier`                                                      |
+
+A group that is off is not collected at all. The SDK registers none of its native listeners, reads none of its values
+from the system, and omits its fields from every signal and from the session attributes. With every group off, the SDK
+makes no native call for these values. Set `dynamicDeviceState` before you call `initializeFaro`: the SDK reads it once.
+
 A crash sent on the next launch does not carry these values or the legacy `device_battery_level`, `device_is_charging`,
 `device_low_power_mode` and `device_carrier` attributes. They would describe the relaunch, not the crashed process.
 

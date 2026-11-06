@@ -3,6 +3,7 @@ package com.grafana.faro.reactnative
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.os.BatteryManager
 import android.os.PowerManager
 import android.telephony.TelephonyManager
@@ -121,6 +122,7 @@ class FaroDynamicDeviceStateTest {
     @Test
     fun current_followsBatteryBroadcastsWithoutRereadingTheSystem() {
         sendBattery(level = 80, plugged = 0)
+        startAllGroups()
         assertEquals(80, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
         assertEquals(false, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.IS_CHARGING_KEY])
 
@@ -134,6 +136,7 @@ class FaroDynamicDeviceStateTest {
     @Test
     fun current_keepsTheBatteryStateWhenBatterySaverChanges() {
         sendBattery(level = 64, plugged = BatteryManager.BATTERY_PLUGGED_AC)
+        startAllGroups()
         assertEquals(64, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
 
         context.sendBroadcast(Intent(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
@@ -142,6 +145,60 @@ class FaroDynamicDeviceStateTest {
         val state = FaroDynamicDeviceState.current(context)
         assertEquals(64, state[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
         assertEquals(true, state[FaroDynamicDeviceState.IS_CHARGING_KEY])
+    }
+
+    @Test
+    fun start_registersNothingForAGroupThatIsOff() {
+        sendBattery(level = 80, plugged = 0)
+        shadowOf(application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+            .setActiveNetworkInfo(null)
+
+        FaroDynamicDeviceState.start(context, battery = false, thermal = false, network = false)
+
+        assertTrue(FaroDynamicDeviceState.current(context).isEmpty())
+        assertTrue(shadowOf(application).registeredReceivers.isEmpty())
+    }
+
+    @Test
+    fun start_collectsOnlyTheBatteryWhenThermalAndNetworkAreOff() {
+        sendBattery(level = 80, plugged = 0)
+
+        FaroDynamicDeviceState.start(context, battery = true, thermal = false, network = false)
+
+        val state = FaroDynamicDeviceState.current(context)
+        assertEquals(80, state[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
+        assertFalse(state.containsKey(FaroDynamicDeviceState.THERMAL_STATE_KEY))
+        assertFalse(state.containsKey(FaroDynamicDeviceState.CONNECTION_TYPE_KEY))
+        assertFalse(state.containsKey(FaroDynamicDeviceState.CARRIER_NAME_KEY))
+    }
+
+    @Test
+    fun start_leavesTheBatteryUnregisteredWhenOnlyTheNetworkIsOn() {
+        sendBattery(level = 80, plugged = 0)
+
+        FaroDynamicDeviceState.start(context, battery = false, thermal = false, network = true)
+
+        val state = FaroDynamicDeviceState.current(context)
+        assertFalse(state.containsKey(FaroDynamicDeviceState.BATTERY_LEVEL_KEY))
+        assertFalse(state.containsKey(FaroDynamicDeviceState.IS_CHARGING_KEY))
+        assertFalse(state.containsKey(FaroDynamicDeviceState.LOW_POWER_MODE_KEY))
+    }
+
+    @Test
+    fun start_startsAGroupOnlyOnce() {
+        sendBattery(level = 80, plugged = 0)
+
+        FaroDynamicDeviceState.start(context, battery = true, thermal = false, network = false)
+        val registered = shadowOf(application).registeredReceivers.size
+        FaroDynamicDeviceState.start(context, battery = true, thermal = false, network = false)
+
+        assertEquals(registered, shadowOf(application).registeredReceivers.size)
+    }
+
+    private val application: Application get() = context as Application
+
+    private fun startAllGroups() {
+        FaroDynamicDeviceState.start(context, battery = true, thermal = true, network = true)
     }
 
     @Suppress("DEPRECATION")

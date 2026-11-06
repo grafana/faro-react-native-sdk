@@ -42,11 +42,6 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     private var anrTracker: ANRTracker? = null
     private val sessionPersistenceOwner = Any()
 
-    init {
-        // Listeners keep the battery and thermal values current before the first read.
-        FaroDynamicDeviceState.start(reactContext.applicationContext)
-    }
-
     override fun getName(): String = NAME
 
     /** Stable process name used to isolate persisted session chains. */
@@ -122,10 +117,21 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
+     * Starts the listeners of the enabled groups. A group that is off registers nothing. It runs
+     * synchronously so the first read already sees the seeded values. A synchronous method must
+     * return a value, so it returns true.
+     */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun startDynamicDeviceState(battery: Boolean, thermal: Boolean, network: Boolean): Boolean {
+        FaroDynamicDeviceState.start(reactApplicationContext, battery, thermal, network)
+        return true
+    }
+
+    /**
      * Battery, thermal and network values that change while the app runs.
      *
      * Reads values that system listeners keep current, plus one cheap network read. Omits every
-     * value that cannot be read.
+     * value that cannot be read, and every group that was not started.
      */
     @ReactMethod(isBlockingSynchronousMethod = true)
     fun getDynamicDeviceState(): WritableMap {

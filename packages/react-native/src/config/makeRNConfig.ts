@@ -6,7 +6,7 @@ import type { PreloadedMobileMeta } from '../instrumentations/session/sessionAtt
 import { defaultSessionTrackingConfig } from '../instrumentations/session/sessionManager/sessionConstants';
 import { InternalLoggerLevel, LogLevel } from '../internalLogger';
 import { getMetroInjectedBundleId } from '../metas/appBuildIdentity';
-import { getDynamicDeviceStateMeta } from '../metas/dynamicDeviceState';
+import { getDynamicDeviceStateMeta, resolveDynamicDeviceStateGroups } from '../metas/dynamicDeviceState';
 import { getPageMeta } from '../metas/page';
 import { getScreenMeta } from '../metas/screen';
 import { getSdkMeta } from '../metas/sdk';
@@ -123,7 +123,7 @@ export function makeRNConfig(
     getPageMeta(),
     getScreenMeta(),
     ...mobileMetas,
-    getDynamicDeviceStateMeta(staticDeviceMeta),
+    getDynamicDeviceStateMeta(staticDeviceMeta, resolveDynamicDeviceStateGroups(config.dynamicDeviceState)),
   ];
   const customMetas = config.metas ?? [];
   const transports = buildTransports(config);

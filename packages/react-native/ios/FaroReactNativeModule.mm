@@ -41,11 +41,6 @@ RCT_EXPORT_MODULE(FaroReactNativeModule)
   if (self = [super init]) {
     if ([NSThread isMainThread]) {
       _screenMetrics = [FaroReactNative getScreenMetrics];
-      [FaroDynamicDeviceState start];
-    } else {
-      dispatch_async(dispatch_get_main_queue(), ^{
-        [FaroDynamicDeviceState start];
-      });
     }
   }
   return self;
@@ -74,6 +69,15 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCpuArchitecture)
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getScreenMetrics)
 {
   return self.screenMetrics ?: [NSNull null];
+}
+
+/// Starts the monitoring of the enabled groups. A group that is off registers no observer. UIDevice
+/// battery monitoring needs the main thread, so the start runs there.
+RCT_EXPORT_METHOD(startDynamicDeviceState:(BOOL)battery thermal:(BOOL)thermal network:(BOOL)network)
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [FaroDynamicDeviceState startWithBattery:battery thermal:thermal network:network];
+  });
 }
 
 /// Battery, thermal and network values that change while the app runs, read from a cache that
