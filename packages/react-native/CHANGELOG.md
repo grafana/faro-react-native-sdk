@@ -2,13 +2,12 @@
 
 ## [1.5.1](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.5.0...faro-react-native-v1.5.1) (2026-11-06)
 
-
 ### Bug Fixes
 
-* **react-native:** find the Swift header when built as a framework ([#243](https://github.com/grafana/faro-react-native-sdk/issues/243)) ([7730381](https://github.com/grafana/faro-react-native-sdk/commit/77303818e0036140e1d591d69611aadc592157c3)), closes [#135](https://github.com/grafana/faro-react-native-sdk/issues/135)
-* **startup:** handle interruptions and lifecycle cleanup ([d509c8e](https://github.com/grafana/faro-react-native-sdk/commit/d509c8ecbfcd304dfcf4d0d74c29622031d4b198))
-* **startup:** handle interruptions and lifecycle cleanup ([16d8d14](https://github.com/grafana/faro-react-native-sdk/commit/16d8d14a3f32cc2626d889dd52af5ab1f404b949))
-* **startup:** rebind reused instrumentation ([65df7fd](https://github.com/grafana/faro-react-native-sdk/commit/65df7fd8ae858fb986f86aaa14c3578ef0f443e8))
+- **react-native:** find the Swift header when built as a framework ([#243](https://github.com/grafana/faro-react-native-sdk/issues/243)) ([7730381](https://github.com/grafana/faro-react-native-sdk/commit/77303818e0036140e1d591d69611aadc592157c3)), closes [#135](https://github.com/grafana/faro-react-native-sdk/issues/135)
+- **startup:** handle interruptions and lifecycle cleanup ([d509c8e](https://github.com/grafana/faro-react-native-sdk/commit/d509c8ecbfcd304dfcf4d0d74c29622031d4b198))
+- **startup:** handle interruptions and lifecycle cleanup ([16d8d14](https://github.com/grafana/faro-react-native-sdk/commit/16d8d14a3f32cc2626d889dd52af5ab1f404b949))
+- **startup:** rebind reused instrumentation ([65df7fd](https://github.com/grafana/faro-react-native-sdk/commit/65df7fd8ae858fb986f86aaa14c3578ef0f443e8))
 
 ## [1.5.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.3...faro-react-native-v1.5.0) (2026-10-28)
 
