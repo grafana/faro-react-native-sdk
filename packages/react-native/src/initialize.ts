@@ -4,6 +4,7 @@ import { makeRNConfig } from './config/makeRNConfig';
 import type { ReactNativeConfig } from './config/types';
 import { loadMobileMetaForInit } from './instrumentations/session/sessionAttributes';
 import { loadAppSymbolsBundleIdForInit } from './metas/appBuildIdentity';
+import { resolveDynamicDeviceStateGroups, startDynamicDeviceState } from './metas/dynamicDeviceState';
 
 /**
  * Awaits async device/session attribute collection and the build identity used
@@ -12,8 +13,12 @@ import { loadAppSymbolsBundleIdForInit } from './metas/appBuildIdentity';
  * `minimalSessionDeviceAttributes` / an empty build identity before init.
  */
 export async function initializeFaro(config: ReactNativeConfig): Promise<Faro> {
+  // Starts first so the native caches fill while the async collection runs.
+  const dynamicDeviceStateGroups = resolveDynamicDeviceStateGroups(config.dynamicDeviceState);
+  startDynamicDeviceState(dynamicDeviceStateGroups);
+
   const [preloadedMobileMeta, appSymbolsBundleId] = await Promise.all([
-    loadMobileMetaForInit(),
+    loadMobileMetaForInit(dynamicDeviceStateGroups),
     loadAppSymbolsBundleIdForInit(),
   ]);
   const fullConfig = makeRNConfig(config, preloadedMobileMeta, appSymbolsBundleId);

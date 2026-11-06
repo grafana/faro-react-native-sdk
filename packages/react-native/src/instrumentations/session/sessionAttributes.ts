@@ -4,6 +4,9 @@ import type { PowerState } from 'react-native-device-info';
 
 import type { Meta, MetaDevice, MetaOS } from '@grafana/faro-core';
 
+import { resolveDynamicDeviceStateGroups } from '../../metas/dynamicDeviceState';
+import type { DynamicDeviceStateGroups } from '../../metas/dynamicDeviceState';
+
 import { getInstallationId } from './installationId';
 import { isConnectedToPower } from './powerSource';
 import { getSessionProcessInfo } from './sessionProcess';
@@ -400,11 +403,13 @@ export function minimalSessionDeviceAttributes(): SessionAttributes {
  * - device_battery_level, device_is_charging, device_low_power_mode
  * - device_carrier
  */
-export async function getSessionAttributes(): Promise<SessionAttributes> {
-  return (await collectMobileMeta()).sessionAttributes;
+export async function getSessionAttributes(
+  groups: DynamicDeviceStateGroups = resolveDynamicDeviceStateGroups()
+): Promise<SessionAttributes> {
+  return (await collectMobileMeta(groups)).sessionAttributes;
 }
 
-async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
+async function collectMobileMeta(groups: DynamicDeviceStateGroups): Promise<PreloadedMobileMeta> {
   try {
     const [apiLevel, deviceOsBuildId, installationId] = await Promise.all([
       getAndroidApiLevel(),
@@ -431,7 +436,11 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
     const usedMemory = DeviceInfo.getUsedMemorySync();
     const memoryTotal = getMemoryTotalMb(totalMemory);
 
-    const [power, carrier] = await Promise.all([getDevicePowerAttributes(), getCarrier()]);
+    // A group that is off is not read, so no system call runs for it.
+    const [power, carrier] = await Promise.all([
+      groups.battery ? getDevicePowerAttributes() : ({} as DevicePowerAttributes),
+      groups.network ? getCarrier() : undefined,
+    ]);
 
     const attributes: SessionAttributes = {
       ...minimalSessionDeviceAttributes(),
@@ -492,17 +501,21 @@ async function collectMobileMeta(): Promise<PreloadedMobileMeta> {
 /**
  * Get structured mobile meta plus flat session attributes for async `initializeFaro`.
  */
-export async function loadMobileMetaForInit(): Promise<PreloadedMobileMeta> {
-  return collectMobileMeta();
+export async function loadMobileMetaForInit(
+  groups: DynamicDeviceStateGroups = resolveDynamicDeviceStateGroups()
+): Promise<PreloadedMobileMeta> {
+  return collectMobileMeta(groups);
 }
 
 /**
  * Await full async session device attributes (battery, carrier, etc.), then fall back to
  * {@link minimalSessionDeviceAttributes} if anything throws. Used by async `initializeFaro`.
  */
-export async function loadSessionDeviceAttributesForInit(): Promise<SessionAttributes> {
+export async function loadSessionDeviceAttributesForInit(
+  groups: DynamicDeviceStateGroups = resolveDynamicDeviceStateGroups()
+): Promise<SessionAttributes> {
   try {
-    return (await loadMobileMetaForInit()).sessionAttributes;
+    return (await loadMobileMetaForInit(groups)).sessionAttributes;
   } catch {
     return minimalSessionDeviceAttributes();
   }

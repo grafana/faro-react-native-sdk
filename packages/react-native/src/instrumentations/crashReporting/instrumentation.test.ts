@@ -545,7 +545,7 @@ describe('CrashReportingInstrumentation', () => {
         network: { connection_type: 'wifi' },
       })
     );
-    const dynamicMetas = [getDynamicDeviceStateMeta({ is_physical: true, brand: 'Apple' }, relaunchState)];
+    const dynamicMetas = [getDynamicDeviceStateMeta({ is_physical: true, brand: 'Apple' }, undefined, relaunchState)];
     const relaunchSessionAttributes = {
       device_battery_level: '9',
       device_is_charging: 'true',

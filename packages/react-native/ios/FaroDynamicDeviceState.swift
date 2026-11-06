@@ -6,7 +6,8 @@ import UIKit
 /// Device and network values that change while the app runs.
 ///
 /// Notifications and a path monitor update a lock-protected cache, so `current()` is safe to call
-/// from any thread and reads nothing from the system. Nothing here needs a permission, and every
+/// from any thread and reads nothing from the system. Each group (battery, thermal, network) starts
+/// only when the app asks for it. Nothing here needs a permission, and every
 /// value is omitted when it cannot be read. iOS never reports a carrier: Apple deprecated the API,
 /// and since iOS 16.4 it returns a placeholder.
 ///
@@ -20,7 +21,9 @@ import UIKit
     static let connectionSubtypeKey = "connectionSubtype"
 
     private static let lock = NSLock()
-    private static var started = false
+    private static var batteryStarted = false
+    private static var thermalStarted = false
+    private static var networkStarted = false
     private static var observers: [NSObjectProtocol] = []
     private static var pathMonitor: NWPathMonitor?
     private static var latestPath: NWPath?
@@ -31,16 +34,28 @@ import UIKit
     private static var cachedDataRadioTechnology: String?
     private static let telephonyInfo = CTTelephonyNetworkInfo()
 
-    /// Starts battery and network monitoring and seeds the cache. Safe to call more than once.
+    /// Starts the monitoring of the enabled groups and seeds their cache. A group starts once, and
+    /// a group that is off registers no observer and reads nothing from the system.
     /// UIDevice battery monitoring is main-thread-only, so call it on the main thread, early.
-    @MainActor @objc public static func start() {
+    @MainActor @objc public static func start(battery: Bool, thermal: Bool, network: Bool) {
         lock.lock()
         defer { lock.unlock() }
-        guard !started else {
-            return
+        if battery && !batteryStarted {
+            batteryStarted = true
+            startBattery()
         }
-        started = true
+        if thermal && !thermalStarted {
+            thermalStarted = true
+            startThermal()
+        }
+        if network && !networkStarted {
+            networkStarted = true
+            startNetwork()
+        }
+    }
 
+    // The caller holds `lock`.
+    @MainActor private static func startBattery() {
         let device = UIDevice.current
         device.isBatteryMonitoringEnabled = true
         readBattery(device)
@@ -55,10 +70,7 @@ import UIKit
             )
         }
 
-        let processInfo = ProcessInfo.processInfo
-        cachedLowPowerMode = processInfo.isLowPowerModeEnabled
-        cachedThermalState = thermalStateName(processInfo.thermalState)
-        cachedDataRadioTechnology = currentDataRadioTechnology()
+        cachedLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
         observers.append(
             center.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: nil) { _ in
                 lock.lock()
@@ -66,15 +78,27 @@ import UIKit
                 cachedLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
             }
         )
+    }
+
+    // The caller holds `lock`.
+    private static func startThermal() {
+        cachedThermalState = thermalStateName(ProcessInfo.processInfo.thermalState)
         observers.append(
-            center.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: nil) { _ in
+            NotificationCenter.default.addObserver(
+                forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: nil
+            ) { _ in
                 lock.lock()
                 defer { lock.unlock() }
                 cachedThermalState = thermalStateName(ProcessInfo.processInfo.thermalState)
             }
         )
+    }
+
+    // The caller holds `lock`.
+    private static func startNetwork() {
+        cachedDataRadioTechnology = currentDataRadioTechnology()
         observers.append(
-            center.addObserver(
+            NotificationCenter.default.addObserver(
                 forName: .CTServiceRadioAccessTechnologyDidChange, object: nil, queue: nil
             ) { _ in
                 let technology = currentDataRadioTechnology()
@@ -95,7 +119,7 @@ import UIKit
         pathMonitor = monitor
     }
 
-    /// The cached values. Empty until `start()` has run.
+    /// The cached values of the started groups. Empty until `start` has run.
     @objc public static func current() -> [String: Any] {
         lock.lock()
         let level = cachedBatteryLevel

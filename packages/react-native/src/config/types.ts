@@ -3,6 +3,7 @@ import type { Config } from '@grafana/faro-core';
 import type { ANRInstrumentationOptions } from '../instrumentations/anr';
 import type { FrameMonitoringOptions } from '../instrumentations/frameMonitoring';
 import type { PreloadedMobileMeta, SessionAttributes } from '../instrumentations/session/sessionAttributes';
+import type { DynamicDeviceStateOptions } from '../metas/dynamicDeviceState';
 
 import type { Sampling } from './sampling';
 
@@ -71,6 +72,18 @@ type ReactNativeConfigOverrides = {
   enableConsoleCapture?: boolean;
   consoleCaptureOptions?: Config['consoleInstrumentation'];
   enableUserActions?: boolean;
+  /**
+   * Turns off groups of the dynamic device and network metadata. Every group is on by default. A
+   * group set to `false` starts no native listener and its fields reach no signal.
+   *
+   * - `battery`: `device.battery_level`, `device.is_charging`, `device.low_power_mode`
+   * - `thermal`: `device.thermal_state`
+   * - `network`: `network.connection_type`, `network.connection_subtype`, `network.carrier_name`
+   *
+   * The legacy session attributes `device_battery_level`, `device_is_charging`,
+   * `device_low_power_mode` (battery) and `device_carrier` (network) follow the same groups.
+   */
+  dynamicDeviceState?: DynamicDeviceStateOptions;
   userActionsOptions?: Config['userActionsInstrumentation'];
   /**
    * Hermes / minified release stack lines omit a file path. This must match the Metro plugin

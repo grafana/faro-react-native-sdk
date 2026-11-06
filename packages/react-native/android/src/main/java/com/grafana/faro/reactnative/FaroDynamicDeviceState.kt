@@ -19,6 +19,9 @@ import androidx.annotation.VisibleForTesting
 /**
  * Device and network values that change while the app runs.
  *
+ * Each group (battery, thermal, network) starts only when the app asks for it, so a disabled
+ * group registers no listener and reads nothing from the system.
+ *
  * Battery, Battery Saver, thermal state and connection type come from system listeners that
  * update cached values. The connection subtype and the carrier name are read on
  * demand: the listeners for them need the `READ_PHONE_STATE` runtime permission from API 31, and
@@ -38,7 +41,9 @@ internal object FaroDynamicDeviceState {
     const val CARRIER_NAME_KEY = "carrierName"
 
     private val lock = Any()
-    private var started = false
+    private var batteryStarted = false
+    private var thermalStarted = false
+    @Volatile private var networkStarted = false
 
     @Volatile private var batteryLevel: Int? = null
     @Volatile private var isCharging: Boolean? = null
@@ -50,38 +55,59 @@ internal object FaroDynamicDeviceState {
     // not confused with the loss of a network it replaced.
     private var defaultNetwork: Network? = null
 
-    /** The cached values plus the probed subtype and carrier. Starts the listeners once. */
+    /** The cached values of the started groups plus the on-demand subtype and carrier. */
     fun current(context: Context?): Map<String, Any> {
         if (context == null) {
             return emptyMap()
         }
 
         val applicationContext = context.applicationContext ?: context
-        start(applicationContext)
-
         val state = mutableMapOf<String, Any>()
         batteryLevel?.let { state[BATTERY_LEVEL_KEY] = it }
         isCharging?.let { state[IS_CHARGING_KEY] = it }
         lowPowerMode?.let { state[LOW_POWER_MODE_KEY] = it }
         thermalState?.let { state[THERMAL_STATE_KEY] = it }
-        val type = connectionType
-        type?.let { state[CONNECTION_TYPE_KEY] = it }
-        if (type == "cell") {
-            readConnectionSubtype(applicationContext)?.let { state[CONNECTION_SUBTYPE_KEY] = it }
+        if (networkStarted) {
+            val type = connectionType
+            type?.let { state[CONNECTION_TYPE_KEY] = it }
+            if (type == "cell") {
+                readConnectionSubtype(applicationContext)?.let { state[CONNECTION_SUBTYPE_KEY] = it }
+            }
+            readCarrierName(applicationContext)?.let { state[CARRIER_NAME_KEY] = it }
         }
-        readCarrierName(applicationContext)?.let { state[CARRIER_NAME_KEY] = it }
         return state
     }
 
-    /** Registers the listeners once and seeds the cache from the current state. */
-    fun start(context: Context) {
-        synchronized(lock) {
-            if (started) {
-                return
-            }
-            started = true
+    /**
+     * Registers the listeners of the enabled groups and seeds their cache. A group starts once and
+     * a group that is off is never touched.
+     */
+    fun start(context: Context, battery: Boolean, thermal: Boolean, network: Boolean) {
+        val applicationContext = context.applicationContext ?: context
+        if (battery && claimBattery()) {
+            startBatteryListener(applicationContext)
         }
+        if (thermal && claimThermal()) {
+            startThermalListener(applicationContext)
+        }
+        if (network && claimNetwork()) {
+            startConnectionListener(applicationContext)
+        }
+    }
 
+    private fun claimBattery(): Boolean = synchronized(lock) {
+        !batteryStarted.also { batteryStarted = true }
+    }
+
+    private fun claimThermal(): Boolean = synchronized(lock) {
+        !thermalStarted.also { thermalStarted = true }
+    }
+
+    private fun claimNetwork(): Boolean = synchronized(lock) {
+        !networkStarted.also { networkStarted = true }
+    }
+
+    private fun startBatteryListener(context: Context) {
         try {
             val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
             filter.addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
@@ -101,9 +127,6 @@ internal object FaroDynamicDeviceState {
         } catch (_: RuntimeException) {
             // Battery state stays unknown and is omitted.
         }
-
-        startThermalListener(context)
-        startConnectionListener(context)
     }
 
     private fun readBattery(intent: Intent?) {
@@ -275,7 +298,9 @@ internal object FaroDynamicDeviceState {
     @VisibleForTesting
     fun resetForTests() {
         synchronized(lock) {
-            started = false
+            batteryStarted = false
+            thermalStarted = false
+            networkStarted = false
         }
         batteryLevel = null
         isCharging = null
