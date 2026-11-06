@@ -7,8 +7,11 @@ import type { EventAttributes as FaroEventAttributes } from '@grafana/faro-core'
 const internalLogger = createInternalLogger();
 
 const DURATION_NS_KEY = 'duration_ns';
-/** Map stable OTel span attributes to Faro's fetch event contract. */
-function projectFetchEventAttributes(attributes: FaroEventAttributes): void {
+const FETCH_SCOPE = '@opentelemetry/instrumentation-fetch';
+const XHR_SCOPE = '@opentelemetry/instrumentation-xml-http-request';
+
+/** Map stable OTel span attributes to Faro's HTTP event contract (fetch and XHR). */
+function projectHttpEventAttributes(attributes: FaroEventAttributes, isFetch: boolean): void {
   const fields = {
     'http.request.method': 'http.method',
     'url.full': 'http.url',
@@ -33,7 +36,20 @@ function projectFetchEventAttributes(attributes: FaroEventAttributes): void {
   }
   delete attributes['server.address'];
   delete attributes['server.port'];
-  attributes['component'] = attributes['component'] ?? 'fetch';
+  if (isFetch) {
+    attributes['component'] = attributes['component'] ?? 'fetch';
+  } else {
+    // Stable XHR spans name non-standard methods `_OTHER`. Faro XHR events have
+    // always reported the method as sent, so use the original when present.
+    const originalMethod = attributes['http.request.method_original'];
+    if (originalMethod != null) {
+      attributes['http.method'] = originalMethod;
+      delete attributes['http.request.method_original'];
+    }
+    // Stable XHR spans omit the status when no response arrived (error, timeout,
+    // abort). Faro XHR events have always reported those requests as status 0.
+    attributes['http.status_code'] = attributes['http.status_code'] ?? '0';
+  }
 }
 
 /**
@@ -76,8 +92,8 @@ export function sendFaroEvents(resourceSpans: IResourceSpans[] = []) {
             faroEventAttributes[attribute.key] = String(Object.values(attribute.value)[0]);
           }
 
-          if (scope?.name === '@opentelemetry/instrumentation-fetch') {
-            projectFetchEventAttributes(faroEventAttributes);
+          if (scope?.name === FETCH_SCOPE || scope?.name === XHR_SCOPE) {
+            projectHttpEventAttributes(faroEventAttributes, scope.name === FETCH_SCOPE);
           }
 
           // Add span duration in nanoseconds

@@ -156,8 +156,9 @@ Every span includes:
 
 **Standard OTEL:**
 
-- `http.method`, `http.url`, `http.status_code`
-- `http.target`, `http.host`
+- `http.request.method`, `url.full`, `http.response.status_code` (stable HTTP conventions for fetch and XHR)
+- `server.address`, `server.port`, `error.type` (4xx/5xx; XHR network errors and timeouts)
+- `faro.tracing.fetch` / `faro.tracing.xml-http-request` events map these back to `http.method`, `http.url`, `http.status_code`, `http.host`, `http.scheme`
 
 **Faro Metadata:**
 

@@ -43,17 +43,32 @@ That's it! HTTP requests via `fetch()` are now automatically traced (and correla
 
 ## HTTP span and event conventions
 
-Built-in fetch tracing uses OpenTelemetry's [stable HTTP conventions](https://opentelemetry.io/docs/specs/semconv/http/http-spans/#name),
-with span names such as `GET` and `POST`. Attributes include `http.request.method`,
-`url.full`, `server.address`, `server.port`, and `http.response.status_code`.
-Successful responses leave status UNSET; ordinary 4xx/5xx responses set ERROR
-and a string `error.type`. There is no fetch convention mode setting.
+Built-in fetch and XHR tracing use OpenTelemetry's [stable HTTP conventions](https://opentelemetry.io/docs/specs/semconv/http/http-spans/#name),
+with span names such as `GET` and `POST`. Methods outside the standard set are
+named `_OTHER`, with the original in `http.request.method_original`. Attributes
+include `http.request.method`, `url.full`, `server.address`, `server.port`, and
+`http.response.status_code`. Successful responses leave status UNSET; 4xx/5xx
+responses set ERROR and a string `error.type`. There is no convention mode
+setting.
 
-The `faro.tracing.fetch` event keeps `http.method`, `http.url`, `http.status_code`,
-`http.host`, and `http.scheme`. Event attributes, including `duration_ns`, are
-strings. Events retain session and trace/span context and use the shared event
-pipeline for deduplication and transport hooks. Optional XHR tracing and custom
-instrumentations use their own conventions.
+Requests that get no response have span status ERROR in both
+instrumentations, but different attributes:
+
+- Fetch: `http.response.status_code` `0` and no `error.type`.
+- XHR: no `http.response.status_code`. Network errors and timeouts set
+  `error.type` `error` or `timeout`; aborted requests have no `error.type`.
+
+The `faro.tracing.fetch` and `faro.tracing.xml-http-request` events keep
+`http.method`, `http.url`, `http.status_code`, `http.host`, and `http.scheme`.
+`http.status_code` is `0` when no response arrived. Events copy `error.type`
+from the span when it is set. XHR events report non-standard methods as sent
+(for example `PROPFIND`); fetch events report them as `_OTHER` and keep
+`http.request.method_original`. Fetch events also carry `component: fetch`.
+Event attributes, including `duration_ns`, are strings. Events retain session
+and trace/span context and use the shared event pipeline for deduplication and
+transport hooks. XHR spans and events do not include `http.user_agent`,
+`http.status_text`, or response length attributes. Custom instrumentations use
+their own conventions.
 
 Fetch spans capture the active user action at request start. A delayed fetch
 event can still be associated with a later action through event buffering.
@@ -268,9 +283,9 @@ If the same app also uses `fetch()` for the same backend URLs, add `ignoreUrls` 
 
 **Trace includes:**
 
-- `http.method`: `GET`
-- `http.url`: `https://api.example.com/users`
-- `http.status_code`: `200`
+- `http.request.method`: `GET`
+- `url.full`: `https://api.example.com/users`
+- `http.response.status_code`: `200`
 - `session.id`: `abc123`
 - `device.model`: `iPhone 15 Pro`
 - `device.platform`: `iOS`
@@ -512,12 +527,13 @@ function performOperation() {
 
 Every span includes these attributes:
 
-**Standard OTEL Attributes:**
+**Standard OTEL Attributes (HTTP client spans):**
 
-- `http.method` - HTTP method (GET, POST, etc.)
-- `http.url` - Full URL
-- `http.status_code` - HTTP status code
-- `http.target` - URL path
+- `http.request.method` - HTTP method (GET, POST, etc.). Methods outside the standard set are reported as `_OTHER`, with the original in `http.request.method_original`
+- `url.full` - Full URL
+- `server.address`, `server.port` - Host and port
+- `http.response.status_code` - HTTP status code (see [HTTP span and event conventions](#http-span-and-event-conventions) for requests without a response)
+- `error.type` - Set on 4xx/5xx responses, and on XHR network errors and timeouts
 
 **Faro Session Attributes:**
 

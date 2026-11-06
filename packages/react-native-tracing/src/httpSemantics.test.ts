@@ -25,6 +25,7 @@ describe('stable fetch semantics', () => {
   let instrumentation: TracingInstrumentation;
   let originalFetch: typeof fetch;
   let resolveResponse: (response: Response) => void;
+  let rejectResponse: (error: Error) => void;
   let messages: HttpRequestMessage[];
   let unsubscribe: () => void;
 
@@ -33,8 +34,9 @@ describe('stable fetch semantics', () => {
     originalFetch = globalThis.fetch;
     globalThis.fetch = jest.fn(
       () =>
-        new Promise<Response>((resolve) => {
+        new Promise<Response>((resolve, reject) => {
           resolveResponse = resolve;
+          rejectResponse = reject;
         })
     );
     globalThis.__FARO_HTTP_MONITOR__ = undefined;
@@ -138,6 +140,24 @@ describe('stable fetch semantics', () => {
     expect(messages[1]!.request).toMatchObject({ requestId: span.spanId, url, method, status });
     expect(messages[1]!.request.startTime).toBe(messages[0]!.request.startTime);
     expect(messages[1]!.request.endTime! - messages[1]!.request.startTime).toBeCloseTo(250, 0);
+  });
+
+  it('reports a fetch network failure as status 0', async () => {
+    const pending = globalThis.fetch(url, { method: 'GET' });
+    await jest.advanceTimersByTimeAsync(250);
+    rejectResponse(new TypeError('Network request failed'));
+    await expect(pending).rejects.toThrow('Network request failed');
+    await jest.advanceTimersByTimeAsync(2000);
+    const { span, event } = exported();
+    expect(span.status?.code).toBe(2);
+    const attributes = Object.fromEntries(span.attributes.map(({ key, value }) => [key, value]));
+    expect(attributes['http.response.status_code']).toEqual({ intValue: 0 });
+    expect(event.attributes).toMatchObject({
+      'http.method': 'GET',
+      'http.url': url,
+      'http.status_code': '0',
+    });
+    expect(event.attributes!['http.response.status_code']).toBeUndefined();
   });
 
   it('does not classify a non-HTTP URL span as a request', async () => {

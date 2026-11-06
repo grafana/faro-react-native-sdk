@@ -6,12 +6,17 @@ import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import { sendFaroEvents as send } from './faroTraceExporter.utils';
 
-function fixture(paths = ['/same']): IResourceSpans[] {
+function fixture(
+  paths = ['/same'],
+  scopeName = '@opentelemetry/instrumentation-fetch',
+  status: string | null = '200',
+  extra: Record<string, string> = {}
+): IResourceSpans[] {
   return [
     {
       scopeSpans: [
         {
-          scope: { name: '@opentelemetry/instrumentation-fetch' },
+          scope: { name: scopeName },
           spans: paths.map((path, i) => ({
             kind: 3,
             traceId: 'trace',
@@ -21,8 +26,9 @@ function fixture(paths = ['/same']): IResourceSpans[] {
             attributes: Object.entries({
               'http.request.method': 'GET',
               'url.full': 'https://example.com' + path,
-              'http.response.status_code': '200',
+              ...(status === null ? {} : { 'http.response.status_code': status }),
               'server.address': 'example.com',
+              ...extra,
             }).map(([key, value]) => ({ key, value: { stringValue: value } })),
           })),
         },
@@ -86,5 +92,101 @@ describe('span-derived event pipeline', () => {
       'https://example.com/second',
       'https://example.com/third',
     ]);
+  });
+  it.each(['200', '500'])('maps stable XHR span attributes to legacy event fields (%s)', (status) => {
+    const { events } = setup();
+    send(fixture(['/xhr'], '@opentelemetry/instrumentation-xml-http-request', status));
+    const [event] = events();
+    expect(event?.name).toBe('faro.tracing.xml-http-request');
+    expect(event?.attributes).toMatchObject({
+      'http.method': 'GET',
+      'http.url': 'https://example.com/xhr',
+      'http.status_code': status,
+      'http.host': 'example.com',
+      'http.scheme': 'https',
+    });
+    expect(event?.attributes?.['url.full']).toBeUndefined();
+    expect(event?.attributes?.['http.request.method']).toBeUndefined();
+    expect(event?.attributes?.['http.response.status_code']).toBeUndefined();
+    expect(event?.attributes?.['server.address']).toBeUndefined();
+    expect(event?.attributes?.['component']).toBeUndefined();
+  });
+  it.each([
+    ['error', { 'error.type': 'error' }],
+    ['timeout', { 'error.type': 'timeout' }],
+    ['abort', {}],
+  ])('reports XHR %s without a response as status 0', (_, extra) => {
+    const { events } = setup();
+    send(fixture(['/xhr'], '@opentelemetry/instrumentation-xml-http-request', null, extra));
+    const [event] = events();
+    expect(event?.attributes?.['http.status_code']).toBe('0');
+    expect(event?.attributes?.['http.url']).toBe('https://example.com/xhr');
+  });
+  it('reports the original method of a non-standard XHR request', () => {
+    const { events } = setup();
+    send(
+      fixture(['/xhr'], '@opentelemetry/instrumentation-xml-http-request', '207', {
+        'http.request.method': '_OTHER',
+        'http.request.method_original': 'PROPFIND',
+      })
+    );
+    const [event] = events();
+    expect(event?.attributes?.['http.method']).toBe('PROPFIND');
+    expect(event?.attributes?.['http.request.method_original']).toBeUndefined();
+  });
+  it('keeps the normalized method of a non-standard fetch request', () => {
+    const { events } = setup();
+    send(
+      fixture(['/fetch'], '@opentelemetry/instrumentation-fetch', '207', {
+        'http.request.method': '_OTHER',
+        'http.request.method_original': 'PROPFIND',
+      })
+    );
+    const [event] = events();
+    expect(event?.attributes?.['http.method']).toBe('_OTHER');
+    expect(event?.attributes?.['http.request.method_original']).toBe('PROPFIND');
+  });
+  it('does not invent a status for fetch events', () => {
+    const { events } = setup();
+    send(fixture(['/fetch'], '@opentelemetry/instrumentation-fetch', null, { 'error.type': 'TypeError' }));
+    expect(events()[0]?.attributes?.['http.status_code']).toBeUndefined();
+  });
+  it('keeps legacy attributes from an older XHR instrumentation unchanged', () => {
+    const { events } = setup();
+    const legacy = [
+      {
+        scopeSpans: [
+          {
+            scope: { name: '@opentelemetry/instrumentation-xml-http-request' },
+            spans: [
+              {
+                kind: 3,
+                traceId: 'trace',
+                spanId: 'legacy',
+                startTimeUnixNano: '1000000000',
+                endTimeUnixNano: '1001000000',
+                attributes: Object.entries({
+                  'http.method': 'POST',
+                  'http.url': 'https://example.com/legacy',
+                  'http.status_code': '201',
+                  'http.host': 'example.com',
+                  'http.scheme': 'https',
+                  'http.user_agent': 'agent',
+                }).map(([key, value]) => ({ key, value: { stringValue: value } })),
+              },
+            ],
+          },
+        ],
+      },
+    ] as unknown as IResourceSpans[];
+    send(legacy);
+    expect(events()[0]?.attributes).toMatchObject({
+      'http.method': 'POST',
+      'http.url': 'https://example.com/legacy',
+      'http.status_code': '201',
+      'http.host': 'example.com',
+      'http.scheme': 'https',
+      'http.user_agent': 'agent',
+    });
   });
 });

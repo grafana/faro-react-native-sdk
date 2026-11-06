@@ -48,14 +48,14 @@
       "allowedVersions": "<3.0.0"
     },
     {
-      "description": "Hold the experimental OpenTelemetry packages at 0.220.x. 0.221 drops legacy HTTP attributes from XHR spans, which changes the telemetry SDK consumers receive, so that upgrade ships in its own PR with the exporter changes and a changelog note. Raise this to <0.300.0 (the OpenTelemetry JS 3.0 hold above) in that PR.",
+      "description": "See the OpenTelemetry JS 3.0 hold above.",
       "matchPackageNames": [
         "@opentelemetry/instrumentation",
         "@opentelemetry/instrumentation-fetch",
         "@opentelemetry/instrumentation-xml-http-request",
         "@opentelemetry/otlp-transformer"
       ],
-      "allowedVersions": "<0.221.0"
+      "allowedVersions": "<0.300.0"
     },
     {
       "description": "See the OpenTelemetry JS 3.0 hold above.",
