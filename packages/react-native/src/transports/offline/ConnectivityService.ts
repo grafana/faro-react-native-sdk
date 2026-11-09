@@ -102,12 +102,14 @@ export class DefaultConnectivityService implements ConnectivityService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      await fetch('https://one.one.one.one/cdn-cgi/trace', {
-        method: 'HEAD',
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
+      try {
+        await fetch('https://one.one.one.one/cdn-cgi/trace', {
+          method: 'HEAD',
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       this.setOnline(true);
     } catch {
       this.setOnline(false);
