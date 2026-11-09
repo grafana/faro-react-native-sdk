@@ -1423,8 +1423,9 @@ Android API 29 and later map the system thermal status `NONE`, `LIGHT`, `MODERAT
 platform cannot read it.
 
 Native listeners keep these values current, and the SDK reads them from a native cache without waiting, at most every
-5 seconds. Two Android fields have no listener that works without a runtime permission, so the SDK reads them from the
-system on each of those reads: `connection_subtype` and `carrier_name`. Android reads the connection with
+250 milliseconds. A change shows in a signal captured after that. Two Android fields have no listener that works
+without a runtime permission, so a background thread polls the system for them: `connection_subtype` and
+`carrier_name`. The poll runs at start, on each network change, and at most every 5 seconds after a read. Android reads the connection with
 `ACCESS_NETWORK_STATE`, which the SDK adds to the manifest. On Android 13 (API 33) and later,
 `connection_subtype` comes from `TelephonyManager` and needs `READ_BASIC_PHONE_STATE`. The SDK adds this normal,
 install-time permission to the manifest, so the user sees no prompt. An app that removes it loses

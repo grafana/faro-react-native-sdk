@@ -124,8 +124,8 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     /**
      * Battery, thermal and network values that change while the app runs.
      *
-     * Reads values that system listeners keep current, plus one cheap network read. Omits every
-     * value that cannot be read.
+     * Returns cached values. System listeners keep them current, and a background thread polls the
+     * connection subtype and the carrier. Omits every value that cannot be read.
      */
     @ReactMethod(isBlockingSynchronousMethod = true)
     fun getDynamicDeviceState(): WritableMap {

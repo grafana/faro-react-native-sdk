@@ -42,8 +42,12 @@ export interface DynamicDeviceState {
   network: MetaNetwork;
 }
 
-/** The longest a native read is reused. It bounds the bridge calls, not the age of a value: native listeners keep their cache current. */
-export const DYNAMIC_DEVICE_STATE_TTL_MS = 5000;
+/**
+ * The longest a native read is reused. Faro core evaluates the meta item on every `metas.value`
+ * access, several times per signal, so this bounds the synchronous bridge calls. It also bounds
+ * how long a change that the native listeners already hold stays out of a signal.
+ */
+export const DYNAMIC_DEVICE_STATE_TTL_MS = 250;
 
 const DYNAMIC_DEVICE_KEYS = ['battery_level', 'is_charging', 'low_power_mode', 'thermal_state'] as const;
 
@@ -103,7 +107,7 @@ interface DynamicDeviceStateNativeModule {
   getDynamicDeviceState?: () => unknown;
 }
 
-// A synchronous read of a cache the native listeners keep current. It does no I/O on the JS thread.
+// A blocking call that returns a cache the native listeners keep current. Native does no system calls for it.
 function readNativeDynamicDeviceState(): DynamicDeviceState | undefined {
   const nativeModule = NativeModules['FaroReactNativeModule'] as DynamicDeviceStateNativeModule | undefined;
   if (typeof nativeModule?.getDynamicDeviceState !== 'function') {
