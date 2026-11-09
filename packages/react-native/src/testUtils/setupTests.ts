@@ -136,6 +136,11 @@ if (typeof global.Request === 'undefined') {
   } as any;
 }
 
+// HTTP-specific tests replace this boundary with their own success and failure responses.
+global.fetch = async () => {
+  throw new Error('Unexpected network request in unit test');
+};
+
 if (typeof global.URL === 'undefined') {
   global.URL = class URL {
     href: string;
