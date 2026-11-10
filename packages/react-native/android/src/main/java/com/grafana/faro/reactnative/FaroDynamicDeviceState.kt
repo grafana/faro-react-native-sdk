@@ -12,9 +12,14 @@ import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
+import android.os.SystemClock
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Device and network values that change while the app runs.
@@ -23,11 +28,13 @@ import androidx.annotation.VisibleForTesting
  * group registers no listener and reads nothing from the system.
  *
  * Battery, Battery Saver, thermal state and connection type come from system listeners that
- * update cached values. The connection subtype and the carrier name are read on
- * demand: the listeners for them need the `READ_PHONE_STATE` runtime permission from API 31, and
- * this SDK asks for no runtime permission. The subtype comes from `TelephonyManager` on API 33+,
- * where the install-time `READ_BASIC_PHONE_STATE` permission allows it, and from the deprecated
- * `NetworkInfo` below. Every value is omitted when it cannot be read.
+ * update cached values. The connection subtype and the carrier name have no permission-free
+ * listener: the listeners need the `READ_PHONE_STATE` runtime permission from API 31, and this SDK
+ * asks for no runtime permission. They are polled instead, on a background thread, because
+ * `TelephonyManager` makes blocking calls to the phone service. [current] only returns the cache.
+ * The subtype comes from `TelephonyManager` on API 33+, where the install-time
+ * `READ_BASIC_PHONE_STATE` permission allows it, and from the deprecated `NetworkInfo` below.
+ * Every value is omitted when it cannot be read.
  *
  * Ported from the Faro Flutter SDK's `DynamicDeviceState`.
  */
@@ -40,22 +47,39 @@ internal object FaroDynamicDeviceState {
     const val CONNECTION_SUBTYPE_KEY = "connectionSubtype"
     const val CARRIER_NAME_KEY = "carrierName"
 
+    private const val TELEPHONY_REFRESH_INTERVAL_MS = 5000L
+
     private val lock = Any()
     private var batteryStarted = false
     private var thermalStarted = false
     @Volatile private var networkStarted = false
+
+    private val telephonyRefreshQueued = AtomicBoolean(false)
+    @Volatile private var telephonyRefreshAgain = false
+    @Volatile private var lastTelephonyRefreshAt = Long.MIN_VALUE / 2
+
+    private val telephonyExecutor: Executor by lazy {
+        Executors.newSingleThreadExecutor { task ->
+            Thread(task, "faro-device-state").apply { isDaemon = true }
+        }
+    }
+
+    @VisibleForTesting
+    @Volatile internal var refreshExecutor: Executor? = null
 
     @Volatile private var batteryLevel: Int? = null
     @Volatile private var isCharging: Boolean? = null
     @Volatile private var lowPowerMode: Boolean? = null
     @Volatile private var thermalState: String? = null
     @Volatile private var connectionType: String? = null
+    @Volatile private var connectionSubtype: String? = null
+    @Volatile private var carrierName: String? = null
 
     // Only read and written on the connectivity callback thread, so the default network's loss is
     // not confused with the loss of a network it replaced.
     private var defaultNetwork: Network? = null
 
-    /** The cached values of the started groups plus the on-demand subtype and carrier. */
+    /** The cached values of the started groups. Keeps the subtype and carrier fresh. */
     fun current(context: Context?): Map<String, Any> {
         if (context == null) {
             return emptyMap()
@@ -71,9 +95,10 @@ internal object FaroDynamicDeviceState {
             val type = connectionType
             type?.let { state[CONNECTION_TYPE_KEY] = it }
             if (type == "cell") {
-                readConnectionSubtype(applicationContext)?.let { state[CONNECTION_SUBTYPE_KEY] = it }
+                connectionSubtype?.let { state[CONNECTION_SUBTYPE_KEY] = it }
             }
-            readCarrierName(applicationContext)?.let { state[CARRIER_NAME_KEY] = it }
+            carrierName?.let { state[CARRIER_NAME_KEY] = it }
+            requestTelephonyRefresh(applicationContext, force = false)
         }
         return state
     }
@@ -92,6 +117,7 @@ internal object FaroDynamicDeviceState {
         }
         if (network && claimNetwork()) {
             startConnectionListener(applicationContext)
+            requestTelephonyRefresh(applicationContext, force = true)
         }
     }
 
@@ -127,6 +153,43 @@ internal object FaroDynamicDeviceState {
         } catch (_: RuntimeException) {
             // Battery state stays unknown and is omitted.
         }
+    }
+
+    /**
+     * Reads the subtype and carrier on the background thread. A read that was not forced waits for
+     * the refresh interval, and a request that arrives during a refresh runs once more after it.
+     */
+    private fun requestTelephonyRefresh(context: Context, force: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - lastTelephonyRefreshAt < TELEPHONY_REFRESH_INTERVAL_MS) {
+            return
+        }
+        lastTelephonyRefreshAt = now
+
+        if (!telephonyRefreshQueued.compareAndSet(false, true)) {
+            telephonyRefreshAgain = true
+            return
+        }
+
+        try {
+            (refreshExecutor ?: telephonyExecutor).execute {
+                try {
+                    do {
+                        telephonyRefreshAgain = false
+                        refreshTelephony(context)
+                    } while (telephonyRefreshAgain)
+                } finally {
+                    telephonyRefreshQueued.set(false)
+                }
+            }
+        } catch (_: RejectedExecutionException) {
+            telephonyRefreshQueued.set(false)
+        }
+    }
+
+    private fun refreshTelephony(context: Context) {
+        connectionSubtype = if (connectionType == "cell") readConnectionSubtype(context) else null
+        carrierName = readCarrierName(context)
     }
 
     private fun readBattery(intent: Intent?) {
@@ -185,12 +248,14 @@ internal object FaroDynamicDeviceState {
                         ) {
                             defaultNetwork = network
                             applyCapabilities(capabilities)
+                            requestTelephonyRefresh(context, force = true)
                         }
 
                         override fun onLost(network: Network) {
                             if (network == defaultNetwork) {
                                 defaultNetwork = null
                                 connectionType = "unavailable"
+                                requestTelephonyRefresh(context, force = true)
                             }
                         }
                     },
@@ -202,6 +267,7 @@ internal object FaroDynamicDeviceState {
                     object : BroadcastReceiver() {
                         override fun onReceive(receiverContext: Context?, intent: Intent?) {
                             readConnection(connectivityManager)
+                            requestTelephonyRefresh(context, force = true)
                         }
                     },
                     IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION),
@@ -307,7 +373,13 @@ internal object FaroDynamicDeviceState {
         lowPowerMode = null
         thermalState = null
         connectionType = null
+        connectionSubtype = null
+        carrierName = null
         defaultNetwork = null
+        telephonyRefreshQueued.set(false)
+        telephonyRefreshAgain = false
+        lastTelephonyRefreshAt = Long.MIN_VALUE / 2
+        refreshExecutor = null
     }
 
     /** Whole percent from 0 to 100, or null when the system reports no level. */

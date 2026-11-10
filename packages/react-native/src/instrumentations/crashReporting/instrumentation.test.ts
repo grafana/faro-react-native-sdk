@@ -579,6 +579,30 @@ describe('CrashReportingInstrumentation', () => {
       expect(faro.transports.execute).toBe(execute);
     });
 
+    it('does not send the relaunch values with a crash buffered by an active user action', () => {
+      const transport = new MockTransport();
+      const instrumentation = new CrashReportingInstrumentation({ enabled: false });
+      const faro = initializeFaro(
+        mockConfig({ metas: dynamicMetas, transports: [transport], instrumentations: [instrumentation] })
+      );
+      faro.api.setSession({ id: 'session-b', attributes: relaunchSessionAttributes });
+      const action = faro.api.startUserAction('tap');
+      expect(faro.api.getActiveUserAction()).toBe(action);
+
+      (instrumentation as unknown as { sendCrashReport: (crash: CrashReport) => void }).sendCrashReport(
+        createCrashReport()
+      );
+      expect(transport.items).toHaveLength(0);
+      (action as unknown as { end: () => void }).end();
+
+      const crash = transport.items.find((item) => item.type === 'exception');
+      expect(crash).toBeDefined();
+      expect(crash?.meta.device).toEqual({ is_physical: true, brand: 'Apple' });
+      expect(crash?.meta).not.toHaveProperty('network');
+      expect(crash?.meta.session?.attributes).toEqual({ device_brand: 'Apple' });
+      expect(typeof (action as unknown as { addItem: unknown }).addItem).toBe('function');
+    });
+
     it('does not send the relaunch values with a crash whose JSON cannot be parsed', async () => {
       const transport = new MockTransport();
       const instrumentation = new IosCrashReportingInstrumentation({ enabled: false });

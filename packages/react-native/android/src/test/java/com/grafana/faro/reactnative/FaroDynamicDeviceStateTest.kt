@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.NetworkInfo
 import android.os.BatteryManager
 import android.os.PowerManager
 import android.telephony.TelephonyManager
@@ -18,12 +19,17 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowNetworkInfo
+import java.time.Duration
+import java.util.concurrent.Executor
 
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE, sdk = [30])
 class FaroDynamicDeviceStateTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
+
+    private val queuedRefreshes = mutableListOf<Runnable>()
 
     // The state is a singleton that registers its listeners once, on the first context it sees.
     @Before
@@ -195,10 +201,103 @@ class FaroDynamicDeviceStateTest {
         assertEquals(registered, shadowOf(application).registeredReceivers.size)
     }
 
+    @Test
+    @Config(manifest = Config.NONE, sdk = [33])
+    fun current_returnsTheCachedSubtypeAndCarrierAndReadsThemOffTheCallingThread() {
+        prepareCellularNetwork(networkType = TelephonyManager.NETWORK_TYPE_LTE, operator = "Acme")
+
+        startAllGroups()
+        val beforeRefresh = FaroDynamicDeviceState.current(context)
+
+        assertEquals("cell", beforeRefresh[FaroDynamicDeviceState.CONNECTION_TYPE_KEY])
+        assertFalse(beforeRefresh.containsKey(FaroDynamicDeviceState.CONNECTION_SUBTYPE_KEY))
+        assertFalse(beforeRefresh.containsKey(FaroDynamicDeviceState.CARRIER_NAME_KEY))
+        assertEquals(1, queuedRefreshes.size)
+
+        runQueuedRefreshes()
+        val afterRefresh = FaroDynamicDeviceState.current(context)
+
+        assertEquals("lte", afterRefresh[FaroDynamicDeviceState.CONNECTION_SUBTYPE_KEY])
+        assertEquals("Acme", afterRefresh[FaroDynamicDeviceState.CARRIER_NAME_KEY])
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [33])
+    fun current_queuesOneRefreshHoweverOftenItIsCalled() {
+        prepareCellularNetwork(networkType = TelephonyManager.NETWORK_TYPE_LTE, operator = "Acme")
+
+        startAllGroups()
+        repeat(5) { FaroDynamicDeviceState.current(context) }
+
+        assertEquals(1, queuedRefreshes.size)
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [33])
+    fun current_refreshesAgainOnceTheIntervalHasPassed() {
+        prepareCellularNetwork(networkType = TelephonyManager.NETWORK_TYPE_LTE, operator = "Acme")
+        startAllGroups()
+        runQueuedRefreshes()
+
+        FaroDynamicDeviceState.current(context)
+        assertTrue(queuedRefreshes.isEmpty())
+
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofSeconds(6))
+        FaroDynamicDeviceState.current(context)
+        assertEquals(1, queuedRefreshes.size)
+    }
+
+    @Test
+    @Config(manifest = Config.NONE, sdk = [33])
+    fun current_omitsTheSubtypeOffCellularButKeepsTheCarrier() {
+        prepareCellularNetwork(
+            networkType = TelephonyManager.NETWORK_TYPE_LTE,
+            operator = "Acme",
+            connectionType = ConnectivityManager.TYPE_WIFI,
+        )
+
+        startAllGroups()
+        runQueuedRefreshes()
+        val state = FaroDynamicDeviceState.current(context)
+
+        assertEquals("wifi", state[FaroDynamicDeviceState.CONNECTION_TYPE_KEY])
+        assertFalse(state.containsKey(FaroDynamicDeviceState.CONNECTION_SUBTYPE_KEY))
+        assertEquals("Acme", state[FaroDynamicDeviceState.CARRIER_NAME_KEY])
+    }
+
     private val application: Application get() = context as Application
 
     private fun startAllGroups() {
         FaroDynamicDeviceState.start(context, battery = true, thermal = true, network = true)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun prepareCellularNetwork(
+        networkType: Int,
+        operator: String,
+        connectionType: Int = ConnectivityManager.TYPE_MOBILE,
+    ) {
+        FaroDynamicDeviceState.refreshExecutor = Executor { queuedRefreshes.add(it) }
+        shadowOf(application).grantPermissions("android.permission.READ_BASIC_PHONE_STATE")
+        val telephonyManager = application.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        shadowOf(telephonyManager).setDataNetworkType(networkType)
+        shadowOf(telephonyManager).setNetworkOperatorName(operator)
+        shadowOf(application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+            .setActiveNetworkInfo(
+                ShadowNetworkInfo.newInstance(
+                    NetworkInfo.DetailedState.CONNECTED,
+                    connectionType,
+                    0,
+                    true,
+                    NetworkInfo.State.CONNECTED,
+                ),
+            )
+    }
+
+    private fun runQueuedRefreshes() {
+        val pending = queuedRefreshes.toList()
+        queuedRefreshes.clear()
+        pending.forEach { it.run() }
     }
 
     @Suppress("DEPRECATION")
