@@ -41,6 +41,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
 
     private var anrTracker: ANRTracker? = null
     private val sessionPersistenceOwner = Any()
+    private val dynamicDeviceStateOwner = Any()
 
     override fun getName(): String = NAME
 
@@ -70,6 +71,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
 
     override fun invalidate() {
         FaroSessionProcess.releasePersistence(sessionPersistenceOwner)
+        FaroDynamicDeviceState.detach(dynamicDeviceStateOwner)
         super.invalidate()
     }
 
@@ -123,7 +125,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod(isBlockingSynchronousMethod = true)
     fun startDynamicDeviceState(battery: Boolean, thermal: Boolean, network: Boolean): Boolean {
-        FaroDynamicDeviceState.start(reactApplicationContext, battery, thermal, network)
+        FaroDynamicDeviceState.start(dynamicDeviceStateOwner, reactApplicationContext, battery, thermal, network)
         return true
     }
 

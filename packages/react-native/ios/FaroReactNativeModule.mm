@@ -21,6 +21,7 @@ static __weak FaroReactNativeModule *FaroSessionPersistenceOwner;
 
 @interface FaroReactNativeModule ()
 @property (nonatomic, copy, nullable) NSDictionary<NSString *, NSNumber *> *screenMetrics;
+@property (nonatomic, strong, readonly) NSObject *dynamicDeviceStateOwner;
 - (BOOL)claimSessionPersistenceOwnership;
 - (BOOL)releaseSessionPersistenceOwnership;
 @end
@@ -39,6 +40,7 @@ RCT_EXPORT_MODULE(FaroReactNativeModule)
 - (instancetype)init
 {
   if (self = [super init]) {
+    _dynamicDeviceStateOwner = [[NSObject alloc] init];
     if ([NSThread isMainThread]) {
       _screenMetrics = [FaroReactNative getScreenMetrics];
     }
@@ -75,8 +77,9 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getScreenMetrics)
 /// battery monitoring needs the main thread, so the start runs there.
 RCT_EXPORT_METHOD(startDynamicDeviceState:(BOOL)battery thermal:(BOOL)thermal network:(BOOL)network)
 {
+  NSObject *owner = self.dynamicDeviceStateOwner;
   dispatch_async(dispatch_get_main_queue(), ^{
-    [FaroDynamicDeviceState startWithBattery:battery thermal:thermal network:network];
+    [FaroDynamicDeviceState startWithOwner:owner battery:battery thermal:thermal network:network];
   });
 }
 
@@ -126,6 +129,22 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(releaseSessionPersistence)
 - (void)invalidate
 {
   [self releaseSessionPersistenceOwnership];
+  [self detachDynamicDeviceState];
+}
+
+- (void)dealloc
+{
+  [self detachDynamicDeviceState];
+}
+
+/// Stops the groups that no other runtime wants. It runs on the main queue so it stays in order
+/// with `startDynamicDeviceState`. It is safe to call twice.
+- (void)detachDynamicDeviceState
+{
+  NSObject *owner = self.dynamicDeviceStateOwner;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [FaroDynamicDeviceState detachWithOwner:owner];
+  });
 }
 
 /// Synchronous method for immediate access from JavaScript
