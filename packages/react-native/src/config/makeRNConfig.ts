@@ -6,6 +6,7 @@ import type { PreloadedMobileMeta } from '../instrumentations/session/sessionAtt
 import { defaultSessionTrackingConfig } from '../instrumentations/session/sessionManager/sessionConstants';
 import { InternalLoggerLevel, LogLevel } from '../internalLogger';
 import { getMetroInjectedBundleId } from '../metas/appBuildIdentity';
+import { getDynamicDeviceStateMeta } from '../metas/dynamicDeviceState';
 import { getPageMeta } from '../metas/page';
 import { getScreenMeta } from '../metas/screen';
 import { getSdkMeta } from '../metas/sdk';
@@ -115,9 +116,15 @@ export function makeRNConfig(
   preloadedMobileMeta?: PreloadedMobileMeta,
   appSymbolsBundleId?: string
 ): ReactNativeFullConfig {
-  const { app: preloadedAppMeta, ...structuredMobileMeta } = preloadedMobileMeta?.meta ?? {};
+  const { app: preloadedAppMeta, device: staticDeviceMeta, ...structuredMobileMeta } = preloadedMobileMeta?.meta ?? {};
   const mobileMetas = Object.keys(structuredMobileMeta).length > 0 ? [structuredMobileMeta] : [];
-  const defaultMetas = [getSdkMeta(), getPageMeta(), getScreenMeta(), ...mobileMetas];
+  const defaultMetas = [
+    getSdkMeta(),
+    getPageMeta(),
+    getScreenMeta(),
+    ...mobileMetas,
+    getDynamicDeviceStateMeta(staticDeviceMeta),
+  ];
   const customMetas = config.metas ?? [];
   const transports = buildTransports(config);
   const instrumentations = buildInstrumentations(config);

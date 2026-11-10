@@ -113,7 +113,6 @@ describe('sessionAttributes', () => {
           device_battery_level: '85',
           device_is_charging: 'false',
           device_low_power_mode: 'false',
-          device_carrier: 'Verizon',
         });
       });
 
@@ -1039,8 +1038,18 @@ describe('sessionAttributes', () => {
         expect(attributes.device_battery_level).toBe('100');
       });
 
-      it.each(['--', 'unknown', '', '   ', null])('should omit the placeholder carrier %p', async (carrierName) => {
+      it.each(['Verizon', 'T-Mobile'])('should omit the carrier %p on every iOS version', async (carrierName) => {
         mockDevice('ios');
+        (DeviceInfo.getCarrier as jest.Mock).mockResolvedValue(carrierName);
+
+        const attributes = await getSessionAttributes();
+
+        expect(DeviceInfo.getCarrier).not.toHaveBeenCalled();
+        expect(attributes.device_carrier).toBeUndefined();
+      });
+
+      it.each(['--', 'unknown', '', '   ', null])('should omit the placeholder carrier %p', async (carrierName) => {
+        mockDevice('android');
         (DeviceInfo.getCarrier as jest.Mock).mockResolvedValue(carrierName);
 
         const attributes = await getSessionAttributes();
