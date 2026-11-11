@@ -1,4 +1,5 @@
 import { context, propagation, trace } from '@opentelemetry/api';
+import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
 import { createServer, type IncomingHttpHeaders, type Server } from 'http';
 import type { AddressInfo } from 'net';
 
@@ -7,6 +8,7 @@ import type { EventEvent, Faro, TraceEvent } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
 import { TracingInstrumentation } from './instrumentation';
+import { xhrCustomAttributeFunctionWithDefaults } from './instrumentations/instrumentationUtils';
 
 // Use the real RN monitor without loading native modules in jsdom.
 jest.mock('@grafana/faro-react-native', () => ({
@@ -21,7 +23,7 @@ const XHR_SCOPE = '@opentelemetry/instrumentation-xml-http-request';
  * XMLHttpRequest performs real requests against a local HTTP server, and the
  * spans and events go through the Faro exporter to a mock transport.
  */
-describe('XHR tracing semantics', () => {
+describe.each([false, true])('XHR tracing semantics (custom=%s)', (custom) => {
   // Real network round trips plus the exporter's batch delay; Jest's 5s default is too tight.
   jest.setTimeout(20000);
 
@@ -68,7 +70,18 @@ describe('XHR tracing semantics', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
+  const originalGetEntries = performance.getEntriesByType;
+  const originalObserver = globalThis.PerformanceObserver;
+  const originalResourceTiming = globalThis.PerformanceResourceTiming;
+  const observe = jest.fn();
+  const observer = jest.fn(() => ({ observe, disconnect: jest.fn() }));
+
   beforeEach(() => {
+    performance.getEntriesByType = jest.fn(() => []);
+    observer.mockClear();
+    observe.mockClear();
+    globalThis.PerformanceObserver = observer as unknown as typeof PerformanceObserver;
+    globalThis.PerformanceResourceTiming = class {} as typeof PerformanceResourceTiming;
     requestHeaders = [];
     globalThis.__FARO_HTTP_MONITOR__ = undefined;
     transport = new MockTransport();
@@ -76,6 +89,18 @@ describe('XHR tracing semantics', () => {
     faro = initializeFaro(mockConfig({ transports: [transport], dedupe: false }))!;
     faro.api.setSession({ id: 'xhr-session', attributes: { isSampled: 'true' } });
     instrumentation = new TracingInstrumentation({
+      ...(custom
+        ? {
+            instrumentations: [
+              [
+                new XMLHttpRequestInstrumentation({
+                  propagateTraceHeaderCorsUrls: [/.*/],
+                  applyCustomAttributesOnSpan: xhrCustomAttributeFunctionWithDefaults(),
+                }),
+              ],
+            ],
+          }
+        : {}),
       instrumentationOptions: {
         enableFetchInstrumentation: false,
         enableXhrInstrumentation: true,
@@ -87,11 +112,16 @@ describe('XHR tracing semantics', () => {
 
   afterEach(async () => {
     await instrumentation.shutdown();
+    performance.getEntriesByType = originalGetEntries;
+    globalThis.PerformanceObserver = originalObserver;
+    globalThis.PerformanceResourceTiming = originalResourceTiming;
     faro.instrumentations.remove(...faro.instrumentations.instrumentations);
     globalThis.__FARO_HTTP_MONITOR__ = undefined;
     trace.disable();
     context.disable();
     propagation.disable();
+    expect(observer).not.toHaveBeenCalled();
+    expect(observe).not.toHaveBeenCalled();
   });
 
   type Outcome = 'load' | 'error' | 'timeout' | 'abort';
