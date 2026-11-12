@@ -57,6 +57,42 @@ describe('initializeFaro', () => {
       expect(mobileSpy).toHaveBeenCalledWith({ battery: false, thermal: true, network: false });
     });
 
+    it('does not restart the native groups when Faro is already initialized', async () => {
+      const start = jest.fn();
+      NativeModules.FaroReactNativeModule = { startDynamicDeviceState: start };
+      const sharedConfig = {
+        url: 'http://localhost:12345/collect',
+        transports: [new MockTransport()],
+        isolate: false,
+      };
+
+      await initializeFaro(mockConfig(sharedConfig));
+      start.mockClear();
+      await initializeFaro(
+        mockConfig({ ...sharedConfig, dynamicDeviceState: { battery: false, thermal: true, network: false } })
+      );
+
+      expect(start).not.toHaveBeenCalled();
+    });
+
+    it('starts the native groups for an isolated instance although Faro is already initialized', async () => {
+      const start = jest.fn();
+      NativeModules.FaroReactNativeModule = { startDynamicDeviceState: start };
+      const sharedConfig = { url: 'http://localhost:12345/collect', transports: [new MockTransport()] };
+
+      await initializeFaro(mockConfig({ ...sharedConfig, isolate: false }));
+      start.mockClear();
+      await initializeFaro(
+        mockConfig({
+          ...sharedConfig,
+          isolate: true,
+          dynamicDeviceState: { battery: false, thermal: true, network: false },
+        })
+      );
+
+      expect(start).toHaveBeenCalledWith(false, true, false);
+    });
+
     it('starts nothing when every group is off', async () => {
       const start = jest.fn();
       NativeModules.FaroReactNativeModule = { startDynamicDeviceState: start };

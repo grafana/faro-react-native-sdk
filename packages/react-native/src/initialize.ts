@@ -1,4 +1,4 @@
-import { type Faro, initializeFaro as initializeFaroCore } from '@grafana/faro-core';
+import { type Faro, initializeFaro as initializeFaroCore, isInternalFaroOnGlobalObject } from '@grafana/faro-core';
 
 import { makeRNConfig } from './config/makeRNConfig';
 import type { ReactNativeConfig } from './config/types';
@@ -13,9 +13,12 @@ import { resolveDynamicDeviceStateGroups, startDynamicDeviceState } from './meta
  * `minimalSessionDeviceAttributes` / an empty build identity before init.
  */
 export async function initializeFaro(config: ReactNativeConfig): Promise<Faro> {
-  // Starts first so the native caches fill while the async collection runs.
+  // Starts first so the native caches fill while the async collection runs. Core rejects a second
+  // call, so it must not replace the groups of the instance that is already running.
   const dynamicDeviceStateGroups = resolveDynamicDeviceStateGroups(config.dynamicDeviceState);
-  startDynamicDeviceState(dynamicDeviceStateGroups);
+  if (!isInternalFaroOnGlobalObject() || config.isolate) {
+    startDynamicDeviceState(dynamicDeviceStateGroups);
+  }
 
   const [preloadedMobileMeta, appSymbolsBundleId] = await Promise.all([
     loadMobileMetaForInit(dynamicDeviceStateGroups),
