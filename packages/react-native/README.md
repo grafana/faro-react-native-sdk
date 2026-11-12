@@ -37,6 +37,15 @@ end
 
 If your React Native version targets iOS below 15.0, also set your app target's iOS Deployment Target to 15.0 in Xcode.
 
+### PerformanceObserver changes
+
+When the SDK loads, it patches the global `PerformanceObserver` to avoid native React Native crashes. The patch applies to every library in the app, not only Faro:
+
+- **iOS:** `PerformanceObserver` is a no-op. Observer callbacks never run.
+- **Android on React Native 0.83.0-0.83.4, 0.84.x and 0.85.0-0.85.2:** `'resource'` entries are never observed, because these versions can crash with heap corruption in `NativePerformance::takeRecords` while observing them. Other entry types (`mark`, `measure`, `event`, `longtask`) work as usual. React Native 0.83.5, 0.85.3 and 0.86+ fix the crash and keep the original `PerformanceObserver`.
+
+The patch applies when the app first loads `@grafana/faro-react-native`. With Metro's inline requires (the default in release builds), that is the first use of a Faro export, usually `initializeFaro`. Initialize Faro at app startup, before other code creates resource observers.
+
 ## Quick Start
 
 ```tsx
@@ -1505,33 +1514,6 @@ The Faro payload specification does not define `arch`, `screen_width`, `screen_h
 - Screen tracking is handled via `view` meta instead of `page` meta
 - Battery, carrier, and low power mode info may not be available on all devices/OS versions
 
-## PerformanceObserver Compatibility
-
-Importing `@grafana/faro-react-native` patches the global performance APIs before any instrumentation loads, to
-avoid known React Native crashes:
-
-- **All platforms:** `performance.getEntriesByType('resource')` returns `[]`. React Native does not provide usable
-  resource timing entries, and calling through logs deprecation warnings in development.
-- **iOS:** the global `PerformanceObserver` is replaced with a no-op observer on every React Native version. Its
-  callback never runs and `PerformanceObserver.supportedEntryTypes` is empty.
-- **Android and other platforms on React Native 0.83.0-0.83.4, 0.84.x and 0.85.0-0.85.2:** the global
-  `PerformanceObserver` is wrapped so `'resource'` is never registered with the native observer. On these versions
-  the native observer buffer has a data race on resource timing entries that can crash the app
-  (`Scudo ERROR: misaligned pointer when deallocating` in `NativePerformance::takeRecords`).
-  - `observe({ type: 'resource' })` and `observe({ entryTypes: ['resource'] })` do nothing.
-  - `'resource'` is removed from mixed `entryTypes` lists. Other entry types (`mark`, `measure`, `event`,
-    `longtask`, ...) work as usual.
-  - `PerformanceObserver.supportedEntryTypes` does not include `'resource'`.
-  - Prereleases of these versions and of the first fixed releases (0.83.5, 0.85.3, 0.86.0), and `0.0.0` nightlies,
-    are also wrapped.
-  - When the React Native version is missing or cannot be read, the observer is wrapped too.
-- **Other React Native versions on Android and other platforms:** the original `PerformanceObserver` is retained.
-- **Web (react-native-web):** the browser's `PerformanceObserver` is retained.
-
-The wrapper applies to every library that uses the global `PerformanceObserver`, not only Faro. It only removes
-entry types; it cannot add entry types the native observer does not support. The resource entries React Native
-reports have no `initiatorType`, so OpenTelemetry fetch and XHR instrumentations discard them.
-
 ## TypeScript
 
 The package is written in TypeScript and includes type definitions out of the box.
@@ -1667,10 +1649,9 @@ console.debug('New event', {
 
 ## Future Enhancements
 
-### TODO: PerformanceObserver-based Instrumentation
+### TODO: PerformanceObserver Support
 
-React Native exposes a `PerformanceObserver` global, but Faro does not use it for instrumentation yet (see
-[PerformanceObserver Compatibility](#performanceobserver-compatibility) for how the global is patched).
+React Native Next (upcoming version) will include native `PerformanceObserver` support, which will enable greater feature parity with the web SDK's performance monitoring capabilities.
 
 **Planned Enhancements:**
 
@@ -1683,10 +1664,10 @@ React Native exposes a `PerformanceObserver` global, but Faro does not use it fo
 **References:**
 
 - [React Native PerformanceObserver API Documentation](https://reactnative.dev/docs/next/global-PerformanceObserver)
+- Web SDK Performance Instrumentation: `packages/web-sdk/src/instrumentations/performance/`
 
 **Current State:**
-The current implementation uses custom performance utilities (`performanceUtils.ts`) that provide basic timing and
-marker functionality.
+The current implementation uses custom performance utilities (`performanceUtils.ts`) that provide basic timing and marker functionality. Once React Native's `PerformanceObserver` is stable, we can migrate to a more comprehensive solution that matches the web SDK's capabilities.
 
 ## License
 
