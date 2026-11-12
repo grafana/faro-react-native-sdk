@@ -1665,7 +1665,7 @@ In both cases the SDK still creates the `FetchTransport` for `url`, and cached t
 - Stored telemetry is dropped when it is older than `maxCacheDurationMs`, when the cache exceeds `maxCacheSize`, or when the collector rejects it with another 4xx status.
 - Delivery is at least once: if the app stops while sending stored telemetry, some that the collector already accepted can be sent again on the next launch.
 
-**Connectivity** comes from `@react-native-community/netinfo` when it is installed. Otherwise the transport polls with a `HEAD` request to `https://one.one.one.one/cdn-cgi/trace`. Telemetry captured before the device is detected as offline is sent normally and can be lost.
+**Connectivity:** install `@react-native-community/netinfo` for reliable offline detection. Without it, the transport checks connectivity every 30 s (`connectivityCheckIntervalMs`) with a `HEAD` request to `https://one.one.one.one/cdn-cgi/trace`. Telemetry captured just before the device is detected as offline is sent normally and can be lost.
 
 **Other transports** in `transports`, such as `ConsoleTransport`, still receive every item as it is captured. To send stored telemetry through a transport that is not in `transports`, see `setOtherTransports()`. With faro-core's `initializeFaro` instead of this package's, list the offline transport first and call `setOtherTransports()` with your `FetchTransport` before initializing.
 
