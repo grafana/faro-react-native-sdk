@@ -1449,9 +1449,10 @@ initializeFaro({
 | `thermal` | `device.thermal_state`                                                          | none                                                                  |
 | `network` | `network.connection_type`, `network.connection_subtype`, `network.carrier_name` | `device_carrier`                                                      |
 
-A group that is off is not collected at all. The SDK registers none of its native listeners, reads none of its values
-from the system, and omits its fields from every signal and from the session attributes. With every group off, the SDK
-makes no native call for these values. Set `dynamicDeviceState` before you call `initializeFaro`: the SDK reads it once.
+Faro does not collect a group that is off. It registers none of its own native listeners for the group, does not request
+its values, and omits its fields from every signal and from the session attributes. With every group off, the SDK makes
+no native call for these values. `react-native-device-info`, which the SDK uses for the static device fields, still
+turns on battery monitoring on its own. Set `dynamicDeviceState` before you call `initializeFaro`: the SDK reads it once.
 
 A crash sent on the next launch does not carry these values or the legacy `device_battery_level`, `device_is_charging`,
 `device_low_power_mode` and `device_carrier` attributes. They would describe the relaunch, not the crashed process.

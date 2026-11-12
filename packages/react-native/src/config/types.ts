@@ -74,7 +74,9 @@ type ReactNativeConfigOverrides = {
   enableUserActions?: boolean;
   /**
    * Turns off groups of the dynamic device and network metadata. Every group is on by default. A
-   * group set to `false` starts no native listener and its fields reach no signal.
+   * group set to `false` starts none of Faro's own native listeners and its fields reach no signal.
+   * `react-native-device-info`, which the SDK uses for the static device fields, still turns on
+   * battery monitoring on its own.
    *
    * - `battery`: `device.battery_level`, `device.is_charging`, `device.low_power_mode`
    * - `thermal`: `device.thermal_state`
