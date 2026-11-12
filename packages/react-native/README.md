@@ -37,6 +37,15 @@ end
 
 If your React Native version targets iOS below 15.0, also set your app target's iOS Deployment Target to 15.0 in Xcode.
 
+### PerformanceObserver changes
+
+When the SDK loads, it patches the global `PerformanceObserver` to avoid native React Native crashes. The patch applies to every library in the app, not only Faro:
+
+- **iOS:** `PerformanceObserver` is a no-op. Observer callbacks never run.
+- **Android on React Native 0.83.0-0.83.4, 0.84.x and 0.85.0-0.85.2:** `'resource'` entries are never observed, because these versions can crash with heap corruption in `NativePerformance::takeRecords` while observing them. Other entry types (`mark`, `measure`, `event`, `longtask`) work as usual. React Native 0.83.5, 0.85.3 and 0.86+ fix the crash and keep the original `PerformanceObserver`.
+
+The patch applies when the app first loads `@grafana/faro-react-native`. With Metro's inline requires (the default in release builds), that is the first use of a Faro export, usually `initializeFaro`. Initialize Faro at app startup, before other code creates resource observers.
+
 ## Quick Start
 
 ```tsx

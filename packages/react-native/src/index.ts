@@ -1,5 +1,5 @@
 // Main entry point for @grafana/faro-react-native
-// Apply PerformanceObserver polyfill first to prevent iOS bad_variant_access crash
+// Apply PerformanceObserver compatibility patches first, before any instrumentation creates observers
 import { applyPerformanceObserverPolyfill } from './util/performanceObserverPolyfill';
 applyPerformanceObserverPolyfill();
 export { initializeFaro } from './initialize';
