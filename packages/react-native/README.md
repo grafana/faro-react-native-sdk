@@ -1622,7 +1622,7 @@ console.debug('New event', {
 
 #### OfflineTransport
 
-Stores telemetry captured while the device is offline and sends it when connectivity returns. Turn it on in one of two ways:
+Stores telemetry that could not be sent, for example while the device is offline or the collector is unreachable, and sends it later. Turn it on in one of two ways:
 
 **With default options**, set the flag:
 
@@ -1646,8 +1646,8 @@ initializeFaro({
     new OfflineTransport({
       maxCacheDurationMs: 24 * 60 * 60 * 1000, // default: 3 days
       maxCacheSize: 500, // payloads; oldest are dropped first. Default: 1000
-      connectivityCheckIntervalMs: 30_000, // polling interval without NetInfo. Default: 30 s
-      storageKeyPrefix: 'faro_offline_cache', // AsyncStorage key prefix (default)
+      maxCacheBytes: 1024 * 1024, // total serialized size; oldest are dropped first. Default: 2 MB
+      storageKeyPrefix: 'faro_offline_cache', // AsyncStorage key prefix (default); don't use it for other keys
     }),
   ],
 });
@@ -1659,17 +1659,16 @@ In both cases the SDK still creates the `FetchTransport` for `url`, and cached t
 
 **How it works:**
 
-- While offline, telemetry is stored in AsyncStorage instead of being sent. `beforeSend` hooks have already run, and they don't run again on replay.
-- When connectivity returns, and at app start if entries are left from an earlier run, stored telemetry is sent oldest first through the `FetchTransport`.
-- If a request fails, is rate limited (429), or gets a 408 or 5xx response, the telemetry stays stored. Sending is retried after 5 s, with the delay growing to 5 min, and on the next connectivity change.
-- Stored telemetry is dropped when it is older than `maxCacheDurationMs`, when the cache exceeds `maxCacheSize`, or when the collector rejects it with another 4xx status.
-- Delivery is at least once: if the app stops while sending stored telemetry, some that the collector already accepted can be sent again on the next launch.
+- When the `FetchTransport` cannot deliver telemetry, it is stored in AsyncStorage instead of being dropped: the request failed or timed out, the collector answered 408, 429 or 5xx, or the transport was backing off or had too many requests in flight. `beforeSend` hooks have already run, and they don't run again when it is sent.
+- Stored telemetry is sent in storage order through the `FetchTransport` at app start, after a retry delay (5 s, growing to 5 min), after a live request is accepted, and when the app returns to the foreground. Concurrent live requests can fail and be stored in a different order than they were captured. While Faro is paused, nothing is sent; sending resumes within 5 s of `unpause()`.
+- Stored telemetry is dropped, oldest first, when it is older than `maxCacheDurationMs` or the cache exceeds `maxCacheSize` or `maxCacheBytes`. It is also dropped when the collector rejects it with another 4xx status, or keeps answering 5xx or 408 to it: five times, with the first more than an hour ago, so a collector outage does not drop it. A single item larger than 256 KB is not stored.
+- Delivery is at least once: a request that timed out after the collector accepted it, or stored telemetry sent just before the app stopped, can be sent again.
 
-**Connectivity:** install `@react-native-community/netinfo` for reliable offline detection. Without it, the transport checks connectivity every 30 s (`connectivityCheckIntervalMs`) with a `HEAD` request to `https://one.one.one.one/cdn-cgi/trace`. Telemetry captured just before the device is detected as offline is sent normally and can be lost.
+**Connectivity:** no connectivity checks are needed. If `@react-native-community/netinfo` is installed, telemetry is stored and nothing is sent while it reports the device offline. When it reports the device online again, stored telemetry is sent right away, without waiting for a backoff caused by earlier failed requests; a `Retry-After` from the collector is still respected. `connectivityCheckIntervalMs` is deprecated and has no effect.
 
-**Other transports** in `transports`, such as `ConsoleTransport`, still receive every item as it is captured. To send stored telemetry through a transport that is not in `transports`, see `setOtherTransports()`. With faro-core's `initializeFaro` instead of this package's, list the offline transport first and call `setOtherTransports()` with your `FetchTransport` before initializing.
+**Other transports** in `transports`, such as `ConsoleTransport`, still receive every item as it is captured. `setOtherTransports()` replaces the transports that stored telemetry is sent through. With faro-core's `initializeFaro` instead of this package's, call `setOtherTransports()` with your `FetchTransport` before initializing; telemetry left from an earlier run is then sent after the first accepted live request or `forceReplay()`, not at app start.
 
-**Several transports of one kind:** the SDK uses one offline transport; others in `transports` are disposed with a warning. Each `FetchTransport` sends live telemetry as usual, and stored telemetry is sent once to each collector URL. Without a `FetchTransport` (or `setOtherTransports()` targets), nothing is stored and telemetry goes to the other transports as captured.
+**Several transports of one kind:** the SDK uses one offline transport; others in `transports` are disposed with a warning. Telemetry is stored and sent once for each collector URL that did not accept it. Without a `FetchTransport` (or `setOtherTransports()` targets), nothing is stored.
 
 `OfflineTransport` also has `getCachedCount()`, `forceReplay()` and `clearCache()`.
 

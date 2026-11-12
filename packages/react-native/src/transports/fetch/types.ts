@@ -1,3 +1,5 @@
+import type { TransportItem } from '@grafana/faro-core';
+
 export interface FetchTransportRequestOptions extends Omit<RequestInit, 'body' | 'headers'> {
   headers?: Record<string, string>;
 }
@@ -29,4 +31,21 @@ export type FetchTransportSendOutcome = 'accepted' | 'rejected' | 'failed' | 'sk
 export interface FetchTransportSendResult {
   outcome: FetchTransportSendOutcome;
   status?: number;
+}
+
+/**
+ * Where a `FetchTransport` hands live items it could not deliver. Implemented
+ * by `OfflineTransport`.
+ *
+ * @internal
+ */
+export interface FetchTransportOfflineStore {
+  /** True to store items without a request: the device is known to be offline. */
+  isOffline(): boolean;
+  /** Stores items for a later retry, as one cache entry, in the order of the calls. */
+  store(items: TransportItem[]): void;
+  /** Called when a live request was accepted: the collector is reachable. */
+  delivered(): void;
+  /** True while the owner is bound to a Faro instance and not disposed; another owner does not replace it then. */
+  isBound(): boolean;
 }

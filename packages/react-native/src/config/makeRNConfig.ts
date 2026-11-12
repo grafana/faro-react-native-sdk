@@ -52,10 +52,9 @@ function resolveAppBundleId(
  * Builds transports. FetchTransport is always added when url is provided.
  * User can enable offline and console via enableTransports.
  *
- * At most one OfflineTransport is kept, and it goes first: Faro calls
- * transports in order, and it must claim the items it caches before
- * FetchTransport sees them. The first one in `config.transports` wins over
- * `enableTransports.offline`, so its options apply; extra ones are disposed.
+ * At most one OfflineTransport is kept. The first one in `config.transports`
+ * wins over `enableTransports.offline`, so its options apply; extra ones are
+ * disposed.
  */
 function buildTransports(config: ReactNativeConfig): Config['transports'] {
   const { enableTransports = { offline: false, console: false } } = config;
@@ -98,7 +97,13 @@ function buildTransports(config: ReactNativeConfig): Config['transports'] {
     builtTransports.push(new ConsoleTransport({ level: LogLevel.DEBUG }));
   }
 
-  return [...builtTransports, ...extraTransports.filter((transport) => !(transport instanceof OfflineTransport))];
+  const transports = [
+    ...builtTransports,
+    ...extraTransports.filter((transport) => !(transport instanceof OfflineTransport)),
+  ];
+  // Before core initialization, so sends made while instrumentations initialize can be stored.
+  offline?.connectTransportList(transports);
+  return transports;
 }
 
 /**

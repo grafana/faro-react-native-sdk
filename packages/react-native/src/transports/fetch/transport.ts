@@ -1,9 +1,7 @@
 import { BaseTransport, createPromiseBuffer, getTransportBody, VERSION } from '@grafana/faro-core';
 import type { Patterns, PromiseBuffer, TransportItem } from '@grafana/faro-core';
 
-import { isClaimedForOfflineReplay } from '../claims';
-
-import type { FetchTransportOptions, FetchTransportSendResult } from './types';
+import type { FetchTransportOfflineStore, FetchTransportOptions, FetchTransportSendResult } from './types';
 
 const DEFAULT_BUFFER_SIZE = 30;
 const DEFAULT_CONCURRENCY = 5;
@@ -20,12 +18,16 @@ export class FetchTransport extends BaseTransport {
 
   private readonly rateLimitBackoffMs: number;
   private readonly getNow: () => number;
-  private disabledUntil: Date;
+  /** End of the circuit-breaker backoff after repeated failed requests. */
+  private failureBackoffUntil: number;
+  /** End of the backoff after a 429 response (Retry-After). */
+  private rateLimitUntil: number;
   private consecutiveFailures: number = 0;
   private sessionReadyPromise: Promise<void> | null = null;
   private sessionReadyResolve: (() => void) | null = null;
   private sessionReady: boolean = false;
   private metasListenerRegistered: boolean = false;
+  private offlineStore: FetchTransportOfflineStore | null = null;
 
   constructor(private options: FetchTransportOptions) {
     super();
@@ -33,7 +35,8 @@ export class FetchTransport extends BaseTransport {
     this.rateLimitBackoffMs = options.defaultRateLimitBackoffMs ?? DEFAULT_RATE_LIMIT_BACKOFF_MS;
     this.getNow = options.getNow ?? (() => Date.now());
     // Align with getNow so tests (and apps) that supply a clock do not see spurious backoff
-    this.disabledUntil = new Date(this.getNow());
+    this.failureBackoffUntil = this.getNow();
+    this.rateLimitUntil = this.getNow();
 
     this.promiseBuffer = createPromiseBuffer({
       size: options.bufferSize ?? DEFAULT_BUFFER_SIZE,
@@ -119,17 +122,65 @@ export class FetchTransport extends BaseTransport {
    * still share the buffer limit. Groups after one that starts a rate-limit or
    * failure backoff are skipped like any send during backoff.
    *
-   * Items that an `OfflineTransport` cached while offline are skipped here;
-   * the offline transport delivers them through `sendWithResult()` when it
-   * replays its cache.
+   * With an `OfflineTransport` attached, items that are not delivered (see
+   * `isRetryableSendResult()`) are handed to it for a later retry instead of
+   * being dropped, and items are stored without a request while it reports the
+   * device offline. `sendWithResult()` never hands items to it.
    */
   async send(items: TransportItem[]): Promise<void> {
-    // Faro calls transports in order in one synchronous loop, so an
-    // OfflineTransport registered earlier has already claimed what it cached.
-    const unclaimed = items.filter((item) => !isClaimedForOfflineReplay(item));
-    for (const group of groupItemsByMeta(unclaimed)) {
-      await this.sendWithResult(group);
+    // Read before any await: items stored without a request keep capture order.
+    const store = this.offlineStore;
+    if (store?.isOffline()) {
+      store.store(items);
+      return;
     }
+    for (const group of groupItemsByMeta(items)) {
+      const result = await this.sendWithResult(group);
+      // A store detached or replaced meanwhile is not used; items stored elsewhere are not stored twice.
+      if (store && store === this.offlineStore) {
+        if (result.outcome === 'accepted') {
+          store.delivered();
+        } else if (isRetryableSendResult(result)) {
+          store.store(group);
+        }
+      }
+    }
+  }
+
+  /**
+   * Attaches the offline store that live `send()` hands undelivered items to,
+   * or detaches it with `null`. Used by `OfflineTransport`.
+   *
+   * @internal
+   */
+  setOfflineStore(store: FetchTransportOfflineStore | null): void {
+    this.offlineStore = store;
+  }
+
+  /** @internal */
+  getOfflineStore(): FetchTransportOfflineStore | null {
+    return this.offlineStore;
+  }
+
+  /**
+   * When sends are skipped until (`Date.now()`-style time; in the past when
+   * not backing off).
+   *
+   * @internal
+   */
+  getBackoffUntil(): number {
+    return Math.max(this.failureBackoffUntil, this.rateLimitUntil);
+  }
+
+  /**
+   * Forgets earlier failed requests and ends their circuit-breaker backoff,
+   * for example when the device reconnects. A rate-limit backoff is kept.
+   *
+   * @internal
+   */
+  resetFailureBackoff(): void {
+    this.consecutiveFailures = 0;
+    this.failureBackoffUntil = this.getNow();
   }
 
   /**
@@ -142,106 +193,117 @@ export class FetchTransport extends BaseTransport {
   async sendWithResult(items: TransportItem[]): Promise<FetchTransportSendResult> {
     this.logDebug(`FetchTransport.sendWithResult() called with ${items.length} items`);
 
-    if (items.length === 0) {
+    // Paused Faro sends nothing; replay calls this directly, so it is checked here too.
+    if (items.length === 0 || this.config?.paused) {
       return { outcome: 'skipped' };
     }
 
     try {
-      const now = new Date(this.getNow());
-
       // Check if we're in backoff period
-      if (this.disabledUntil > now) {
-        this.logDebug(`FetchTransport: in backoff period until ${this.disabledUntil}`);
+      const backoffUntil = this.getBackoffUntil();
+      if (backoffUntil > this.getNow()) {
+        this.logDebug(`FetchTransport: in backoff period until ${new Date(backoffUntil)}`);
         return { outcome: 'skipped' };
       }
 
       // The collector uses the header for session validation and accounting,
       // independently of the session carried by each payload.
       await this.waitForSession();
+      if (this.config?.paused) {
+        return { outcome: 'skipped' };
+      }
       // Without metas (not registered with Faro, only used for offline replay), use the payload session.
       const sessionId = this.metas?.value?.session?.id ?? items[0]?.meta.session?.id;
 
-      const response = await this.promiseBuffer.add(() => {
-        const transportBody = getTransportBody(items);
-        const body = JSON.stringify(transportBody);
+      let request: PromiseLike<Response | void>;
+      try {
+        request = this.promiseBuffer.add(() => {
+          const transportBody = getTransportBody(items);
+          const body = JSON.stringify(transportBody);
 
-        // DEBUG: Log measurement payloads to see what's being sent
-        if (transportBody.measurements && transportBody.measurements.length > 0) {
-          for (const m of transportBody.measurements) {
-            this.logDebug(`FetchTransport: measurement payload - type=${m.type}, values=${JSON.stringify(m.values)}`);
+          // DEBUG: Log measurement payloads to see what's being sent
+          if (transportBody.measurements && transportBody.measurements.length > 0) {
+            for (const m of transportBody.measurements) {
+              this.logDebug(`FetchTransport: measurement payload - type=${m.type}, values=${JSON.stringify(m.values)}`);
+            }
           }
-        }
 
-        const { url, requestOptions, apiKey } = this.options;
+          const { url, requestOptions, apiKey } = this.options;
 
-        const { headers, ...restOfRequestOptions } = requestOptions ?? {};
+          const { headers, ...restOfRequestOptions } = requestOptions ?? {};
 
-        // DEBUG: Log fetch attempt
-        this.logDebug(`FetchTransport: sending ${items.length} items to ${url}`);
+          // DEBUG: Log fetch attempt
+          this.logDebug(`FetchTransport: sending ${items.length} items to ${url}`);
 
-        // Create an AbortController for timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          controller.abort();
-          this.logDebug(`FetchTransport: request timed out after 10s`);
-        }, 10000);
+          // Create an AbortController for timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => {
+            controller.abort();
+            this.logDebug(`FetchTransport: request timed out after 10s`);
+          }, 10000);
 
-        return fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(headers ?? {}),
-            ...(apiKey ? { 'x-api-key': apiKey } : {}),
-            ...(sessionId ? { 'x-faro-session-id': sessionId } : {}),
-          },
-          body,
-          signal: controller.signal,
-          // Note: React Native doesn't support keepalive
-          // keepalive: body.length <= BEACON_BODY_SIZE_LIMIT,
-          ...(restOfRequestOptions ?? {}),
-        })
-          .then(async (response) => {
-            clearTimeout(timeoutId);
-            // DEBUG: Log response status
-            this.logDebug(`FetchTransport: response status ${response.status}`);
-
-            // Reset failure counter on success
-            this.consecutiveFailures = 0;
-
-            if (response.status === TOO_MANY_REQUESTS) {
-              this.disabledUntil = this.getRetryAfterDate(response);
-              this.logDebug(`FetchTransport: rate limited, disabled until ${this.disabledUntil}`);
-            }
-
-            // Log non-success responses for debugging
-            if (response.status < 200 || response.status >= 300) {
-              const text = await response.text().catch(() => '');
-              this.logDebug(`FetchTransport: non-success response: ${response.status} ${text.slice(0, 200)}`);
-            }
-
-            return response;
+          return fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(headers ?? {}),
+              ...(apiKey ? { 'x-api-key': apiKey } : {}),
+              ...(sessionId ? { 'x-faro-session-id': sessionId } : {}),
+            },
+            body,
+            signal: controller.signal,
+            // Note: React Native doesn't support keepalive
+            // keepalive: body.length <= BEACON_BODY_SIZE_LIMIT,
+            ...(restOfRequestOptions ?? {}),
           })
-          .catch((error) => {
-            clearTimeout(timeoutId);
-            // DEBUG: Log the error
-            this.logDebug(`FetchTransport: fetch failed - ${error?.message || error}`);
+            .then(async (response) => {
+              clearTimeout(timeoutId);
+              // DEBUG: Log response status
+              this.logDebug(`FetchTransport: response status ${response.status}`);
 
-            // Increment failure counter
-            this.consecutiveFailures++;
-
-            // After MAX_CONSECUTIVE_FAILURES, enable circuit breaker to prevent infinite loops
-            if (this.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-              this.disabledUntil = new Date(this.getNow() + FAILURE_BACKOFF_MS);
-              // Reset counter so we can try again after backoff
+              // Reset failure counter on success
               this.consecutiveFailures = 0;
-              this.logDebug(`FetchTransport: circuit breaker activated, disabled for 30s`);
-            }
 
-            // Do NOT log errors to console - this causes infinite loops in React Native
-            // when the DevTools console override intercepts even unpatchedConsole calls
-            return undefined;
-          });
-      });
+              if (response.status === TOO_MANY_REQUESTS) {
+                this.rateLimitUntil = this.getRetryAfterDate(response).getTime();
+                this.logDebug(`FetchTransport: rate limited, disabled until ${new Date(this.rateLimitUntil)}`);
+              }
+
+              // Log non-success responses for debugging
+              if (response.status < 200 || response.status >= 300) {
+                const text = await response.text().catch(() => '');
+                this.logDebug(`FetchTransport: non-success response: ${response.status} ${text.slice(0, 200)}`);
+              }
+
+              return response;
+            })
+            .catch((error) => {
+              clearTimeout(timeoutId);
+              // DEBUG: Log the error
+              this.logDebug(`FetchTransport: fetch failed - ${error?.message || error}`);
+
+              // Increment failure counter
+              this.consecutiveFailures++;
+
+              // After MAX_CONSECUTIVE_FAILURES, enable circuit breaker to prevent infinite loops
+              if (this.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                this.failureBackoffUntil = this.getNow() + FAILURE_BACKOFF_MS;
+                // Reset counter so we can try again after backoff
+                this.consecutiveFailures = 0;
+                this.logDebug(`FetchTransport: circuit breaker activated, disabled for 30s`);
+              }
+
+              // Do NOT log errors to console - this causes infinite loops in React Native
+              // when the DevTools console override intercepts even unpatchedConsole calls
+              return undefined;
+            });
+        });
+      } catch {
+        // Buffer full - Do NOT log to console as it creates infinite loops.
+        // No request was made, like during backoff.
+        return { outcome: 'skipped' };
+      }
+      const response = await request;
 
       if (!response) {
         return { outcome: 'failed' };
@@ -257,8 +319,7 @@ export class FetchTransport extends BaseTransport {
         status: response.status,
       };
     } catch {
-      // Buffer full error - Do NOT log to console as it creates infinite loops
-      // The error is typically "Task buffer full" when the device is offline
+      // The request could not be built - Do NOT log to console as it creates infinite loops
       return { outcome: 'failed' };
     }
   }
@@ -304,6 +365,32 @@ export class FetchTransport extends BaseTransport {
 
     return new Date(now + this.rateLimitBackoffMs);
   }
+}
+
+/**
+ * True when a send did not deliver the items but a later retry may: the
+ * request failed or timed out, was skipped during backoff or with a full
+ * request buffer, or the collector answered with a status other than 2xx or a
+ * 4xx other than 408 and 429.
+ *
+ * @internal
+ */
+export function isRetryableSendResult(result: FetchTransportSendResult): boolean {
+  if (result.outcome === 'accepted') {
+    return false;
+  }
+  if (result.outcome === 'rejected') {
+    return !isNonRetryableStatus(result.status);
+  }
+  return true;
+}
+
+/**
+ * Client errors other than timeout (408) and rate limit (429) mean the
+ * collector will not accept the payload on retry either.
+ */
+function isNonRetryableStatus(status: number | undefined): boolean {
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
 function groupItemsByMeta(items: TransportItem[]): TransportItem[][] {

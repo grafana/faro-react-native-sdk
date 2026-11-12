@@ -8,8 +8,6 @@ import {
 } from '@grafana/faro-core';
 import { mockConfig, mockInternalLogger } from '@grafana/faro-test-utils';
 
-import { claimForOfflineReplay } from '../claims';
-
 import { FetchTransport } from './transport';
 
 const fetch = jest.fn(() =>
@@ -103,24 +101,117 @@ describe('FetchTransport', () => {
     );
   });
 
-  it('skips items an offline transport claimed, but still sends them through sendWithResult', async () => {
-    const transport = new FetchTransport({ url: 'http://example.com/collect' });
-    transport.metas.value = { session: { id: mockSessionId } };
-    transport.internalLogger = mockInternalLogger;
-    const claimed = { ...item, payload: { ...item.payload, message: 'claimed' } };
+  describe('offline store', () => {
+    function withStore(offline = false) {
+      const transport = new FetchTransport({ url: 'http://example.com/collect' });
+      transport.metas.value = { session: { id: mockSessionId } };
+      transport.internalLogger = mockInternalLogger;
+      const store = { isOffline: jest.fn(() => offline), store: jest.fn(), delivered: jest.fn(), isBound: () => true };
+      transport.setOfflineStore(store);
+      return { transport, store };
+    }
 
-    // Faro calls the offline transport first, which claims what it caches.
-    claimForOfflineReplay([claimed]);
-    await transport.send([item, claimed]);
+    function respond(status: number) {
+      fetch.mockImplementationOnce(
+        () => Promise.resolve({ status, text: () => Promise.resolve(''), headers: { get: () => null } }) as any
+      );
+    }
 
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledWith(
-      'http://example.com/collect',
-      expect.objectContaining({ body: JSON.stringify(getTransportBody([item])) })
-    );
+    it('reports accepted live sends and stores nothing', async () => {
+      const { transport, store } = withStore();
+      await transport.send([item]);
 
-    await expect(transport.sendWithResult([claimed])).resolves.toEqual({ outcome: 'accepted', status: 202 });
-    expect(fetch).toHaveBeenCalledTimes(2);
+      expect(store.delivered).toHaveBeenCalledTimes(1);
+      expect(store.store).not.toHaveBeenCalled();
+    });
+
+    it.each([500, 503, 408, 429, 302])('stores live items rejected with status %s', async (status) => {
+      const { transport, store } = withStore();
+      respond(status);
+      await transport.send([item]);
+
+      expect(store.store).toHaveBeenCalledWith([item]);
+      expect(store.delivered).not.toHaveBeenCalled();
+    });
+
+    it.each([400, 401, 413])('drops live items rejected with status %s', async (status) => {
+      const { transport, store } = withStore();
+      respond(status);
+      await transport.send([item]);
+
+      expect(store.store).not.toHaveBeenCalled();
+    });
+
+    it('stores live items whose request fails, and those skipped during the backoff that follows', async () => {
+      const { transport, store } = withStore();
+      fetch.mockImplementation(() => Promise.reject(new Error('down')) as any);
+      for (let i = 0; i < 3; i++) {
+        await transport.send([item]);
+      }
+      expect(fetch).toHaveBeenCalledTimes(3);
+
+      await transport.send([largeItem]);
+
+      // The fourth is skipped by the circuit breaker without a request.
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(store.store).toHaveBeenCalledTimes(4);
+      expect(store.store).toHaveBeenLastCalledWith([largeItem]);
+    });
+
+    it('stores live items without a request while the store reports the device offline', async () => {
+      const { transport, store } = withStore(true);
+      await transport.send([item, largeItem]);
+
+      expect(fetch).not.toHaveBeenCalled();
+      expect(store.store).toHaveBeenCalledWith([item, largeItem]);
+    });
+
+    it('stores items that do not fit in the request buffer', async () => {
+      const transport = new FetchTransport({ url: 'http://example.com/collect', bufferSize: 1 });
+      transport.metas.value = { session: { id: mockSessionId } };
+      transport.internalLogger = mockInternalLogger;
+      const store = { isOffline: () => false, store: jest.fn(), delivered: jest.fn(), isBound: () => true };
+      transport.setOfflineStore(store);
+      fetch.mockImplementationOnce(() => new Promise(() => {}) as any);
+
+      void transport.send([item]);
+      await transport.send([largeItem]);
+
+      expect(store.store).toHaveBeenCalledWith([largeItem]);
+    });
+
+    it('sends nothing from sendWithResult while Faro is paused', async () => {
+      const { transport } = withStore();
+      (transport as any).config = { paused: true, sessionTracking: { enabled: false } };
+
+      await expect(transport.sendWithResult([item])).resolves.toEqual({ outcome: 'skipped' });
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing from sendWithResult when Faro is paused while it waits for the session', async () => {
+      const transport = new FetchTransport({ url: 'http://example.com/collect' });
+      transport.internalLogger = mockInternalLogger;
+      const config = { paused: false, sessionTracking: { enabled: true } };
+      (transport as any).config = config;
+      let notify: (meta: any) => void = () => {};
+      (transport as any).metas = { value: {}, addListener: (listener: (meta: any) => void) => (notify = listener) };
+
+      const result = transport.sendWithResult([item]);
+      config.paused = true;
+      notify({ session: { id: mockSessionId } });
+
+      await expect(result).resolves.toEqual({ outcome: 'skipped' });
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('never hands items from sendWithResult to the store', async () => {
+      const { transport, store } = withStore(true);
+      respond(503);
+
+      await expect(transport.sendWithResult([item])).resolves.toEqual({ outcome: 'rejected', status: 503 });
+      expect(store.store).not.toHaveBeenCalled();
+      expect(store.delivered).not.toHaveBeenCalled();
+    });
   });
 
   it('identifies its destination by a stable key that does not contain the URL or token', () => {
@@ -213,6 +304,22 @@ describe('FetchTransport', () => {
       outcome: 'skipped',
     });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('reports a full request buffer as skipped and a request that cannot be built as failed', async () => {
+    const transport = new FetchTransport({ url: 'http://example.com/collect', bufferSize: 1 });
+    transport.internalLogger = mockInternalLogger;
+    fetch.mockImplementationOnce(() => new Promise(() => {}));
+    void transport.sendWithResult([item]);
+    await Promise.resolve();
+
+    await expect(transport.sendWithResult([item])).resolves.toEqual({ outcome: 'skipped' });
+
+    const other = new FetchTransport({ url: 'http://example.com/collect' });
+    other.internalLogger = mockInternalLogger;
+    const trace = (scopeSpans: unknown) =>
+      ({ type: 'trace', payload: { resourceSpans: [{ scopeSpans }] }, meta: {} }) as unknown as TransportItem;
+    await expect(other.sendWithResult([trace(5), trace([])])).resolves.toEqual({ outcome: 'failed' });
   });
 
   it('will send event with API key if provided', async () => {
