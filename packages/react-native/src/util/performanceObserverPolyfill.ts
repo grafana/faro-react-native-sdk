@@ -73,6 +73,7 @@ interface PerformanceObserverInstance {
 }
 
 type PerformanceObserverConstructor = (new (callback: (...args: never[]) => void) => PerformanceObserverInstance) & {
+  readonly prototype: PerformanceObserverInstance;
   readonly supportedEntryTypes?: readonly string[];
 };
 
@@ -280,6 +281,11 @@ function withoutResourceEntryType(options: PerformanceObserverInit): NativeObser
  * the wrapper instance to the user callback. The native class only creates its native
  * observer on the first `observe()` it receives, so an observer that only asks for
  * 'resource' never touches native code, and `takeRecords()`/`disconnect()` stay safe.
+ *
+ * The subclass is built by hand instead of with `class ... extends`: the CommonJS build targets
+ * ES5, where a compiled subclass calls `NativePerformanceObserver.apply(this, arguments)`, and
+ * calling an ES class constructor that way throws. `Reflect.construct` works for both ES classes
+ * and ES5 constructor functions, in both builds.
  */
 function createResourceSafePerformanceObserver(
   NativePerformanceObserver: PerformanceObserverConstructor
@@ -289,25 +295,41 @@ function createResourceSafePerformanceObserver(
     Array.isArray(nativeSupported) ? nativeSupported.filter((entryType) => entryType !== RESOURCE_ENTRY_TYPE) : []
   );
 
-  class ResourceSafePerformanceObserver extends NativePerformanceObserver {
-    static override get supportedEntryTypes(): readonly string[] {
-      return supportedEntryTypes;
+  function ResourceSafePerformanceObserver(callback: (...args: never[]) => void): PerformanceObserverInstance {
+    if (!new.target) {
+      throw new TypeError("Failed to construct 'PerformanceObserver': Please use the 'new' operator.");
     }
 
-    override observe(options: PerformanceObserverInit): void {
-      const result = withoutResourceEntryType(options);
-      if (result.skip) {
-        return;
-      }
-
-      super.observe(result.options);
-    }
+    // `new.target` keeps subclasses of the wrapper working.
+    return Reflect.construct(NativePerformanceObserver, [callback], new.target) as PerformanceObserverInstance;
   }
 
+  ResourceSafePerformanceObserver.prototype = Object.create(NativePerformanceObserver.prototype, {
+    constructor: { value: ResourceSafePerformanceObserver, configurable: true, writable: true },
+    observe: {
+      value: function observe(this: PerformanceObserverInstance, options: PerformanceObserverInit): void {
+        const result = withoutResourceEntryType(options);
+        if (result.skip) {
+          return;
+        }
+
+        NativePerformanceObserver.prototype.observe.call(this, result.options);
+      },
+      configurable: true,
+      writable: true,
+    },
+  });
+
+  // Inherit the native statics, then override the ones the wrapper changes.
+  Object.setPrototypeOf(ResourceSafePerformanceObserver, NativePerformanceObserver);
+  Object.defineProperty(ResourceSafePerformanceObserver, 'supportedEntryTypes', {
+    configurable: true,
+    get: () => supportedEntryTypes,
+  });
   Object.defineProperty(ResourceSafePerformanceObserver, FARO_RESOURCE_OBSERVER_GUARD, { value: true });
   Object.defineProperty(ResourceSafePerformanceObserver, 'name', { value: NativePerformanceObserver.name });
 
-  return ResourceSafePerformanceObserver;
+  return ResourceSafePerformanceObserver as unknown as PerformanceObserverConstructor;
 }
 
 function guardResourcePerformanceObserver(record: Record<string, unknown>): void {
