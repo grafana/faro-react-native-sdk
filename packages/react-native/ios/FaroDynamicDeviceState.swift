@@ -121,7 +121,7 @@ import UIKit
     // The caller holds `lock`.
     @MainActor private static func stopBattery() {
         removeObservers(&batteryObservers)
-        UIDevice.current.isBatteryMonitoringEnabled = false
+        // `isBatteryMonitoringEnabled` is app-wide, and `react-native-device-info` and the app can use it too.
         cachedBatteryLevel = nil
         cachedIsCharging = nil
         cachedLowPowerMode = nil
