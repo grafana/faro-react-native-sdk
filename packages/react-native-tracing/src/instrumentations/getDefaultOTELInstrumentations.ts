@@ -4,6 +4,7 @@ import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xm
 
 import type { DefaultInstrumentationsOptions, InstrumentationOption } from '../types';
 
+import { disableResourceObservers } from './disableResourceObservers';
 import {
   captureFetchUserAction,
   fetchCustomAttributeFunctionWithDefaults,
@@ -39,6 +40,7 @@ export function getDefaultOTELInstrumentations(options: DefaultInstrumentationsO
     instrumentations.push(new XMLHttpRequestInstrumentation(xhrConfig));
   }
 
+  instrumentations.flat().forEach(disableResourceObservers);
   return instrumentations;
 }
 

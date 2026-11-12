@@ -19,6 +19,7 @@ import { FARO_REACT_NATIVE_NPM_VERSION } from '@grafana/faro-react-native';
 
 import { FaroTraceExporter } from './exporters/faroTraceExporter';
 import { getReactNativeDevServerIgnoreUrls } from './instrumentations/devServerIgnoreUrls';
+import { disableResourceObservers } from './instrumentations/disableResourceObservers';
 import {
   getDefaultOTELInstrumentations,
   updateDefaultOTELInstrumentations,
@@ -300,6 +301,16 @@ export class TracingInstrumentation extends BaseInstrumentation {
       } else {
         this.defaultInstrumentations = getDefaultOTELInstrumentations(defaultInstrumentationOptions).flat();
         registration.instrumentations = this.defaultInstrumentations;
+      }
+
+      const observerProblems = registration.instrumentations.flatMap(disableResourceObservers);
+      if (observerProblems.length) {
+        this.logDebug(
+          'Could not disable OpenTelemetry resource PerformanceObservers',
+          observerProblems
+            .map(({ instrumentationName, hook, reason }) => `${instrumentationName}#${hook} ${reason}`)
+            .join(', ')
+        );
       }
 
       const instrumentationsNeedingExplicitEnable = registration.instrumentations.filter(
