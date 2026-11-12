@@ -99,10 +99,14 @@ internal object FaroDynamicDeviceState {
 
         val applicationContext = context.applicationContext ?: context
         val state = mutableMapOf<String, Any>()
-        batteryLevel?.let { state[BATTERY_LEVEL_KEY] = it }
-        isCharging?.let { state[IS_CHARGING_KEY] = it }
-        lowPowerMode?.let { state[LOW_POWER_MODE_KEY] = it }
-        thermalState?.let { state[THERMAL_STATE_KEY] = it }
+        if (batteryStarted) {
+            batteryLevel?.let { state[BATTERY_LEVEL_KEY] = it }
+            isCharging?.let { state[IS_CHARGING_KEY] = it }
+            lowPowerMode?.let { state[LOW_POWER_MODE_KEY] = it }
+        }
+        if (thermalStarted) {
+            thermalState?.let { state[THERMAL_STATE_KEY] = it }
+        }
         if (networkStarted) {
             val type = connectionType
             type?.let { state[CONNECTION_TYPE_KEY] = it }
@@ -180,16 +184,19 @@ internal object FaroDynamicDeviceState {
             filter.addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(receiverContext: Context?, intent: Intent?) {
-                    if (!batteryStarted) {
-                        return
-                    }
+                    // The check and the writes share one lock hold, so a stop cannot fall between them.
+                    synchronized(lock) {
+                        if (!batteryStarted) {
+                            return
+                        }
 
-                    // Only the battery broadcast has battery extras. Reading them from the
-                    // Battery Saver broadcast would clear the level and the charging state.
-                    if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
-                        readBattery(intent)
+                        // Only the battery broadcast has battery extras. Reading them from the
+                        // Battery Saver broadcast would clear the level and the charging state.
+                        if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
+                            readBattery(intent)
+                        }
+                        readLowPowerMode(receiverContext)
                     }
-                    readLowPowerMode(receiverContext)
                 }
             }
             // Battery changes are sticky, so registering also returns the current value.
@@ -290,8 +297,10 @@ internal object FaroDynamicDeviceState {
             val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
             thermalState = thermalStateName(powerManager.currentThermalStatus)
             val listener = PowerManager.OnThermalStatusChangedListener { status ->
-                if (thermalStarted) {
-                    thermalState = thermalStateName(status)
+                synchronized(lock) {
+                    if (thermalStarted) {
+                        thermalState = thermalStateName(status)
+                    }
                 }
             }
             powerManager.addThermalStatusListener(context.mainExecutor, listener)
@@ -331,19 +340,28 @@ internal object FaroDynamicDeviceState {
                         network: Network,
                         capabilities: NetworkCapabilities,
                     ) {
-                        if (!networkStarted) {
-                            return
-                        }
+                        synchronized(lock) {
+                            if (!networkStarted) {
+                                return
+                            }
 
-                        defaultNetwork = network
-                        applyCapabilities(capabilities)
+                            defaultNetwork = network
+                            applyCapabilities(capabilities)
+                        }
                         requestTelephonyRefresh(context, force = true)
                     }
 
                     override fun onLost(network: Network) {
-                        if (networkStarted && network == defaultNetwork) {
-                            defaultNetwork = null
-                            connectionType = "unavailable"
+                        val lost = synchronized(lock) {
+                            if (networkStarted && network == defaultNetwork) {
+                                defaultNetwork = null
+                                connectionType = "unavailable"
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        if (lost) {
                             requestTelephonyRefresh(context, force = true)
                         }
                     }
@@ -354,11 +372,13 @@ internal object FaroDynamicDeviceState {
                 // Before API 24 there is no default network callback.
                 val receiver = object : BroadcastReceiver() {
                     override fun onReceive(receiverContext: Context?, intent: Intent?) {
-                        if (!networkStarted) {
-                            return
-                        }
+                        synchronized(lock) {
+                            if (!networkStarted) {
+                                return
+                            }
 
-                        readConnection(connectivityManager)
+                            readConnection(connectivityManager)
+                        }
                         requestTelephonyRefresh(context, force = true)
                     }
                 }
