@@ -5,7 +5,7 @@ import { FetchTransport } from '../fetch';
 
 import { AsyncStorageOfflineCache } from './OfflineCache';
 import { OfflineTransport } from './transport';
-import type { ConnectivityService } from './types';
+import type { CachedPayload, ConnectivityService } from './types';
 
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -46,13 +46,14 @@ class MockConnectivityService implements ConnectivityService {
 
 // Mock cache
 class MockOfflineCache {
-  private payloads: { timestamp: number; items: TransportItem[] }[] = [];
+  private payloads: CachedPayload[] = [];
+  private nextId = 0;
 
-  async write(payload: { timestamp: number; items: TransportItem[] }): Promise<void> {
-    this.payloads.push(payload);
+  async write(payload: CachedPayload): Promise<void> {
+    this.payloads.push({ ...payload, id: payload.id ?? `p${this.nextId++}` });
   }
 
-  async readAll(): Promise<{ timestamp: number; items: TransportItem[] }[]> {
+  async readAll(): Promise<CachedPayload[]> {
     return [...this.payloads];
   }
 
@@ -63,6 +64,14 @@ class MockOfflineCache {
   async removeByTimestamps(timestamps: number[]): Promise<void> {
     const set = new Set(timestamps);
     this.payloads = this.payloads.filter((p) => !set.has(p.timestamp));
+  }
+
+  async replace(replacements: Record<string, CachedPayload[]>): Promise<void> {
+    this.payloads = this.payloads.flatMap((p) =>
+      p.id && p.id in replacements
+        ? (replacements[p.id] ?? []).map((r) => ({ ...r, id: r.id ?? `p${this.nextId++}` }))
+        : [p]
+    );
   }
 
   async getCount(): Promise<number> {
@@ -313,6 +322,60 @@ describe('AsyncStorageOfflineCache', () => {
       expect(savedData.length).toBe(2);
       expect(savedData[0].timestamp).toBe(2);
       expect(savedData[1].timestamp).toBe(3);
+    });
+  });
+
+  describe('ids', () => {
+    it('assigns and persists ids for entries written without one', async () => {
+      AsyncStorage.getItem.mockResolvedValueOnce(
+        JSON.stringify([
+          { timestamp: 1, items: [] },
+          { timestamp: 1, items: [] },
+        ])
+      );
+
+      const payloads = await cache.readAll();
+
+      const ids = payloads.map((p) => p.id);
+      expect(ids.every((id) => typeof id === 'string')).toBe(true);
+      expect(new Set(ids).size).toBe(2);
+      expect(JSON.parse(AsyncStorage.setItem.mock.calls[0][1])).toEqual(payloads);
+    });
+
+    it('gives written payloads an id', async () => {
+      AsyncStorage.getItem.mockResolvedValueOnce(null);
+
+      await cache.write({ timestamp: 1, items: [] });
+
+      expect(typeof JSON.parse(AsyncStorage.setItem.mock.calls[0][1])[0].id).toBe('string');
+    });
+  });
+
+  describe('replace', () => {
+    it('replaces, splits and removes payloads by id in place, leaving others alone', async () => {
+      AsyncStorage.getItem.mockResolvedValueOnce(
+        JSON.stringify([
+          { id: 'a', timestamp: 1, items: [] },
+          { id: 'b', timestamp: 1, items: [] },
+          { id: 'c', timestamp: 2, items: [] },
+        ])
+      );
+
+      await cache.replace({
+        a: [],
+        b: [
+          { id: 'b', timestamp: 1, items: [], deliveredTo: ['x'] },
+          { timestamp: 1, items: [] },
+        ],
+        unknown: [],
+      });
+
+      const saved = JSON.parse(AsyncStorage.setItem.mock.calls[0][1]);
+      expect(saved.map((p: { id: string }) => p.id).slice(0, 1)).toEqual(['b']);
+      expect(saved[0].deliveredTo).toEqual(['x']);
+      expect(typeof saved[1].id).toBe('string');
+      expect(saved[2].id).toBe('c');
+      expect(saved).toHaveLength(3);
     });
   });
 

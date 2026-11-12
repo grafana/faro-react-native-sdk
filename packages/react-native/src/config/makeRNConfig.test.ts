@@ -90,6 +90,76 @@ describe('makeRNConfig', () => {
     expect(cfg.transports?.[2]).toBe(marker);
   });
 
+  it('moves a user-supplied OfflineTransport before the network transports', () => {
+    const marker = { transport: 'extra' } as unknown as NonNullable<ReactNativeConfig['transports']>[number];
+    const offline = new OfflineTransport();
+    try {
+      const cfg = makeRNConfig({ ...base, transports: [marker, offline] });
+      expect(cfg.transports?.[0]).toBe(offline);
+      expect(cfg.transports?.[1]).toBeInstanceOf(FetchTransport);
+      expect(cfg.transports?.[2]).toBe(marker);
+    } finally {
+      offline.dispose();
+    }
+  });
+
+  describe('with an offline transport', () => {
+    it('keeps the built-in OfflineTransport and disposes a supplied one', () => {
+      const supplied = new OfflineTransport();
+      const dispose = jest.spyOn(supplied, 'dispose');
+      const cfg = makeRNConfig({ ...base, enableTransports: { offline: true }, transports: [supplied] });
+      try {
+        const offlines = (cfg.transports ?? []).filter((t) => t instanceof OfflineTransport);
+        expect(offlines).toHaveLength(1);
+        expect(offlines[0]).not.toBe(supplied);
+        expect(dispose).toHaveBeenCalledTimes(1);
+      } finally {
+        disposeOfflineTransportsFromConfig(cfg);
+      }
+    });
+
+    it('keeps the first of several supplied OfflineTransports and does not dispose one supplied twice', () => {
+      const first = new OfflineTransport();
+      const second = new OfflineTransport();
+      const disposeFirst = jest.spyOn(first, 'dispose');
+      const disposeSecond = jest.spyOn(second, 'dispose');
+      const cfg = makeRNConfig({ ...base, transports: [first, second, first] });
+      try {
+        expect(cfg.transports?.[0]).toBe(first);
+        expect((cfg.transports ?? []).filter((t) => t instanceof OfflineTransport)).toEqual([first]);
+        expect(disposeFirst).not.toHaveBeenCalled();
+        expect(disposeSecond).toHaveBeenCalledTimes(1);
+      } finally {
+        first.dispose();
+      }
+    });
+
+    it('keeps a supplied FetchTransport for the same URL instead of the built-in one, and other URLs too', () => {
+      const sameUrl = new FetchTransport({ url: base.url, apiKey: 'user-key' });
+      const sameUrlAgain = new FetchTransport({ url: base.url });
+      const otherUrl = new FetchTransport({ url: 'https://other.example.com/collect' });
+      const cfg = makeRNConfig({
+        ...base,
+        enableTransports: { offline: true },
+        transports: [sameUrl, otherUrl, sameUrlAgain],
+      });
+      try {
+        expect(cfg.transports?.[0]).toBeInstanceOf(OfflineTransport);
+        expect((cfg.transports ?? []).filter((t) => t instanceof FetchTransport)).toEqual([sameUrl, otherUrl]);
+      } finally {
+        disposeOfflineTransportsFromConfig(cfg);
+      }
+    });
+  });
+
+  it('keeps every FetchTransport without an offline transport', () => {
+    const sameUrl = new FetchTransport({ url: base.url });
+    const cfg = makeRNConfig({ ...base, transports: [sameUrl] });
+    expect(cfg.transports).toHaveLength(2);
+    expect(cfg.transports?.[0]).toBeInstanceOf(FetchTransport);
+    expect(cfg.transports?.[1]).toBe(sameUrl);
+  });
+
   it('appends extra instrumentations after getRNInstrumentations', () => {
     const extra = new ExtraInstrumentation();
     const cfg = makeRNConfig({

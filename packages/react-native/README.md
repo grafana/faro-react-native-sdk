@@ -56,7 +56,7 @@ initializeFaro({
   apiKey: 'your-api-key',
   enableTransports: {
     fetch: true, // default
-    offline: false, // optional, caches when offline
+    offline: false, // optional, caches telemetry while offline and sends it when back online
     console: false, // optional, logs to Metro for debugging
   },
   transports: [], // optional, extra transports
@@ -1619,6 +1619,74 @@ console.debug('New event', {
   logs: [{ message: 'Hello', level: 'info', ... }]
 })
 ```
+
+#### OfflineTransport
+
+Keeps telemetry captured while the device is offline and sends it once connectivity returns. Enable it with a flag:
+
+```tsx
+initializeFaro({
+  url: 'https://faro-collector-prod-YOUR-REGION.grafana.net/collect/YOUR_TOKEN_HERE',
+  app: { name: 'my-app', version: '1.0.0' },
+  enableTransports: { offline: true },
+});
+```
+
+To change its options, set `offline: false` and add it to `transports`. The SDK still adds a `FetchTransport` for `url`, and replay sends through it:
+
+```tsx
+import { initializeFaro, OfflineTransport } from '@grafana/faro-react-native';
+
+initializeFaro({
+  url: '...',
+  app: { name: 'my-app', version: '1.0.0' },
+  transports: [
+    new OfflineTransport({
+      maxCacheDurationMs: 24 * 60 * 60 * 1000, // default: 3 days
+      maxCacheSize: 500, // payloads; oldest are dropped first. Default: 1000
+      connectivityCheckIntervalMs: 30_000, // polling interval without NetInfo. Default: 30 s
+      storageKeyPrefix: 'faro_offline_cache', // AsyncStorage key prefix (default)
+    }),
+  ],
+});
+```
+
+**Connectivity:** uses `@react-native-community/netinfo` when it is installed. Otherwise it polls with a `HEAD` request to `https://one.one.one.one/cdn-cgi/trace`.
+
+**One offline transport per Faro instance.** If several are configured, the SDK keeps one: the built-in one with `enableTransports.offline: true`, otherwise the first one in `transports`. The others are disposed and a warning is logged. Faro instances that share a `storageKeyPrefix` are not supported.
+
+**One `FetchTransport` per collector URL.** With an offline transport, the SDK keeps one `FetchTransport` for each `url`, for live sends and for replay. A `FetchTransport` in `transports` with the same URL as `url` replaces the built-in one, so its headers and options apply; among several in `transports`, the first wins. Dropped ones are logged as a warning. URLs are compared as exact strings. `FetchTransport`s with different URLs all receive every item. Without an offline transport, every configured `FetchTransport` is kept.
+
+**While offline**, items are stored in AsyncStorage after `beforeSend` hooks ran, one entry per run of consecutive items with the same `meta` (a flushed batch, when `batching` is enabled, is usually one entry). `FetchTransport` skips those items, so they are sent once, from the cache. Other transports, such as `ConsoleTransport` or custom ones, still receive every item as it is captured. The offline transport goes first in the transport list, since Faro calls transports in order.
+
+**When connectivity returns**, and when Faro starts with entries from an earlier run, the cache is sent oldest first:
+
+- Entries go to the `FetchTransport`s of the same Faro instance, once per collector URL. Requests go through the transport, not the Faro API, so they are not cached again, `beforeSend` hooks do not run again, and collector URLs stay excluded from HTTP and tracing instrumentation.
+- Only one replay runs at a time. Connectivity changes or `forceReplay()` during a replay start another pass after it; `forceReplay()` resolves when that pass ends.
+- An entry leaves the cache when every destination accepted it, or rejected it with a status the collector will not accept on retry (4xx other than 408 and 429), or when it is older than `maxCacheDurationMs`.
+- When a request fails, is rate limited (429), gets a 408 or 5xx response, or `FetchTransport` is in backoff or its request buffer is full, the entry stays. That destination gets no later entries in this pass, so order is kept, while other destinations continue. Replay is retried after 5 s, then 15 s, 30 s, 1 min, 2 min and every 5 min while entries remain, and on the next connectivity change. A delivered entry resets the delay. A storage error during replay is retried on the same schedule.
+- If the device goes offline during a replay, it stops and continues on the next connectivity change.
+
+**Delivery guarantee.** Stored entries are delivered at least once, unless they expire, are evicted by `maxCacheSize`, or are rejected with a non-retryable status. Progress is saved after each entry, so an entry can be sent twice if the app stops, or storage fails, after the collector accepted it and before progress was saved. If storing an item fails while offline, the item is lost and an error is logged.
+
+**Custom transports** receive every item live, including while offline, and are not replay destinations. To replay through specific transports instead, pass them to `setOtherTransports()`. This replaces the default destinations, so include the `FetchTransport` if it should still receive the cache:
+
+- Offline transports are ignored. Transports registered with the same Faro instance that are not a `FetchTransport` are skipped with a warning, since they already received the items live. Use it for transports that are not in `transports`.
+- Transports whose `isBatched()` returns `false` get one item per `send()`; replay remembers how many items such a transport accepted and resumes after them.
+- A transport with a `sendWithResult()` method like `FetchTransport` reports whether the payload was accepted. For other transports, a `send()` that resolves counts as delivered, and one that throws or rejects is retried.
+- Delivery is tracked per destination: `FetchTransport` by URL, other transports by name and position in the list. Keep the list order stable between app launches.
+- Their ignore URLs are added to the offline transport's, so HTTP and tracing instrumentation skip them.
+
+```tsx
+const offline = new OfflineTransport();
+const archive = new MyArchiveTransport(); // not in `transports`
+initializeFaro({ url: '...', app: { name: 'my-app' }, transports: [offline] });
+offline.setOtherTransports([archive]);
+```
+
+**With faro-core's `initializeFaro`**, the offline transport does not know the other transports of the instance. List it before network transports and call `setOtherTransports()` with the `FetchTransport`s to replay through.
+
+Other methods: `getCachedCount()`, `forceReplay()`, `clearCache()` and `dispose()`.
 
 ### Instrumentations
 

@@ -80,8 +80,68 @@ function buildTransports(config: ReactNativeConfig): Config['transports'] {
     builtTransports.push(new ConsoleTransport({ level: LogLevel.DEBUG }));
   }
 
-  const extraTransports = config.transports ?? [];
-  return [...builtTransports, ...extraTransports];
+  return selectOfflineTransports(builtTransports, config.transports ?? []);
+}
+
+/**
+ * With an offline transport present, keeps one offline transport (the cache
+ * owner) and one FetchTransport per collector URL, and puts the owner first.
+ * Without one, returns the transports unchanged.
+ *
+ * - Owner: the built-in one with `enableTransports.offline`, otherwise the
+ *   first one in `config.transports`. Other offline transports are disposed,
+ *   so two transports never replay the same cache.
+ * - FetchTransport: for the same URL, the first one from `config.transports`
+ *   wins over the built-in one, so the app's headers and options apply. This
+ *   keeps live sends and replay to one request per collector.
+ * - Faro calls transports in order, and the owner must claim the items it
+ *   caches before FetchTransport sees them, so they are sent once, from the cache.
+ */
+function selectOfflineTransports(
+  builtTransports: Config['transports'],
+  extraTransports: Config['transports']
+): Config['transports'] {
+  const allTransports = [...builtTransports, ...extraTransports];
+  const owner = allTransports.find((transport): transport is OfflineTransport => transport instanceof OfflineTransport);
+  if (!owner) {
+    return allTransports;
+  }
+
+  const builtSet = new Set(builtTransports);
+  const fetchByUrl = new Map<string, FetchTransport>();
+  for (const transport of allTransports) {
+    if (transport instanceof FetchTransport) {
+      const key = transport.getDestinationKey();
+      const kept = fetchByUrl.get(key);
+      if (!kept || (builtSet.has(kept) && !builtSet.has(transport))) {
+        fetchByUrl.set(key, transport);
+      }
+    }
+  }
+  const keptFetch = new Set(fetchByUrl.values());
+
+  const selected: Config['transports'] = [owner];
+  const seen = new Set<object>([owner]);
+  for (const transport of allTransports) {
+    if (seen.has(transport)) {
+      continue;
+    }
+    seen.add(transport);
+    if (transport instanceof OfflineTransport) {
+      owner.queueConfigWarning(
+        'Ignoring an extra OfflineTransport: one offline transport owns the cache; it was disposed'
+      );
+      transport.dispose();
+    } else if (transport instanceof FetchTransport && !keptFetch.has(transport)) {
+      owner.queueConfigWarning(
+        'Ignoring a FetchTransport with the same URL as another one: with offline caching, ' +
+          'each collector URL gets one FetchTransport'
+      );
+    } else {
+      selected.push(transport);
+    }
+  }
+  return selected;
 }
 
 /**

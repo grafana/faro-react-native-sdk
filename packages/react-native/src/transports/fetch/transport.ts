@@ -1,6 +1,9 @@
 import { BaseTransport, createPromiseBuffer, getTransportBody, VERSION } from '@grafana/faro-core';
 import type { Patterns, PromiseBuffer, TransportItem } from '@grafana/faro-core';
 
+import { isClaimedForOfflineReplay } from '../claims';
+import { groupItemsByMeta } from '../groupItemsByMeta';
+
 import type { FetchTransportOptions, FetchTransportSendResult } from './types';
 
 const DEFAULT_BUFFER_SIZE = 30;
@@ -116,9 +119,16 @@ export class FetchTransport extends BaseTransport {
    * holds at most one request-buffer slot at a time; overlapping send calls
    * still share the buffer limit. Groups after one that starts a rate-limit or
    * failure backoff are skipped like any send during backoff.
+   *
+   * Items that an `OfflineTransport` cached while offline are skipped here;
+   * the offline transport delivers them through `sendWithResult()` when it
+   * replays its cache.
    */
   async send(items: TransportItem[]): Promise<void> {
-    for (const group of groupItemsByMeta(items)) {
+    // Faro calls transports in order in one synchronous loop, so an
+    // OfflineTransport registered earlier has already claimed what it cached.
+    const unclaimed = items.filter((item) => !isClaimedForOfflineReplay(item));
+    for (const group of groupItemsByMeta(unclaimed)) {
       await this.sendWithResult(group);
     }
   }
@@ -253,6 +263,15 @@ export class FetchTransport extends BaseTransport {
     }
   }
 
+  /**
+   * Identifies the collector this transport sends to. Offline replay sends each
+   * cached payload once per destination, so two FetchTransports with the same
+   * URL receive it once between them.
+   */
+  getDestinationKey(): string {
+    return `fetch:${this.options.url}`;
+  }
+
   override getIgnoreUrls(): Patterns {
     return ([this.options.url] as Patterns).concat(this.config.ignoreUrls ?? []);
   }
@@ -281,18 +300,4 @@ export class FetchTransport extends BaseTransport {
 
     return new Date(now + this.rateLimitBackoffMs);
   }
-}
-
-function groupItemsByMeta(items: TransportItem[]): TransportItem[][] {
-  const groups = new Map<string, TransportItem[]>();
-  for (const item of items) {
-    const key = JSON.stringify(item.meta);
-    const group = groups.get(key);
-    if (group == null) {
-      groups.set(key, [item]);
-    } else {
-      group.push(item);
-    }
-  }
-  return Array.from(groups.values());
 }

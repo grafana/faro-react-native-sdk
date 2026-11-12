@@ -1,4 +1,4 @@
-import type { TransportItem } from '@grafana/faro-core';
+import type { Transport, TransportItem } from '@grafana/faro-core';
 
 /**
  * Configuration options for the OfflineTransport.
@@ -36,6 +36,12 @@ export interface OfflineTransportOptions {
  */
 export interface CachedPayload {
   /**
+   * Unique id of the cache entry. Entries written by older SDK versions have
+   * none; the cache assigns one when it reads them.
+   */
+  id?: string;
+
+  /**
    * Timestamp when the payload was cached (milliseconds since epoch).
    */
   timestamp: number;
@@ -44,6 +50,56 @@ export interface CachedPayload {
    * The transport items to be sent.
    */
   items: TransportItem[];
+
+  /**
+   * Destination keys (see `DeliveryReportingTransport.getDestinationKey`) that
+   * already received this payload during replay, so a retry does not send it
+   * to them again.
+   */
+  deliveredTo?: string[];
+
+  /**
+   * For destinations that take one item per send (`isBatched()` is false), the
+   * number of items they already accepted, so a retry resumes after them.
+   */
+  itemCursors?: Record<string, number>;
+}
+
+/**
+ * Internal to the offline replay; not exported from the package.
+ *
+ * Outcome of one send attempt reported by a transport.
+ *
+ * - `accepted`: the destination accepted the items.
+ * - `rejected`: the destination answered with a non-success status.
+ * - `failed`: the request did not complete (network error, timeout, full request buffer).
+ * - `skipped`: the transport did not try, for example during a rate-limit or failure backoff.
+ */
+export type DeliveryOutcome = 'accepted' | 'rejected' | 'failed' | 'skipped';
+
+export interface DeliveryResult {
+  outcome: DeliveryOutcome;
+  status?: number;
+}
+
+/**
+ * A transport that reports whether a send reached its destination.
+ * `FetchTransport` implements it. Replay uses it for transports set with
+ * `OfflineTransport.setOtherTransports()` when they provide it. Internal; not
+ * exported from the package.
+ */
+export interface DeliveryReportingTransport extends Transport {
+  /**
+   * Sends items that share one meta block as one request and reports the outcome.
+   */
+  sendWithResult(items: TransportItem[]): Promise<DeliveryResult>;
+
+  /**
+   * Identifies the destination. Transports that return the same key are one
+   * destination, so replay sends each cached payload to it once. The key is
+   * stored with cached payloads, so it must not contain credentials.
+   */
+  getDestinationKey?(): string;
 }
 
 /**
@@ -78,7 +134,8 @@ export interface OfflineCache {
   write(payload: CachedPayload): Promise<void>;
 
   /**
-   * Read all cached payloads.
+   * Read all cached payloads. Rejects when storage cannot be read, so callers
+   * do not mistake it for an empty cache.
    */
   readAll(): Promise<CachedPayload[]>;
 
@@ -93,7 +150,14 @@ export interface OfflineCache {
   removeByTimestamps(timestamps: number[]): Promise<void>;
 
   /**
-   * Get the number of cached payloads.
+   * Replace payloads in place. Each key is a payload id and its value the
+   * payloads that take its place, in order; an empty list removes it. Unknown
+   * ids are ignored.
+   */
+  replace(replacements: Record<string, CachedPayload[]>): Promise<void>;
+
+  /**
+   * Get the number of cached payloads; 0 when storage cannot be read.
    */
   getCount(): Promise<number>;
 }

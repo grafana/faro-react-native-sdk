@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { genShortID } from '@grafana/faro-core';
+
 import type { CachedPayload, OfflineCache } from './types';
 
 /**
@@ -35,7 +37,7 @@ export class AsyncStorageOfflineCache implements OfflineCache {
       const payloads = await this.readAllInternal();
 
       // Add new payload
-      payloads.push(payload);
+      payloads.push(payload.id ? payload : { ...payload, id: createPayloadId() });
 
       // Trim to max size (remove oldest entries)
       while (payloads.length > this.maxCacheSize) {
@@ -46,9 +48,34 @@ export class AsyncStorageOfflineCache implements OfflineCache {
     });
   }
 
+  /**
+   * Reads all payloads, oldest first. Entries written by older SDK versions get
+   * an id, which is persisted so later `replace()` calls can find them.
+   */
   async readAll(): Promise<CachedPayload[]> {
     return this.withLock(async () => {
-      return this.readAllInternal();
+      const payloads = await this.readAllInternal();
+      if (payloads.some((payload) => !payload.id)) {
+        const withIds = payloads.map((payload) => (payload.id ? payload : { ...payload, id: createPayloadId() }));
+        await this.writeAll(withIds);
+        return withIds;
+      }
+      return payloads;
+    });
+  }
+
+  async replace(replacements: Record<string, CachedPayload[]>): Promise<void> {
+    await this.withLock(async () => {
+      const payloads = await this.readAllInternal();
+      const updated = payloads.flatMap((payload) => {
+        if (!payload.id || !Object.prototype.hasOwnProperty.call(replacements, payload.id)) {
+          return [payload];
+        }
+        return (replacements[payload.id] ?? []).map((replacement) =>
+          replacement.id ? replacement : { ...replacement, id: createPayloadId() }
+        );
+      });
+      await this.writeAll(updated);
     });
   }
 
@@ -70,9 +97,16 @@ export class AsyncStorageOfflineCache implements OfflineCache {
     });
   }
 
+  /**
+   * Returns 0 when storage cannot be read.
+   */
   async getCount(): Promise<number> {
-    const payloads = await this.readAllInternal();
-    return payloads.length;
+    try {
+      const payloads = await this.readAllInternal();
+      return payloads.length;
+    } catch {
+      return 0;
+    }
   }
 
   /**
@@ -94,23 +128,25 @@ export class AsyncStorageOfflineCache implements OfflineCache {
     }
   }
 
+  /**
+   * Storage read errors propagate, so callers never mistake unavailable storage
+   * for an empty cache and overwrite entries that were not delivered. Only
+   * unreadable data (invalid JSON or shape) counts as empty.
+   */
   private async readAllInternal(): Promise<CachedPayload[]> {
-    try {
-      const data = await AsyncStorage.getItem(this.storageKey);
-      if (!data) {
-        return [];
-      }
-
-      const parsed = JSON.parse(data);
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
-
-      return parsed.filter(this.isValidCachedPayload);
-    } catch {
-      // If parsing fails, return empty array
+    const data = await AsyncStorage.getItem(this.storageKey);
+    if (!data) {
       return [];
     }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      return [];
+    }
+
+    return Array.isArray(parsed) ? parsed.filter(this.isValidCachedPayload) : [];
   }
 
   private async writeAll(payloads: CachedPayload[]): Promise<void> {
@@ -129,4 +165,8 @@ export class AsyncStorageOfflineCache implements OfflineCache {
     const p = payload as Record<string, unknown>;
     return typeof p['timestamp'] === 'number' && Array.isArray(p['items']);
   }
+}
+
+function createPayloadId(): string {
+  return `${Date.now()}-${genShortID(10)}`;
 }

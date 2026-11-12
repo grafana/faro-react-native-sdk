@@ -8,6 +8,8 @@ import {
 } from '@grafana/faro-core';
 import { mockConfig, mockInternalLogger } from '@grafana/faro-test-utils';
 
+import { claimForOfflineReplay } from '../claims';
+
 import { FetchTransport } from './transport';
 
 const fetch = jest.fn(() =>
@@ -98,6 +100,32 @@ describe('FetchTransport', () => {
         },
         method: 'POST',
       })
+    );
+  });
+
+  it('skips items an offline transport claimed, but still sends them through sendWithResult', async () => {
+    const transport = new FetchTransport({ url: 'http://example.com/collect' });
+    transport.metas.value = { session: { id: mockSessionId } };
+    transport.internalLogger = mockInternalLogger;
+    const claimed = { ...item, payload: { ...item.payload, message: 'claimed' } };
+
+    // Faro calls the offline transport first, which claims what it caches.
+    claimForOfflineReplay([claimed]);
+    await transport.send([item, claimed]);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith(
+      'http://example.com/collect',
+      expect.objectContaining({ body: JSON.stringify(getTransportBody([item])) })
+    );
+
+    await expect(transport.sendWithResult([claimed])).resolves.toEqual({ outcome: 'accepted', status: 202 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('identifies its destination by URL', () => {
+    expect(new FetchTransport({ url: 'http://example.com/collect' }).getDestinationKey()).toBe(
+      'fetch:http://example.com/collect'
     );
   });
 
