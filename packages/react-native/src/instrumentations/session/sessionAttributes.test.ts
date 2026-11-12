@@ -532,19 +532,7 @@ describe('sessionAttributes', () => {
     });
 
     describe('React Native version parsing', () => {
-      it('should parse version with prerelease', () => {
-        Object.defineProperty(Platform, 'constants', {
-          value: {
-            reactNativeVersion: {
-              major: 0,
-              minor: 76,
-              patch: 0,
-              prerelease: 1,
-            },
-          },
-          writable: true,
-        });
-
+      const mockDeviceInfoForVersionParsing = () => {
         (DeviceInfo.getSystemName as jest.Mock).mockReturnValue('iOS');
         (DeviceInfo.getSystemVersion as jest.Mock).mockReturnValue('17.0');
         (DeviceInfo.getManufacturerSync as jest.Mock).mockReturnValue('Apple');
@@ -552,10 +540,51 @@ describe('sessionAttributes', () => {
         (DeviceInfo.getDeviceId as jest.Mock).mockReturnValue('iPhone16,1');
         (DeviceInfo.getBrand as jest.Mock).mockReturnValue('Apple');
         (DeviceInfo.isEmulatorSync as jest.Mock).mockReturnValue(false);
+      };
 
-        return getSessionAttributes().then((attributes) => {
-          expect(attributes.react_native_version).toBe('0.76.0-rc.1');
+      const mockReactNativeVersion = (prerelease: unknown) => {
+        Object.defineProperty(Platform, 'constants', {
+          value: {
+            reactNativeVersion: {
+              major: 0,
+              minor: 85,
+              patch: 0,
+              prerelease,
+            },
+          },
+          writable: true,
         });
+      };
+
+      it('should append the prerelease tag as React Native formats it', async () => {
+        mockReactNativeVersion('rc.1');
+        mockDeviceInfoForVersionParsing();
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.react_native_version).toBe('0.85.0-rc.1');
+      });
+
+      it('should omit the prerelease suffix when prerelease is null', async () => {
+        mockReactNativeVersion(null);
+        mockDeviceInfoForVersionParsing();
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.react_native_version).toBe('0.85.0');
+      });
+
+      it.each([
+        ['a number', 1],
+        ['an empty string', ''],
+        ['an object', { tag: 'rc.1' }],
+      ])('should ignore prerelease when it is %s', async (_label, prerelease) => {
+        mockReactNativeVersion(prerelease);
+        mockDeviceInfoForVersionParsing();
+
+        const attributes = await getSessionAttributes();
+
+        expect(attributes.react_native_version).toBe('0.85.0');
       });
 
       it('should fallback to unknown if version unavailable', () => {
