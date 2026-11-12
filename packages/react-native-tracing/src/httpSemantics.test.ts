@@ -1,4 +1,5 @@
 import { context, propagation, SpanKind, trace } from '@opentelemetry/api';
+import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 
 import { initializeFaro, TransportItemType, UserActionState } from '@grafana/faro-core';
 import type { EventEvent, Faro, TraceEvent, UserActionInternalInterface } from '@grafana/faro-core';
@@ -10,6 +11,10 @@ import type { HttpRequestMessage } from '../../react-native/src/instrumentations
 
 import { sendFaroEvents } from './exporters/faroTraceExporter.utils';
 import { TracingInstrumentation } from './instrumentation';
+import {
+  captureFetchUserAction,
+  fetchCustomAttributeFunctionWithDefaults,
+} from './instrumentations/instrumentationUtils';
 
 // Use the real RN monitor without loading native modules in jsdom.
 jest.mock('@grafana/faro-react-native', () => ({
@@ -19,7 +24,7 @@ jest.mock('@grafana/faro-react-native', () => ({
 
 const url = 'https://api.example.com:8443/orders';
 
-describe('stable fetch semantics', () => {
+describe.each([false, true])('stable fetch semantics (custom=%s)', (custom) => {
   let faro: Faro;
   let transport: MockTransport;
   let instrumentation: TracingInstrumentation;
@@ -29,7 +34,18 @@ describe('stable fetch semantics', () => {
   let messages: HttpRequestMessage[];
   let unsubscribe: () => void;
 
+  const originalGetEntries = performance.getEntriesByType;
+  const originalObserver = globalThis.PerformanceObserver;
+  const originalResourceTiming = globalThis.PerformanceResourceTiming;
+  const observe = jest.fn();
+  const observer = jest.fn(() => ({ observe, disconnect: jest.fn() }));
+
   beforeEach(() => {
+    performance.getEntriesByType = jest.fn(() => []);
+    observer.mockClear();
+    observe.mockClear();
+    globalThis.PerformanceObserver = observer as unknown as typeof PerformanceObserver;
+    globalThis.PerformanceResourceTiming = class {} as typeof PerformanceResourceTiming;
     jest.useFakeTimers();
     originalFetch = globalThis.fetch;
     globalThis.fetch = jest.fn(
@@ -48,6 +64,20 @@ describe('stable fetch semantics', () => {
     faro = initializeFaro(mockConfig({ transports: [transport], dedupe: false }))!;
     faro.api.setSession({ id: 'http-session', attributes: { isSampled: 'true' } });
     instrumentation = new TracingInstrumentation({
+      ...(custom
+        ? {
+            instrumentations: [
+              [
+                new FetchInstrumentation({
+                  ignoreUrls: [/ignored/],
+                  propagateTraceHeaderCorsUrls: [/.*/],
+                  applyCustomAttributesOnSpan: fetchCustomAttributeFunctionWithDefaults(),
+                  requestHook: captureFetchUserAction,
+                }),
+              ],
+            ],
+          }
+        : {}),
       instrumentationOptions: {
         propagateTraceHeaderCorsUrls: [/.*/],
         fetchInstrumentationOptions: {
@@ -61,6 +91,9 @@ describe('stable fetch semantics', () => {
   afterEach(async () => {
     await jest.advanceTimersByTimeAsync(2000);
     await instrumentation.shutdown();
+    performance.getEntriesByType = originalGetEntries;
+    globalThis.PerformanceObserver = originalObserver;
+    globalThis.PerformanceResourceTiming = originalResourceTiming;
     faro.instrumentations.remove(...faro.instrumentations.instrumentations);
     unsubscribe();
     globalThis.fetch = originalFetch;
@@ -68,6 +101,8 @@ describe('stable fetch semantics', () => {
     trace.disable();
     context.disable();
     propagation.disable();
+    expect(observer).not.toHaveBeenCalled();
+    expect(observe).not.toHaveBeenCalled();
     jest.useRealTimers();
   });
 

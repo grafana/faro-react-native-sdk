@@ -894,6 +894,12 @@ See the demo app for complete examples:
 
 ## Performance Considerations
 
+### Resource timing observers
+
+Faro disables OTel resource timing observers on every fetch/XHR instrumentation it registers or returns from `getDefaultOTELInstrumentations`, including user-supplied instances and instances from other installed OTel copies. Overrides remain across teardown and re-registration; unrelated OTel instances are untouched. Missing or unwritable private OTel hooks leave the instance unprotected and produce an internal debug diagnostic during registration.
+
+This applies on all React Native versions and platforms. React Native resource entries lack the `initiatorType` values OTel requires, so these observers provide no useful timing data. Avoiding them also avoids a native resource-observer race affecting React Native 0.83.0–0.83.4, 0.84.x and 0.85.0–0.85.2. Request tracing and span timing remain enabled.
+
 ### Overhead
 
 - **Automatic tracing**: ~5-10ms per HTTP request
