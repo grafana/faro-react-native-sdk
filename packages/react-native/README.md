@@ -1622,7 +1622,9 @@ console.debug('New event', {
 
 #### OfflineTransport
 
-Keeps telemetry captured while the device is offline and sends it once connectivity returns. Enable it with a flag:
+Stores telemetry captured while the device is offline and sends it when connectivity returns. Turn it on in one of two ways:
+
+**With default options**, set the flag:
 
 ```tsx
 initializeFaro({
@@ -1632,7 +1634,7 @@ initializeFaro({
 });
 ```
 
-To change its options, set `offline: false` and add it to `transports`. The SDK still adds a `FetchTransport` for `url`, and replay sends through it:
+**With your own options**, add an `OfflineTransport` to `transports` and leave the flag off:
 
 ```tsx
 import { initializeFaro, OfflineTransport } from '@grafana/faro-react-native';
@@ -1651,9 +1653,13 @@ initializeFaro({
 });
 ```
 
+Don't use both: with the flag set, the SDK uses its own offline transport and ignores the one in `transports` (a warning is logged).
+
+In both cases the SDK still creates the `FetchTransport` for `url`, and cached telemetry is sent through it.
+
 **Connectivity:** uses `@react-native-community/netinfo` when it is installed. Otherwise it polls with a `HEAD` request to `https://one.one.one.one/cdn-cgi/trace`.
 
-**One offline transport per Faro instance.** If several are configured, the SDK keeps one: the built-in one with `enableTransports.offline: true`, otherwise the first one in `transports`. The others are disposed and a warning is logged. Faro instances that share a `storageKeyPrefix` are not supported.
+**One offline transport per Faro instance.** If `transports` contains several, the SDK keeps the first and disposes the others with a warning. Faro instances that share a `storageKeyPrefix` are not supported.
 
 **One `FetchTransport` per collector URL.** With an offline transport, the SDK keeps one `FetchTransport` for each `url`, for live sends and for replay. A `FetchTransport` in `transports` with the same URL as `url` replaces the built-in one, so its headers and options apply; among several in `transports`, the first wins. Dropped ones are logged as a warning. URLs are compared as exact strings. `FetchTransport`s with different URLs all receive every item. Without an offline transport, every configured `FetchTransport` is kept.
 
