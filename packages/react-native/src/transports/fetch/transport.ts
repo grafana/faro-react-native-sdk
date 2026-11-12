@@ -320,7 +320,7 @@ function groupItemsByMeta(items: TransportItem[]): TransportItem[][] {
   return Array.from(groups.values());
 }
 
-/** FNV-1a, 32 bit, as 8 hex digits. Stable across launches, not reversible to the input. */
+/** FNV-1a, 32 bit, as 8 hex digits. Stable across launches; the result does not contain the input. */
 function hashString(value: string): string {
   let hash = 0x811c9dc5;
   for (let i = 0; i < value.length; i++) {
