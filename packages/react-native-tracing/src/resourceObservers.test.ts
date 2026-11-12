@@ -268,6 +268,27 @@ describe('OpenTelemetry resource PerformanceObservers', () => {
     expect(override).not.toHaveBeenCalled();
   });
 
+  it.each([FetchInstrumentation, XMLHttpRequestInstrumentation])(
+    'overrides writable non-configurable own hooks for %p',
+    (Constructor) => {
+      const debug = jest.spyOn(faro.internalLogger, 'debug').mockImplementation(() => {});
+      const hook = Constructor === FetchInstrumentation ? '_prepareSpanData' : '_addResourceObserver';
+      const instance = new Constructor({ enabled: false });
+      const target = instance as unknown as Record<string, (...args: unknown[]) => unknown>;
+      const original = target[hook];
+      Object.defineProperty(instance, hook, { value: original, writable: true, configurable: false });
+      addTracing({ instrumentations: [instance] });
+      expect(target[hook]).not.toBe(original);
+      target[hook]?.('https://example.com');
+      expectNoResourceObservers();
+      expect(debug).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringContaining('Could not disable OpenTelemetry resource PerformanceObservers'),
+        expect.anything()
+      );
+    }
+  );
+
   it('logs a failed write without aborting tracing setup', () => {
     const debug = jest.spyOn(faro.internalLogger, 'debug').mockImplementation(() => {});
     const frozen = Object.freeze({

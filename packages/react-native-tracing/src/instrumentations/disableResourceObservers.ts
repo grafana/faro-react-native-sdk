@@ -39,8 +39,18 @@ export function disableResourceObservers(instrumentation: Instrumentation): Reso
     if (typeof target[hook] !== 'function') {
       return [{ instrumentationName: name, hook, reason: 'missing' }];
     }
-    if (!Object.prototype.hasOwnProperty.call(target, hook) || target[hook] !== replacement) {
+    if (target[hook] === replacement && Object.prototype.hasOwnProperty.call(target, hook)) {
+      return [];
+    }
+    const own = Object.getOwnPropertyDescriptor(target, hook);
+    if (own && (own.writable || own.set)) {
+      // Assignment also works for non-configurable own hooks, which defineProperty cannot redefine.
+      target[hook] = replacement;
+    } else {
       Object.defineProperty(target, hook, { value: replacement, writable: true, configurable: true });
+    }
+    if (target[hook] !== replacement) {
+      return [{ instrumentationName: name, hook, reason: 'write-failed' }];
     }
     return [];
   } catch {
