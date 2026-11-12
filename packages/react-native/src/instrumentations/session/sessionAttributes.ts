@@ -135,11 +135,13 @@ function getReactNativeVersion(): string {
         major: number;
         minor: number;
         patch: number;
-        prerelease?: number;
+        // React Native sends the full tag (e.g., "rc.1"), or null for releases.
+        prerelease?: unknown;
       };
       let versionString = `${major}.${minor}.${patch}`;
-      if (prerelease) {
-        versionString += `-rc.${prerelease}`;
+      // Ignore unexpected non-string values instead of reporting a malformed version.
+      if (typeof prerelease === 'string' && prerelease.length > 0) {
+        versionString += `-${prerelease}`;
       }
       return versionString;
     }
