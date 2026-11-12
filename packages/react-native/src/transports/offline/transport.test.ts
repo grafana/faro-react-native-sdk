@@ -66,12 +66,11 @@ class MockOfflineCache {
     this.payloads = this.payloads.filter((p) => !set.has(p.timestamp));
   }
 
-  async replace(replacements: Record<string, CachedPayload[]>): Promise<void> {
-    this.payloads = this.payloads.flatMap((p) =>
-      p.id && p.id in replacements
-        ? (replacements[p.id] ?? []).map((r) => ({ ...r, id: r.id ?? `p${this.nextId++}` }))
-        : [p]
-    );
+  async update(changes: Record<string, CachedPayload | null>): Promise<void> {
+    this.payloads = this.payloads.flatMap((p) => {
+      const change = p.id === undefined ? undefined : changes[p.id];
+      return change === undefined ? [p] : change === null ? [] : [change];
+    });
   }
 
   async getCount(): Promise<number> {
@@ -351,8 +350,8 @@ describe('AsyncStorageOfflineCache', () => {
     });
   });
 
-  describe('replace', () => {
-    it('replaces, splits and removes payloads by id in place, leaving others alone', async () => {
+  describe('update', () => {
+    it('updates and removes payloads by id in place, leaving others alone', async () => {
       AsyncStorage.getItem.mockResolvedValueOnce(
         JSON.stringify([
           { id: 'a', timestamp: 1, items: [] },
@@ -361,21 +360,17 @@ describe('AsyncStorageOfflineCache', () => {
         ])
       );
 
-      await cache.replace({
-        a: [],
-        b: [
-          { id: 'b', timestamp: 1, items: [], deliveredTo: ['x'] },
-          { timestamp: 1, items: [] },
-        ],
-        unknown: [],
+      await cache.update({
+        a: null,
+        b: { id: 'b', timestamp: 1, items: [], progress: { x: 1 } },
+        unknown: null,
       });
 
       const saved = JSON.parse(AsyncStorage.setItem.mock.calls[0][1]);
-      expect(saved.map((p: { id: string }) => p.id).slice(0, 1)).toEqual(['b']);
-      expect(saved[0].deliveredTo).toEqual(['x']);
-      expect(typeof saved[1].id).toBe('string');
-      expect(saved[2].id).toBe('c');
-      expect(saved).toHaveLength(3);
+      expect(saved).toEqual([
+        { id: 'b', timestamp: 1, items: [], progress: { x: 1 } },
+        { id: 'c', timestamp: 2, items: [] },
+      ]);
     });
   });
 

@@ -123,10 +123,21 @@ describe('FetchTransport', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('identifies its destination by URL', () => {
-    expect(new FetchTransport({ url: 'http://example.com/collect' }).getDestinationKey()).toBe(
-      'fetch:http://example.com/collect'
-    );
+  it('identifies its destination by a stable key that does not contain the URL or token', () => {
+    const url = 'https://faro-collector.example.com/collect/secret-app-token';
+    const key = new FetchTransport({ url }).getDestinationKey();
+
+    expect(key).toMatch(/^fetch:[0-9a-f]{8}$/);
+    expect(key).not.toContain('secret-app-token');
+    expect(new FetchTransport({ url }).getDestinationKey()).toBe(key);
+    expect(new FetchTransport({ url: `${url}-other` }).getDestinationKey()).not.toBe(key);
+  });
+
+  it('returns its URL as ignore URL before Faro sets its config', () => {
+    const transport = new FetchTransport({ url: 'http://example.com/collect' });
+    (transport as unknown as { config: undefined }).config = undefined;
+
+    expect(transport.getIgnoreUrls()).toEqual(['http://example.com/collect']);
   });
 
   it('uses the live session for the header while preserving the payload session', async () => {

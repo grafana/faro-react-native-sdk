@@ -50,7 +50,7 @@ export class AsyncStorageOfflineCache implements OfflineCache {
 
   /**
    * Reads all payloads, oldest first. Entries written by older SDK versions get
-   * an id, which is persisted so later `replace()` calls can find them.
+   * an id, which is persisted so later `update()` calls can find them.
    */
   async readAll(): Promise<CachedPayload[]> {
     return this.withLock(async () => {
@@ -64,16 +64,15 @@ export class AsyncStorageOfflineCache implements OfflineCache {
     });
   }
 
-  async replace(replacements: Record<string, CachedPayload[]>): Promise<void> {
+  async update(changes: Record<string, CachedPayload | null>): Promise<void> {
     await this.withLock(async () => {
       const payloads = await this.readAllInternal();
       const updated = payloads.flatMap((payload) => {
-        if (!payload.id || !Object.prototype.hasOwnProperty.call(replacements, payload.id)) {
+        const change = payload.id === undefined ? undefined : changes[payload.id];
+        if (change === undefined) {
           return [payload];
         }
-        return (replacements[payload.id] ?? []).map((replacement) =>
-          replacement.id ? replacement : { ...replacement, id: createPayloadId() }
-        );
+        return change === null ? [] : [change];
       });
       await this.writeAll(updated);
     });

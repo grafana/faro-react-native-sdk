@@ -3,17 +3,10 @@ import type { Patterns, Transport, TransportItem, Transports } from '@grafana/fa
 
 import { claimForOfflineReplay } from '../claims';
 import { FetchTransport } from '../fetch';
-import { groupContiguousItemsByMeta } from '../groupItemsByMeta';
 
 import { DefaultConnectivityService } from './ConnectivityService';
 import { AsyncStorageOfflineCache } from './OfflineCache';
-import type {
-  CachedPayload,
-  ConnectivityService,
-  DeliveryReportingTransport,
-  OfflineCache,
-  OfflineTransportOptions,
-} from './types';
+import type { CachedPayload, ConnectivityService, OfflineCache, OfflineTransportOptions } from './types';
 
 /**
  * Default maximum cache duration: 3 days in milliseconds.
@@ -22,14 +15,12 @@ const DEFAULT_MAX_CACHE_DURATION_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
  * Delays before retrying a replay that could not deliver everything while
- * online. The last value repeats. Progress resets the sequence.
+ * online. The last value repeats. A pass that delivers something resets it.
  */
 const REPLAY_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000];
 
-const HTTP_REQUEST_TIMEOUT = 408;
-const HTTP_TOO_MANY_REQUESTS = 429;
-
-type DeliveryStatus = 'delivered' | 'dropped' | 'retry';
+/** Replay saves its progress after this many changed entries, and at the end of a pass. */
+const REPLAY_SAVE_EVERY = 50;
 
 interface ReplayTarget {
   key: string;
@@ -37,14 +28,6 @@ interface ReplayTarget {
   /** False for transports that take one item per `send()` call. */
   batched: boolean;
 }
-
-interface ExplicitTarget {
-  transport: Transport;
-  /** Position in the list passed to `setOtherTransports()`, used for the fallback destination key. */
-  index: number;
-}
-
-type ReplayPassResult = { state: 'done' | 'pending' | 'idle'; progressed: boolean };
 
 /**
  * OfflineTransport - Caches telemetry when offline and replays it when online.
@@ -55,7 +38,7 @@ type ReplayPassResult = { state: 'done' | 'pending' | 'idle'; progressed: boolea
  * registered with the same Faro instance, or through the transports set with
  * `setOtherTransports()`. Replay calls those transports directly, so
  * `beforeSend` hooks, which already ran before the items were cached, do not
- * run again.
+ * run again. Without any transport to replay through, nothing is cached.
  *
  * A payload leaves the cache once every destination accepted it, rejected it
  * with a non-retryable status (4xx other than 408 and 429), or it expired.
@@ -81,17 +64,13 @@ export class OfflineTransport extends BaseTransport {
   private readonly cache: OfflineCache;
   private readonly connectivityService: ConnectivityService;
   private readonly maxCacheDurationMs: number;
-  private explicitTargets: ExplicitTarget[] | null = null;
+  private explicitTargets: Transport[] | null = null;
   private registeredTransports: Transports | null = null;
   private unsubscribeConnectivity: (() => void) | null = null;
   private replayPromise: Promise<void> | null = null;
-  private replayRequestedDuringReplay = false;
+  private replayRequested = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private retryAttempt = 0;
-  private startupReplayRequested = false;
-  private warnedNoTargets = false;
-  private readonly warnedSkippedTargets = new WeakSet<Transport>();
-  private queuedWarnings: string[] = [];
   /** Cache writes run one `send()` at a time, so cache order is capture order. Never rejects. */
   private pendingWrites: Promise<void> = Promise.resolve();
   private disposed = false;
@@ -120,44 +99,36 @@ export class OfflineTransport extends BaseTransport {
    * Send telemetry items.
    *
    * When offline, items are cached for later replay and claimed so
-   * `FetchTransport` does not also send them live. When online, this transport
-   * does nothing; the other transports send the items.
+   * `FetchTransport` does not also send them live. When online, or when there
+   * is no transport to replay through, this transport does nothing; the other
+   * transports send the items.
    */
   async send(items: TransportItem | TransportItem[]): Promise<void> {
     const itemsArray = Array.isArray(items) ? items : [items];
 
-    if (itemsArray.length === 0 || this.disposed) {
+    if (itemsArray.length === 0 || this.disposed || this.connectivityService.isOnline) {
       return;
     }
 
-    if (this.connectivityService.isOnline) {
-      // The first item sent after Faro starts replays what an earlier run cached.
-      if (!this.startupReplayRequested) {
-        this.startupReplayRequested = true;
-        this.requestReplay();
-      }
+    const targets = this.getReplayTargets();
+    if (targets?.length === 0) {
       return;
     }
+    // Targets are unknown until this transport is bound to Faro or given explicit
+    // ones; cache then, but don't claim, so FetchTransport still tries live.
+    if (targets) {
+      // Must run synchronously, before network transports in the same dispatch look at the items.
+      claimForOfflineReplay(itemsArray);
+    }
 
-    // Must run synchronously, before network transports in the same dispatch look at the items.
-    claimForOfflineReplay(itemsArray);
-
-    // One payload per run of items with the same meta, so a payload is one
-    // request per destination and replay keeps capture order.
-    const timestamp = Date.now();
-    const runs = groupContiguousItemsByMeta(itemsArray);
-    const write = this.pendingWrites.then(async () => {
-      for (const run of runs) {
-        await this.cache.write({ timestamp, items: run });
-      }
-    });
+    const payload: CachedPayload = { timestamp: Date.now(), items: itemsArray };
+    const write = this.pendingWrites.then(() => this.cache.write(payload));
     this.pendingWrites = write.catch(() => undefined);
 
     try {
       await write;
       this.logDebug(`Cached ${itemsArray.length} items for offline replay`);
     } catch (error) {
-      // The items were claimed, so they are lost; later writes and replays are not affected.
       this.logError('Failed to cache offline payload', error);
     }
   }
@@ -168,7 +139,7 @@ export class OfflineTransport extends BaseTransport {
    * transports are not registered with Faro.
    */
   override getIgnoreUrls(): Patterns {
-    return (this.explicitTargets ?? []).flatMap(({ transport }) => {
+    return (this.explicitTargets ?? []).flatMap((transport) => {
       try {
         return transport.getIgnoreUrls();
       } catch {
@@ -184,24 +155,21 @@ export class OfflineTransport extends BaseTransport {
   /**
    * Sets the transports that replay sends cached payloads to, replacing the
    * default: the `FetchTransport` instances registered with the same Faro
-   * instance.
+   * instance. Call it before `initializeFaro`.
    *
    * - Offline transports are ignored.
    * - Transports registered with the same Faro instance that are not a
-   *   `FetchTransport` are skipped with a warning: they already received the
-   *   items live.
+   *   `FetchTransport` are skipped: they already received the items live.
    * - Transports whose `isBatched()` returns false get one item per `send()`.
-   * - A transport with `sendWithResult()` reports whether the collector
-   *   accepted a payload. For other transports, a `send()` that resolves
-   *   counts as delivered and one that throws or rejects is retried.
-   * - Replay tracks delivery per destination: `getDestinationKey()` when the
-   *   transport has it, otherwise its name and position in this list. Keep the
-   *   list order stable across app launches.
+   * - For a `FetchTransport`, the collector response decides. For other
+   *   transports, a `send()` that resolves counts as delivered and one that
+   *   throws or rejects is retried.
+   * - Replay tracks delivery per destination: the collector URL for a
+   *   `FetchTransport`, otherwise the transport's name and position in this
+   *   list. Keep the list order stable across app launches.
    */
   setOtherTransports(transports: Transport[]): void {
-    this.explicitTargets = transports
-      .map((transport, index) => ({ transport, index }))
-      .filter(({ transport }) => !isOfflineTransport(transport));
+    this.explicitTargets = transports;
   }
 
   /**
@@ -213,21 +181,7 @@ export class OfflineTransport extends BaseTransport {
    */
   bindTransports(transports: Transports): void {
     this.registeredTransports = transports;
-    const warnings = this.queuedWarnings;
-    this.queuedWarnings = [];
-    warnings.forEach((warning) => this.logWarn(warning));
     this.requestReplay();
-  }
-
-  /**
-   * Logs a configuration warning once this transport has a logger, when it is
-   * bound to its Faro instance. Used by the SDK config builder, which runs
-   * before Faro exists.
-   *
-   * @internal
-   */
-  queueConfigWarning(message: string): void {
-    this.queuedWarnings.push(message);
   }
 
   /**
@@ -239,7 +193,7 @@ export class OfflineTransport extends BaseTransport {
 
   /**
    * Replay cached payloads now, if online. If a replay is already running,
-   * waits for it, including the extra pass this call requests after it.
+   * waits for it and the extra pass this call requests.
    */
   async forceReplay(): Promise<void> {
     if (this.connectivityService.isOnline) {
@@ -268,290 +222,216 @@ export class OfflineTransport extends BaseTransport {
   }
 
   private requestReplay(): void {
-    if (this.disposed || !this.connectivityService.isOnline) {
-      return;
+    if (!this.disposed && this.connectivityService.isOnline) {
+      void this.replayCachedPayloads();
     }
-    void this.replayCachedPayloads();
   }
 
   /**
-   * Runs one replay at a time. A request during a replay runs another pass
-   * after it, instead of a second concurrent replay of the same payloads.
+   * Runs one replay at a time. A request during a replay waits for it and
+   * makes it run one more pass, which picks up entries cached meanwhile. Does
+   * nothing without targets, so a request before `bindTransports()` does not
+   * hold up the one it makes.
    */
   private replayCachedPayloads(): Promise<void> {
     if (this.replayPromise) {
-      this.replayRequestedDuringReplay = true;
+      this.replayRequested = true;
       return this.replayPromise;
     }
-
+    if (!this.getReplayTargets()?.length) {
+      return Promise.resolve();
+    }
     this.clearRetryTimer();
-
     this.replayPromise = (async () => {
-      try {
-        let result: ReplayPassResult;
-        do {
-          this.replayRequestedDuringReplay = false;
-          try {
-            result = await this.runReplayPass();
-          } catch (error) {
-            // Usually a storage error; try again later like a failed delivery.
-            this.logError('Failed to replay cached payloads', error);
-            result = { state: 'pending', progressed: false };
-          }
-        } while (this.replayRequestedDuringReplay && this.connectivityService.isOnline && !this.disposed);
-        this.scheduleRetry(result);
-      } finally {
-        this.replayPromise = null;
-      }
-    })();
-
+      let result: { pending: boolean; progressed: boolean };
+      do {
+        this.replayRequested = false;
+        result = await this.runReplayPass().catch((error: unknown) => {
+          // Usually a storage error; try again later like a failed delivery.
+          this.logError('Failed to replay cached payloads', error);
+          return { pending: true, progressed: false };
+        });
+        // A pending result schedules a retry anyway.
+      } while (this.replayRequested && !result.pending);
+      this.scheduleRetry(result);
+    })().finally(() => {
+      this.replayPromise = null;
+    });
     return this.replayPromise;
   }
 
-  private async runReplayPass(): Promise<ReplayPassResult> {
+  private async runReplayPass(): Promise<{ pending: boolean; progressed: boolean }> {
     const targets = this.getReplayTargets();
-    if (targets === null) {
-      // Not registered with Faro yet; registration or the first send triggers replay.
-      return { state: 'idle', progressed: false };
+    if (!targets?.length) {
+      return { pending: false, progressed: false };
     }
 
     // Payloads still being written belong at the end of the cache.
     await this.pendingWrites;
-    const payloads = await this.splitMixedMetaPayloads(await this.cache.readAll());
-    if (payloads.length === 0) {
-      return { state: 'done', progressed: false };
+    const payloads = await this.cache.readAll();
+    if (payloads.length > 0) {
+      this.logDebug(`Replaying ${payloads.length} cached payloads`);
     }
-
-    if (targets.length === 0) {
-      if (!this.warnedNoTargets) {
-        this.warnedNoTargets = true;
-        this.logWarn('No network transport to replay offline payloads through; they stay cached');
-      }
-      return { state: 'idle', progressed: false };
-    }
-
-    this.logDebug(`Replaying ${payloads.length} cached payloads`);
 
     const now = Date.now();
     // Destinations that could not take a payload in this pass. Later payloads
     // are not sent to them, which keeps the cache order per destination.
     const blocked = new Set<string>();
+    let changes: Record<string, CachedPayload | null> = {};
+    let changeCount = 0;
+    let pending = false;
     let progressed = false;
 
-    for (const payload of payloads) {
-      if (this.disposed || !this.connectivityService.isOnline) {
-        // Offline again or disposed; the next connectivity change replays.
-        return { state: 'idle', progressed };
-      }
-      if (blocked.size === targets.length) {
-        break;
-      }
-      const id = payload.id;
-      if (!id) {
-        continue;
-      }
-
-      if (now - payload.timestamp > this.maxCacheDurationMs || payload.items.length === 0) {
-        this.logDebug(`Dropping expired payload from ${new Date(payload.timestamp).toISOString()}`);
-        await this.cache.replace({ [id]: [] });
-        continue;
-      }
-
-      const deliveredTo = new Set(payload.deliveredTo ?? []);
-      const itemCursors: Record<string, number> = { ...payload.itemCursors };
-      const current = (): CachedPayload => ({
-        id,
-        timestamp: payload.timestamp,
-        items: payload.items,
-        ...(deliveredTo.size > 0 && { deliveredTo: Array.from(deliveredTo) }),
-        ...(Object.keys(itemCursors).length > 0 && { itemCursors: { ...itemCursors } }),
-      });
-      let changed = false;
-
-      for (const target of targets) {
-        if (deliveredTo.has(target.key) || blocked.has(target.key)) {
+    try {
+      for (const payload of payloads) {
+        if (this.disposed || !this.connectivityService.isOnline) {
+          // The next connectivity change replays the rest.
+          return { pending: false, progressed };
+        }
+        if (blocked.size === targets.length) {
+          pending = true;
+          break;
+        }
+        const { id, items } = payload;
+        if (!id) {
           continue;
         }
 
-        let accepted: boolean;
-        if (target.batched) {
-          accepted = (await this.deliver(target.transport, payload.items, true)) !== 'retry';
+        const progress = { ...payload.progress };
+        let changed = false;
+        if (now - payload.timestamp > this.maxCacheDurationMs) {
+          this.logDebug(`Dropping expired payload from ${new Date(payload.timestamp).toISOString()}`);
+          changes[id] = null;
         } else {
-          // One item per send; save how far this destination got after each
-          // item, so a retry resumes there instead of resending.
-          let cursor = itemCursors[target.key] ?? 0;
-          accepted = true;
-          while (cursor < payload.items.length) {
-            const item = payload.items[cursor];
-            if (item === undefined || (await this.deliver(target.transport, [item], false)) === 'retry') {
-              accepted = false;
-              break;
+          for (const target of targets) {
+            const start = progress[target.key] ?? 0;
+            const sent = blocked.has(target.key) ? start : await this.deliverFrom(target, items, start);
+            if (sent < items.length) {
+              blocked.add(target.key);
             }
-            cursor++;
-            progressed = true;
-            if (cursor < payload.items.length) {
-              itemCursors[target.key] = cursor;
-              await this.cache.replace({ [id]: [current()] });
+            if (sent !== start) {
+              progress[target.key] = sent;
+              changed = true;
             }
           }
+          if (targets.every((target) => (progress[target.key] ?? 0) >= items.length)) {
+            changes[id] = null;
+          } else if (changed) {
+            changes[id] = { ...payload, progress };
+            pending = true;
+          } else {
+            pending = true;
+            continue;
+          }
         }
-
-        if (accepted) {
-          deliveredTo.add(target.key);
-          delete itemCursors[target.key];
-          changed = true;
-          progressed = true;
-        } else {
-          blocked.add(target.key);
+        progressed ||= changed;
+        if (++changeCount % REPLAY_SAVE_EVERY === 0) {
+          await this.cache.update(changes);
+          changes = {};
         }
       }
-
-      // Saved after every payload, so a crash resends as little as possible.
-      if (targets.every((target) => deliveredTo.has(target.key))) {
-        await this.cache.replace({ [id]: [] });
-      } else if (changed) {
-        await this.cache.replace({ [id]: [current()] });
+    } finally {
+      // Saves progress also when the pass stops early. Delivery is at least
+      // once: entries sent since the last save are sent again after a crash.
+      if (Object.keys(changes).length > 0) {
+        await this.cache.update(changes);
       }
     }
 
-    return { state: blocked.size > 0 ? 'pending' : 'done', progressed };
+    return { pending, progressed };
   }
 
   /**
-   * Entries from older SDK versions can mix metas in one payload. Splits them
-   * into runs of the same meta, in order, so a payload is one request per
-   * destination.
+   * Sends `items` from `start` on to one destination, one run of items with
+   * the same meta per request (one item for non-batched transports), until
+   * one is not delivered. Returns how many items the destination has now.
    */
-  private async splitMixedMetaPayloads(payloads: CachedPayload[]): Promise<CachedPayload[]> {
-    const splits: Record<string, CachedPayload[]> = {};
-    let found = false;
-    for (const payload of payloads) {
-      const runs = groupContiguousItemsByMeta(payload.items);
-      if (payload.id && runs.length > 1) {
-        found = true;
-        splits[payload.id] = runs.map((items) => ({
-          timestamp: payload.timestamp,
-          items,
-          ...(payload.deliveredTo && { deliveredTo: payload.deliveredTo }),
-        }));
+  private async deliverFrom(target: ReplayTarget, items: TransportItem[], start: number): Promise<number> {
+    let cursor = start;
+    while (cursor < items.length) {
+      let end = cursor + 1;
+      if (target.batched) {
+        const meta = JSON.stringify(items[cursor]?.meta);
+        while (end < items.length && JSON.stringify(items[end]?.meta) === meta) {
+          end++;
+        }
       }
+      if (!(await this.deliver(target.transport, items.slice(cursor, end), target.batched))) {
+        break;
+      }
+      cursor = end;
     }
-    if (!found) {
-      return payloads;
-    }
-    await this.cache.replace(splits);
-    return this.cache.readAll();
+    return cursor;
   }
 
-  private async deliver(transport: Transport, items: TransportItem[], batched: boolean): Promise<DeliveryStatus> {
+  /** True when the items were delivered or rejected as non-retryable; false to retry later. */
+  private async deliver(transport: Transport, items: TransportItem[], batched: boolean): Promise<boolean> {
     try {
-      if (!isDeliveryReporting(transport)) {
+      if (!(transport instanceof FetchTransport)) {
         await transport.send(batched ? items : (items[0] as TransportItem));
-        return 'delivered';
+        return true;
       }
 
       const result = await transport.sendWithResult(items);
       if (result.outcome === 'accepted') {
-        return 'delivered';
+        return true;
       }
       if (result.outcome === 'rejected' && isNonRetryableStatus(result.status)) {
-        this.logWarn(`Dropping cached payload rejected by ${transport.name} with status ${result.status}`);
-        return 'dropped';
+        this.logWarn(`Dropping cached payload rejected with status ${result.status}`);
+        return true;
       }
-      return 'retry';
+      return false;
     } catch (error) {
       this.logDebug(`Replay through ${transport.name} failed: ${String(error)}`);
-      return 'retry';
+      return false;
     }
   }
 
   /**
-   * Returns the destinations replay sends to, or null when the default
-   * transports are not known yet because this transport is not registered.
+   * Returns the destinations replay sends to, or null when they are not known
+   * yet: no explicit targets and not bound to a Faro instance.
    */
   private getReplayTargets(): ReplayTarget[] | null {
-    const registered = this.getRegisteredTransports();
+    const registered = this.registeredTransports?.transports;
     let candidates: Array<{ transport: Transport; key: string }>;
 
     if (this.explicitTargets) {
-      candidates = [];
-      for (const { transport, index } of this.explicitTargets) {
-        const isRegistered = registered?.includes(transport) ?? false;
-        if (isRegistered && !(transport instanceof FetchTransport)) {
-          // It received every item live, cached ones included; replay would send them twice.
-          if (!this.warnedSkippedTargets.has(transport)) {
-            this.warnedSkippedTargets.add(transport);
-            this.logWarn(
-              `Not replaying offline payloads to ${transport.name}: it is registered with Faro and already received them`
-            );
-          }
-          continue;
-        }
-        if (!isRegistered) {
-          this.shareContextWith(transport);
-        }
-        candidates.push({ transport, key: getDestinationKey(transport) ?? `${transport.name}#${index}` });
-      }
-    } else {
-      if (registered === null) {
-        return null;
-      }
+      candidates = this.explicitTargets
+        .map((transport, index) => ({
+          transport,
+          key: transport instanceof FetchTransport ? transport.getDestinationKey() : `${transport.name}#${index}`,
+        }))
+        .filter(
+          ({ transport }) =>
+            !isOfflineTransport(transport) &&
+            // Registered non-Fetch transports received every item live; replay would send them twice.
+            (transport instanceof FetchTransport || !registered?.includes(transport))
+        );
+    } else if (registered) {
       // Only FetchTransport skips claimed items live, so only it can replay without duplicates.
       candidates = registered
         .filter((transport): transport is FetchTransport => transport instanceof FetchTransport)
         .map((transport) => ({ transport, key: transport.getDestinationKey() }));
-    }
-
-    const targets: ReplayTarget[] = [];
-    const seenKeys = new Set<string>();
-    for (const { transport, key } of candidates) {
-      if (!seenKeys.has(key)) {
-        seenKeys.add(key);
-        targets.push({ key, transport, batched: isBatchedSafe(transport) });
-      }
-    }
-    return targets;
-  }
-
-  private getRegisteredTransports(): Transport[] | null {
-    const transports = this.registeredTransports?.transports;
-    if (!transports || !transports.includes(this)) {
+    } else {
       return null;
     }
-    return transports;
-  }
 
-  /**
-   * Transports passed to `setOtherTransports()` may not be registered with
-   * Faro, so give them this transport's logger, config and metas if unset.
-   */
-  private shareContextWith(transport: Transport): void {
-    if (!transport.internalLogger && this.internalLogger) {
-      transport.internalLogger = this.internalLogger;
-    }
-    if (!transport.unpatchedConsole && this.unpatchedConsole) {
-      transport.unpatchedConsole = this.unpatchedConsole;
-    }
-    if (!transport.config && this.config) {
-      transport.config = this.config;
-    }
-    if (!transport.metas && this.metas) {
-      transport.metas = this.metas;
-    }
-  }
-
-  private scheduleRetry(result: ReplayPassResult): void {
-    if (result.state !== 'pending') {
-      if (result.state === 'done') {
-        this.retryAttempt = 0;
+    // Transports with the same key are one destination.
+    const targets = new Map<string, ReplayTarget>();
+    for (const { transport, key } of candidates) {
+      if (!targets.has(key)) {
+        targets.set(key, { key, transport, batched: isBatchedSafe(transport) });
       }
-      return;
     }
-    if (this.disposed || !this.connectivityService.isOnline) {
-      return;
-    }
-    if (result.progressed) {
+    return Array.from(targets.values());
+  }
+
+  private scheduleRetry({ pending, progressed }: { pending: boolean; progressed: boolean }): void {
+    if (!pending || progressed) {
       this.retryAttempt = 0;
+    }
+    if (!pending || this.disposed || !this.connectivityService.isOnline) {
+      return;
     }
     const delay = REPLAY_RETRY_DELAYS_MS[Math.min(this.retryAttempt, REPLAY_RETRY_DELAYS_MS.length - 1)];
     this.retryAttempt++;
@@ -574,18 +454,6 @@ function isOfflineTransport(transport: Transport): boolean {
   return transport instanceof OfflineTransport || transport.name === '@grafana/faro-react-native:transport-offline';
 }
 
-function isDeliveryReporting(transport: Transport): transport is DeliveryReportingTransport {
-  return typeof (transport as Partial<DeliveryReportingTransport>).sendWithResult === 'function';
-}
-
-function getDestinationKey(transport: Transport): string | undefined {
-  const reporting = transport as Partial<DeliveryReportingTransport>;
-  if (typeof reporting.getDestinationKey === 'function') {
-    return reporting.getDestinationKey();
-  }
-  return undefined;
-}
-
 function isBatchedSafe(transport: Transport): boolean {
   try {
     return transport.isBatched();
@@ -595,15 +463,9 @@ function isBatchedSafe(transport: Transport): boolean {
 }
 
 /**
- * Client errors other than timeout and rate limit mean the collector will not
- * accept the payload on retry either.
+ * Client errors other than timeout (408) and rate limit (429) mean the
+ * collector will not accept the payload on retry either.
  */
 function isNonRetryableStatus(status: number | undefined): boolean {
-  return (
-    status !== undefined &&
-    status >= 400 &&
-    status < 500 &&
-    status !== HTTP_REQUEST_TIMEOUT &&
-    status !== HTTP_TOO_MANY_REQUESTS
-  );
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }

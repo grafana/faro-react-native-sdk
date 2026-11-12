@@ -104,17 +104,23 @@ describe('makeRNConfig', () => {
   });
 
   describe('with an offline transport', () => {
-    it('keeps the built-in OfflineTransport and disposes a supplied one', () => {
+    it('uses a supplied OfflineTransport instead of creating one for the flag, with a warning', () => {
       const supplied = new OfflineTransport();
       const dispose = jest.spyOn(supplied, 'dispose');
-      const cfg = makeRNConfig({ ...base, enableTransports: { offline: true }, transports: [supplied] });
+      const warn = jest.fn();
+      const cfg = makeRNConfig({
+        ...base,
+        unpatchedConsole: { ...console, warn },
+        enableTransports: { offline: true },
+        transports: [supplied],
+      });
       try {
-        const offlines = (cfg.transports ?? []).filter((t) => t instanceof OfflineTransport);
-        expect(offlines).toHaveLength(1);
-        expect(offlines[0]).not.toBe(supplied);
-        expect(dispose).toHaveBeenCalledTimes(1);
+        expect((cfg.transports ?? []).filter((t) => t instanceof OfflineTransport)).toEqual([supplied]);
+        expect(cfg.transports?.[0]).toBe(supplied);
+        expect(dispose).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('enableTransports.offline is ignored'));
       } finally {
-        disposeOfflineTransportsFromConfig(cfg);
+        supplied.dispose();
       }
     });
 
@@ -123,7 +129,11 @@ describe('makeRNConfig', () => {
       const second = new OfflineTransport();
       const disposeFirst = jest.spyOn(first, 'dispose');
       const disposeSecond = jest.spyOn(second, 'dispose');
-      const cfg = makeRNConfig({ ...base, transports: [first, second, first] });
+      const cfg = makeRNConfig({
+        ...base,
+        unpatchedConsole: { ...console, warn: jest.fn() },
+        transports: [first, second, first],
+      });
       try {
         expect(cfg.transports?.[0]).toBe(first);
         expect((cfg.transports ?? []).filter((t) => t instanceof OfflineTransport)).toEqual([first]);
@@ -134,30 +144,18 @@ describe('makeRNConfig', () => {
       }
     });
 
-    it('keeps a supplied FetchTransport for the same URL instead of the built-in one, and other URLs too', () => {
-      const sameUrl = new FetchTransport({ url: base.url, apiKey: 'user-key' });
-      const sameUrlAgain = new FetchTransport({ url: base.url });
-      const otherUrl = new FetchTransport({ url: 'https://other.example.com/collect' });
-      const cfg = makeRNConfig({
-        ...base,
-        enableTransports: { offline: true },
-        transports: [sameUrl, otherUrl, sameUrlAgain],
-      });
+    it('keeps every FetchTransport, as without an offline transport', () => {
+      const sameUrl = new FetchTransport({ url: base.url });
+      const cfg = makeRNConfig({ ...base, enableTransports: { offline: true }, transports: [sameUrl] });
       try {
+        expect(cfg.transports).toHaveLength(3);
         expect(cfg.transports?.[0]).toBeInstanceOf(OfflineTransport);
-        expect((cfg.transports ?? []).filter((t) => t instanceof FetchTransport)).toEqual([sameUrl, otherUrl]);
+        expect(cfg.transports?.[1]).toBeInstanceOf(FetchTransport);
+        expect(cfg.transports?.[2]).toBe(sameUrl);
       } finally {
         disposeOfflineTransportsFromConfig(cfg);
       }
     });
-  });
-
-  it('keeps every FetchTransport without an offline transport', () => {
-    const sameUrl = new FetchTransport({ url: base.url });
-    const cfg = makeRNConfig({ ...base, transports: [sameUrl] });
-    expect(cfg.transports).toHaveLength(2);
-    expect(cfg.transports?.[0]).toBeInstanceOf(FetchTransport);
-    expect(cfg.transports?.[1]).toBe(sameUrl);
   });
 
   it('appends extra instrumentations after getRNInstrumentations', () => {

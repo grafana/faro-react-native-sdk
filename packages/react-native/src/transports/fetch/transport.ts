@@ -2,7 +2,6 @@ import { BaseTransport, createPromiseBuffer, getTransportBody, VERSION } from '@
 import type { Patterns, PromiseBuffer, TransportItem } from '@grafana/faro-core';
 
 import { isClaimedForOfflineReplay } from '../claims';
-import { groupItemsByMeta } from '../groupItemsByMeta';
 
 import type { FetchTransportOptions, FetchTransportSendResult } from './types';
 
@@ -159,7 +158,8 @@ export class FetchTransport extends BaseTransport {
       // The collector uses the header for session validation and accounting,
       // independently of the session carried by each payload.
       await this.waitForSession();
-      const sessionId = this.metas.value.session?.id;
+      // Without metas (not registered with Faro, only used for offline replay), use the payload session.
+      const sessionId = this.metas?.value?.session?.id ?? items[0]?.meta.session?.id;
 
       const response = await this.promiseBuffer.add(() => {
         const transportBody = getTransportBody(items);
@@ -264,16 +264,20 @@ export class FetchTransport extends BaseTransport {
   }
 
   /**
-   * Identifies the collector this transport sends to. Offline replay sends each
-   * cached payload once per destination, so two FetchTransports with the same
-   * URL receive it once between them.
+   * Identifies the collector for offline replay, which sends each cached
+   * payload once per key. The key is stored with cached payloads, so it is a
+   * hash of the URL: Faro collector URLs contain the app token.
+   *
+   * @internal
    */
   getDestinationKey(): string {
-    return `fetch:${this.options.url}`;
+    return `fetch:${hashString(this.options.url)}`;
   }
 
   override getIgnoreUrls(): Patterns {
-    return ([this.options.url] as Patterns).concat(this.config.ignoreUrls ?? []);
+    // `config` is unset until Faro initializes this transport, for example when
+    // it is only passed to `OfflineTransport.setOtherTransports()`.
+    return ([this.options.url] as Patterns).concat(this.config?.ignoreUrls ?? []);
   }
 
   override isBatched(): boolean {
@@ -300,4 +304,28 @@ export class FetchTransport extends BaseTransport {
 
     return new Date(now + this.rateLimitBackoffMs);
   }
+}
+
+function groupItemsByMeta(items: TransportItem[]): TransportItem[][] {
+  const groups = new Map<string, TransportItem[]>();
+  for (const item of items) {
+    const key = JSON.stringify(item.meta);
+    const group = groups.get(key);
+    if (group == null) {
+      groups.set(key, [item]);
+    } else {
+      group.push(item);
+    }
+  }
+  return Array.from(groups.values());
+}
+
+/** FNV-1a, 32 bit, as 8 hex digits. Stable across launches, not reversible to the input. */
+function hashString(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }

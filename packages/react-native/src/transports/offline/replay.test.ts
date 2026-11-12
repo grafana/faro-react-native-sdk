@@ -6,7 +6,7 @@ import {
   type Transport,
   type TransportItem,
 } from '@grafana/faro-core';
-import { mockConfig, mockInternalLogger } from '@grafana/faro-test-utils';
+import { mockConfig } from '@grafana/faro-test-utils';
 
 import { initializeFaro } from '../../initialize';
 import * as sessionAttributes from '../../instrumentations/session/sessionAttributes';
@@ -176,74 +176,141 @@ describe('offline replay with initializeFaro from this package', () => {
     bundleSpy.mockRestore();
   });
 
-  async function runOfflineCycle(faro: Faro, offline: OfflineTransport): Promise<void> {
+  async function init(
+    config: Partial<Parameters<typeof initializeFaro>[0]>
+  ): Promise<{ faro: Faro; offline: OfflineTransport }> {
+    const faro = track(
+      await initializeFaro({
+        ...mockConfig({ sessionTracking: { enabled: true, persistent: false } }),
+        url: COLLECTOR_URL,
+        unpatchedConsole: { ...console, warn: jest.fn() },
+        ...config,
+      } as Parameters<typeof initializeFaro>[0])
+    );
+    const offlines = faro.transports.transports.filter((t): t is OfflineTransport => t instanceof OfflineTransport);
+    created.push(...offlines);
+    expect(offlines).toHaveLength(1);
+    const offline = offlines[0];
+    if (!offline) {
+      throw new Error('no offline transport');
+    }
+    return { faro, offline };
+  }
+
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    'delivers cached items once, processed once (batching=%s, supplied OfflineTransport=%s)',
+    async (batching, supplied) => {
+      const beforeSend = jest.fn((item: TransportItem) => ({
+        ...item,
+        payload: {
+          ...item.payload,
+          context: { hooked: `${(item.payload as { context?: { hooked?: string } }).context?.hooked ?? ''}x` },
+        },
+      }));
+      const { faro, offline } = await init({
+        enableTransports: { offline: !supplied },
+        transports: supplied ? [offlineTransport()] : [],
+        beforeSend,
+        batching: { enabled: batching, sendTimeout: 10 },
+      });
+      await flush();
+
+      setOnline(false);
+      faro.api.pushLog(['while offline']);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      await flush();
+      expect(await offline.getCachedCount()).toBe(1);
+      // Cached items are not also sent live.
+      expect(loggedMessages()).not.toContain('while offline');
+      const offlineHookCalls = () =>
+        beforeSend.mock.calls.filter(([item]) => (item.payload as { message?: string }).message === 'while offline')
+          .length;
+      expect(offlineHookCalls()).toBe(1);
+
+      setOnline(true);
+      await flush();
+
+      const delivered = requests()
+        .flatMap((r) => r.body.logs ?? [])
+        .filter((l) => l.message === 'while offline');
+      expect(delivered).toEqual([expect.objectContaining({ context: { hooked: 'x' } })]);
+      // Not run again on replay.
+      expect(offlineHookCalls()).toBe(1);
+      expect(await offline.getCachedCount()).toBe(0);
+      expect(faro.transports.transports.flatMap((t) => t.getIgnoreUrls())).toContain(COLLECTOR_URL);
+    }
+  );
+
+  it('replays an earlier run’s cache at startup with enableTransports.offline', async () => {
+    mockStore[CACHE_KEY] = JSON.stringify([{ timestamp: Date.now(), items: [log('from last run')] }]);
+    await init({ enableTransports: { offline: true } });
     await flush();
+
+    expect(loggedMessages()).toContain('from last run');
+    expect(cachedPayloads()).toEqual([]);
+  });
+
+  it('uses a supplied OfflineTransport and its options when enableTransports.offline is also set', async () => {
+    const supplied = new OfflineTransport({ storageKeyPrefix: 'custom_prefix' });
+    created.push(supplied);
+    const { faro, offline } = await init({ enableTransports: { offline: true }, transports: [supplied] });
+    expect(offline).toBe(supplied);
+
     setOnline(false);
     faro.api.pushLog(['while offline']);
     await flush();
-
-    expect(await offline.getCachedCount()).toBe(1);
-    // Cached items are not also sent live.
-    expect(loggedMessages()).not.toContain('while offline');
-
+    expect(mockStore['custom_prefix_data']).toBeDefined();
     setOnline(true);
     await flush();
 
-    expect(loggedMessages(COLLECTOR_URL).filter((m) => m === 'while offline')).toHaveLength(1);
+    expect(loggedMessages().filter((m) => m === 'while offline')).toHaveLength(1);
     expect(await offline.getCachedCount()).toBe(0);
-  }
-
-  it('delivers cached items through the built-in FetchTransport with enableTransports.offline', async () => {
-    const faro = track(
-      await initializeFaro({
-        ...mockConfig({ sessionTracking: { enabled: true, persistent: false } }),
-        url: COLLECTOR_URL,
-        enableTransports: { offline: true },
-      } as Parameters<typeof initializeFaro>[0])
-    );
-    const offline = faro.transports.transports.find((t): t is OfflineTransport => t instanceof OfflineTransport);
-    expect(offline).toBeDefined();
-    if (!offline) {
-      return;
-    }
-    created.push(offline);
-
-    await runOfflineCycle(faro, offline);
-  });
-
-  it('delivers cached items through the built-in FetchTransport with a user-supplied OfflineTransport', async () => {
-    const offline = offlineTransport();
-    const faro = track(
-      await initializeFaro({
-        ...mockConfig({ sessionTracking: { enabled: true, persistent: false } }),
-        url: COLLECTOR_URL,
-        transports: [offline],
-      } as Parameters<typeof initializeFaro>[0])
-    );
-
-    await runOfflineCycle(faro, offline);
   });
 });
 
 describe('offline replay', () => {
-  it('with faro-core initializeFaro, replays only through transports set with setOtherTransports', async () => {
+  it('with faro-core initializeFaro, replays through transports set with setOtherTransports', async () => {
     const offline = offlineTransport();
     const fetchTransport = new FetchTransport({ url: COLLECTOR_URL });
+    offline.setOtherTransports([fetchTransport]);
     const faro = initCore([offline, fetchTransport], {}, false);
 
     setOnline(false);
     faro.api.pushLog(['while offline']);
     await flush();
-    setOnline(true);
-    await flush();
-    // Not bound to the instance and no explicit targets: nothing to replay through.
     expect(fetchMock).not.toHaveBeenCalled();
     expect(await offline.getCachedCount()).toBe(1);
 
-    offline.setOtherTransports([fetchTransport]);
-    await offline.forceReplay();
+    setOnline(true);
+    await flush();
 
     expect(loggedMessages()).toEqual(['while offline']);
+    expect(await offline.getCachedCount()).toBe(0);
+  });
+
+  it('replays through a FetchTransport that is only passed to setOtherTransports', async () => {
+    mockStore[CACHE_KEY] = JSON.stringify([
+      { timestamp: Date.now(), items: [log('from last run', { session: { id: 'cached-session' } })] },
+    ]);
+    const offline = offlineTransport();
+    const fetchTransport = new FetchTransport({ url: COLLECTOR_URL });
+    offline.setOtherTransports([fetchTransport]);
+    const faro = initCore([offline]);
+    // Its collector URL is excluded from HTTP and tracing instrumentation from the start.
+    expect(faro.transports.transports.flatMap((t) => t.getIgnoreUrls())).toContain(COLLECTOR_URL);
+
+    offline.bindTransports(faro.transports);
+    await flush();
+
+    expect(loggedMessages()).toEqual(['from last run']);
+    // No metas of its own: the header uses the payload's session.
+    const headers = (fetchMock.mock.calls[0]?.[1] as unknown as { headers: Record<string, string> }).headers;
+    expect(headers['x-faro-session-id']).toBe('cached-session');
     expect(await offline.getCachedCount()).toBe(0);
   });
 
@@ -288,6 +355,65 @@ describe('offline replay', () => {
 
     expect(beforeSend).toHaveBeenCalledTimes(1);
     expect(requests()[0]?.body.logs?.[0]?.context).toEqual({ hooked: 'x' });
+  });
+
+  it('replays entries cached while a replay was running when connectivity returns during it', async () => {
+    const offline = offlineTransport();
+    const faro = initCore([offline, new FetchTransport({ url: COLLECTOR_URL })]);
+    setOnline(false);
+    faro.api.pushLog(['A']);
+    await flush();
+
+    let release: () => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () => new Promise((resolve) => (release = () => resolve(response(202) as any))) as any
+    );
+    setOnline(true);
+    await flush();
+    // A is in flight; the device drops offline, caches B, and reconnects.
+    setOnline(false);
+    faro.api.pushLog(['B']);
+    await flush();
+    expect(cachedMessages()).toEqual([['A'], ['B']]);
+    setOnline(true);
+    release();
+    await flush();
+
+    // No retry timer or connectivity change needed.
+    expect(loggedMessages()).toEqual(['A', 'B']);
+    expect(cachedPayloads()).toEqual([]);
+  });
+
+  it('does not bring back entries evicted from the cache while a replay was running', async () => {
+    const offline = new OfflineTransport({ maxCacheSize: 2 });
+    created.push(offline);
+    const faro = initCore([
+      offline,
+      new FetchTransport({ url: 'http://a.test/collect' }),
+      new FetchTransport({ url: 'http://b.test/collect' }),
+    ]);
+    setOnline(false);
+    faro.api.pushLog(['A']);
+    await flush();
+
+    // `a` accepts A after a delay, `b` fails, so the pass saves progress for A.
+    let release: () => void = () => {};
+    fetchMock.mockImplementation((url) =>
+      url.startsWith('http://b')
+        ? (Promise.reject(new Error('down')) as any)
+        : (new Promise((resolve) => (release = () => resolve(response(202) as any))) as any)
+    );
+    setOnline(true);
+    await flush();
+    // While A is in flight, two new entries evict it.
+    const cache = (offline as unknown as { cache: { write(p: CachedPayload): Promise<void> } }).cache;
+    await cache.write({ timestamp: Date.now(), items: [log('C')] });
+    await cache.write({ timestamp: Date.now(), items: [log('D')] });
+    release();
+    await flush();
+
+    expect(loggedMessages('http://a.test/collect')).toEqual(['A']);
+    expect(cachedMessages()).toEqual([['C'], ['D']]);
   });
 
   it('delivers each payload once when replays overlap', async () => {
@@ -482,7 +608,7 @@ describe('offline replay', () => {
         log('2', { user: { id: 'b' } }),
         log('3', { user: { id: 'a' } }),
       ]);
-      expect(cachedMessages()).toEqual([['1'], ['2'], ['3']]);
+      expect(cachedMessages()).toEqual([['1', '2', '3']]);
 
       setOnline(true);
       await flush();
@@ -500,7 +626,7 @@ describe('offline replay', () => {
       const second = offline.send([log('C', { user: { id: 'a' } })]);
       await Promise.all([first, second]);
 
-      expect(cachedMessages()).toEqual([['A'], ['B'], ['C']]);
+      expect(cachedMessages()).toEqual([['A', 'B'], ['C']]);
     });
   });
 
@@ -640,25 +766,22 @@ describe('offline replay', () => {
       jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate'] });
       const getItem = AsyncStorage.getItem as jest.Mock;
       const realGetItem = getItem.getMockImplementation();
-      // First read starts the replay; the second is removing 'a' after it was delivered.
+      // First read starts the replay; the second is saving progress at the end of the pass.
       getItem
         .mockImplementationOnce((key: string) => realGetItem?.(key))
         .mockImplementationOnce(() => Promise.reject(new Error('storage busy')));
       setOnline(true);
       await flush();
 
-      expect(loggedMessages()).toEqual(['a']);
+      expect(loggedMessages()).toEqual(['a', 'b']);
       // Progress for 'a' was not saved, and 'b' was not lost.
       expect(cachedMessages()).toEqual([['a'], ['b']]);
 
-      // Retry: 'a' again (at least once), 'b' fails once, then the next retry delivers it.
-      await jest.advanceTimersByTimeAsync(5_000);
-      await flush();
-      expect(cachedMessages()).toEqual([['b']]);
+      // Retry: 'a' again (at least once), then 'b'.
       await jest.advanceTimersByTimeAsync(5_000);
       await flush();
 
-      expect(loggedMessages()).toEqual(['a', 'a', 'b', 'b']);
+      expect(loggedMessages()).toEqual(['a', 'b', 'a', 'b']);
       expect(cachedPayloads()).toEqual([]);
     });
 
@@ -698,30 +821,12 @@ describe('offline replay', () => {
       expect(loggedMessages()).toEqual(['while offline']);
     });
 
-    it('does not replay to registered custom transports, even ones that report delivery', async () => {
-      const custom = Object.assign(voidTransport('custom'), {
-        sendWithResult: jest.fn(() => Promise.resolve({ outcome: 'accepted' })),
-      });
-      const offline = offlineTransport();
-      const faro = initCore([offline, new FetchTransport({ url: COLLECTOR_URL }), custom]);
-
-      setOnline(false);
-      faro.api.pushLog(['while offline']);
-      await flush();
-      setOnline(true);
-      await flush();
-
-      expect(custom.send).toHaveBeenCalledTimes(1);
-      expect(custom.sendWithResult).not.toHaveBeenCalled();
-      expect(loggedMessages()).toEqual(['while offline']);
-    });
-
-    it('skips an explicit target that is registered with Faro and is not a FetchTransport, with a warning', async () => {
+    it('skips an explicit target that is registered with Faro and is not a FetchTransport', async () => {
       const custom = voidTransport('custom');
       const offline = offlineTransport();
-      const faro = initCore([offline, custom]);
-      const warn = jest.spyOn(offline.internalLogger, 'warn');
-      offline.setOtherTransports([custom]);
+      const fetchTransport = new FetchTransport({ url: COLLECTOR_URL });
+      const faro = initCore([offline, fetchTransport, custom]);
+      offline.setOtherTransports([custom, fetchTransport]);
 
       setOnline(false);
       faro.api.pushLog(['while offline']);
@@ -730,11 +835,8 @@ describe('offline replay', () => {
       await flush();
 
       expect(custom.send).toHaveBeenCalledTimes(1);
-      expect(warn).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.stringContaining('Not replaying offline payloads to custom')
-      );
-      expect(await offline.getCachedCount()).toBe(1);
+      expect(loggedMessages()).toEqual(['while offline']);
+      expect(await offline.getCachedCount()).toBe(0);
     });
 
     it('tracks explicit targets with the same name separately', async () => {
@@ -750,7 +852,7 @@ describe('offline replay', () => {
       await flush();
       setOnline(true);
       await flush();
-      expect(cachedPayloads()[0]?.deliveredTo).toEqual(['custom#0']);
+      expect(cachedPayloads()[0]?.progress).toEqual({ 'custom#0': 1 });
 
       await offline.forceReplay();
 
@@ -775,7 +877,7 @@ describe('offline replay', () => {
 
       setOnline(true);
       await flush();
-      expect(cachedPayloads()[0]?.itemCursors).toEqual({ 'custom#0': 1 });
+      expect(cachedPayloads()[0]?.progress).toEqual({ 'custom#0': 1 });
 
       await offline.forceReplay();
 
@@ -785,7 +887,7 @@ describe('offline replay', () => {
       expect(await offline.getCachedCount()).toBe(0);
     });
 
-    it('keeps the cache when there is no network transport to replay through', async () => {
+    it('does not cache or claim items when there is no transport to replay through', async () => {
       const custom = voidTransport('custom');
       const offline = offlineTransport();
       const faro = initCore([offline, custom]);
@@ -793,10 +895,22 @@ describe('offline replay', () => {
       setOnline(false);
       faro.api.pushLog(['while offline']);
       await flush();
-      setOnline(true);
+
+      expect(custom.send).toHaveBeenCalledTimes(1);
+      expect(await offline.getCachedCount()).toBe(0);
+    });
+
+    it('lets a registered FetchTransport send live when setOtherTransports() has no targets', async () => {
+      const offline = offlineTransport();
+      offline.setOtherTransports([]);
+      const faro = initCore([offline, new FetchTransport({ url: COLLECTOR_URL })]);
+
+      setOnline(false);
+      faro.api.pushLog(['while offline']);
       await flush();
 
-      expect(await offline.getCachedCount()).toBe(1);
+      expect(loggedMessages()).toEqual(['while offline']);
+      expect(await offline.getCachedCount()).toBe(0);
     });
 
     it('replays to transports set explicitly, including ones whose send returns void, never to offline transports', async () => {
@@ -845,7 +959,8 @@ describe('offline replay', () => {
     it('exposes the URLs of explicit replay transports to HTTP and tracing instrumentation', () => {
       const offline = offlineTransport();
       const fetchTransport = new FetchTransport({ url: 'http://explicit.test/collect' });
-      fetchTransport.config = { ignoreUrls: [] } as any;
+      // Faro has not initialized it, so it has no config.
+      (fetchTransport as unknown as { config: undefined }).config = undefined;
       offline.setOtherTransports([fetchTransport]);
 
       expect(offline.getIgnoreUrls()).toEqual(['http://explicit.test/collect']);
@@ -866,8 +981,6 @@ describe('offline replay', () => {
       ]);
       const offline = offlineTransport();
       const fetchTransport = new FetchTransport({ url: COLLECTOR_URL });
-      fetchTransport.metas = { value: {} } as any;
-      fetchTransport.internalLogger = mockInternalLogger;
       offline.setOtherTransports([fetchTransport]);
       fetchMock.mockImplementation((_url, init) =>
         JSON.parse(init.body).logs[0].message === 'anon' ? (Promise.reject(new Error('down')) as any) : response(202)
@@ -877,12 +990,17 @@ describe('offline replay', () => {
 
       expect(requests()).toHaveLength(2);
       expect(loggedMessages()).toEqual(['user', 'anon']);
-      // The delivered meta group is gone, the failed one and the untouched entry remain.
-      expect(cachedPayloads().map((p) => p.items.map((i) => (i.payload as { message: string }).message))).toEqual([
-        ['anon'],
-        ['same timestamp'],
-      ]);
+      // The first entry remembers that its first item was delivered; the untouched entry remains.
+      expect(cachedMessages()).toEqual([['user', 'anon'], ['same timestamp']]);
+      expect(cachedPayloads()[0]?.progress).toEqual({ [fetchTransport.getDestinationKey()]: 1 });
       expect(cachedPayloads().every((p) => typeof p.id === 'string')).toBe(true);
+
+      fetchMock.mockClear();
+      fetchMock.mockImplementation(() => response(202));
+      await offline.forceReplay();
+
+      expect(loggedMessages()).toEqual(['anon', 'same timestamp']);
+      expect(cachedPayloads()).toEqual([]);
     });
 
     it('does not resend a payload to a destination that already accepted it', async () => {
@@ -900,7 +1018,7 @@ describe('offline replay', () => {
       );
       setOnline(true);
       await flush();
-      expect(cachedPayloads()[0]?.deliveredTo).toEqual(['fetch:http://a.test/collect']);
+      expect(cachedPayloads()[0]?.progress).toEqual({ [a.getDestinationKey()]: 1 });
 
       fetchMock.mockClear();
       fetchMock.mockImplementation(() => response(202));
@@ -909,6 +1027,50 @@ describe('offline replay', () => {
       expect(loggedMessages('http://a.test/collect')).toEqual([]);
       expect(loggedMessages('http://b.test/collect')).toEqual(['while offline']);
       expect(await offline.getCachedCount()).toBe(0);
+    });
+  });
+
+  describe('storage of progress', () => {
+    it('does not store the collector URL or its token in the cache', async () => {
+      const url = 'https://faro-collector.test/collect/secret-app-token';
+      const a = new FetchTransport({ url });
+      const b = new FetchTransport({ url: 'http://b.test/collect' });
+      const offline = offlineTransport();
+      const faro = initCore([offline, a, b]);
+
+      setOnline(false);
+      faro.api.pushLog(['while offline']);
+      await flush();
+      // Delivered to `a`, so the entry stays with progress for it.
+      fetchMock.mockImplementation((requestUrl) =>
+        requestUrl.startsWith('http://b') ? (Promise.reject(new Error('down')) as any) : response(202)
+      );
+      setOnline(true);
+      await flush();
+
+      expect(cachedPayloads()[0]?.progress).toBeDefined();
+      expect(mockStore[CACHE_KEY]).not.toContain('secret-app-token');
+      expect(mockStore[CACHE_KEY]).not.toContain('faro-collector.test');
+    });
+
+    it('saves replay progress in chunks instead of rewriting the cache after every entry', async () => {
+      const now = Date.now();
+      mockStore[CACHE_KEY] = JSON.stringify(
+        Array.from({ length: 120 }, (_, i) => ({ id: `e${i}`, timestamp: now, items: [log(String(i))] }))
+      );
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      const removeItem = AsyncStorage.removeItem as jest.Mock;
+      setItem.mockClear();
+      removeItem.mockClear();
+      const offline = offlineTransport();
+      initCore([offline, new FetchTransport({ url: COLLECTOR_URL })]);
+      await flush();
+      await offline.forceReplay();
+
+      expect(loggedMessages()).toHaveLength(120);
+      expect(cachedPayloads()).toEqual([]);
+      // 120 entries, saved every 50 and at the end.
+      expect(setItem.mock.calls.length + removeItem.mock.calls.length).toBeLessThanOrEqual(3);
     });
   });
 });

@@ -1653,7 +1653,7 @@ initializeFaro({
 });
 ```
 
-Don't use both: with the flag set, the SDK uses its own offline transport and ignores the one in `transports` (a warning is logged).
+If you do both, the one in `transports` is used and the flag is ignored (a warning is logged).
 
 In both cases the SDK still creates the `FetchTransport` for `url`, and cached telemetry is sent through it.
 
@@ -1663,13 +1663,13 @@ In both cases the SDK still creates the `FetchTransport` for `url`, and cached t
 - When connectivity returns, and at app start if entries are left from an earlier run, stored telemetry is sent oldest first through the `FetchTransport`.
 - If a request fails, is rate limited (429), or gets a 408 or 5xx response, the telemetry stays stored. Sending is retried after 5 s, with the delay growing to 5 min, and on the next connectivity change.
 - Stored telemetry is dropped when it is older than `maxCacheDurationMs`, when the cache exceeds `maxCacheSize`, or when the collector rejects it with another 4xx status.
-- Delivery is at least once: if the app stops right after the collector accepted a payload, that payload can be sent again on the next launch.
+- Delivery is at least once: if the app stops while sending stored telemetry, some that the collector already accepted can be sent again on the next launch.
 
 **Connectivity** comes from `@react-native-community/netinfo` when it is installed. Otherwise the transport polls with a `HEAD` request to `https://one.one.one.one/cdn-cgi/trace`. Telemetry captured before the device is detected as offline is sent normally and can be lost.
 
-**Other transports** in `transports`, such as `ConsoleTransport`, still receive every item as it is captured. To send stored telemetry through a transport that is not in `transports`, see `setOtherTransports()`. With faro-core's `initializeFaro` instead of this package's, list the offline transport first and call `setOtherTransports()` with your `FetchTransport`.
+**Other transports** in `transports`, such as `ConsoleTransport`, still receive every item as it is captured. To send stored telemetry through a transport that is not in `transports`, see `setOtherTransports()`. With faro-core's `initializeFaro` instead of this package's, list the offline transport first and call `setOtherTransports()` with your `FetchTransport` before initializing.
 
-**Several transports of one kind:** with an offline transport, the SDK keeps one offline transport and one `FetchTransport` per collector URL. A `FetchTransport` in `transports` with the same URL as `url` replaces the built-in one, so its options apply. The others are dropped with a warning.
+**Several transports of one kind:** the SDK uses one offline transport; others in `transports` are disposed with a warning. Each `FetchTransport` sends live telemetry as usual, and stored telemetry is sent once to each collector URL. Without a `FetchTransport` (or `setOtherTransports()` targets), nothing is stored and telemetry goes to the other transports as captured.
 
 `OfflineTransport` also has `getCachedCount()`, `forceReplay()` and `clearCache()`.
 
