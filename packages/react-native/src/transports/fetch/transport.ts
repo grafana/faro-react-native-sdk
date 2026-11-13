@@ -216,8 +216,15 @@ export class FetchTransport extends BaseTransport {
       const sessionId = this.metas?.value?.session?.id ?? items[0]?.meta.session?.id;
 
       let request: PromiseLike<Response | void>;
+      // A queued request starts when a buffer slot frees up, maybe after Faro was paused
+      // or an earlier request started a backoff.
+      let skippedWhenStarted = false;
       try {
         request = this.promiseBuffer.add(() => {
+          if (this.config?.paused || this.getBackoffUntil() > this.getNow()) {
+            skippedWhenStarted = true;
+            return Promise.resolve();
+          }
           const transportBody = getTransportBody(items);
           const body = JSON.stringify(transportBody);
 
@@ -305,6 +312,9 @@ export class FetchTransport extends BaseTransport {
       }
       const response = await request;
 
+      if (skippedWhenStarted) {
+        return { outcome: 'skipped' };
+      }
       if (!response) {
         return { outcome: 'failed' };
       }

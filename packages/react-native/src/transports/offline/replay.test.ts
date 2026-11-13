@@ -1528,6 +1528,105 @@ describe('storing on failed live sends', () => {
     expect(cachedMessages()).toEqual([['after clear']]);
   });
 
+  it('stores an item again after clearCache() removed it', async () => {
+    fetchMock.mockImplementation(() => response(503));
+    const offline = offlineTransport();
+    const fetchTransport = new FetchTransport({ url: COLLECTOR_URL });
+    initCore([offline, fetchTransport]);
+    await flush();
+    const items = [log('same object')];
+    await fetchTransport.send(items);
+    await flush();
+    await offline.clearCache();
+
+    await fetchTransport.send(items);
+    await flush();
+    expect(cachedMessages()).toEqual([['same object']]);
+  });
+
+  it('stores an item again that was handed over while clearCache() waited for a write', async () => {
+    const offline = offlineTransport();
+    const fetchTransport = new FetchTransport({ url: COLLECTOR_URL });
+    initCore([offline, fetchTransport]);
+    await flush();
+    setOnline(false);
+    let releaseWrite: () => void = () => {};
+    (AsyncStorage.multiSet as jest.Mock).mockImplementationOnce(
+      (pairs: Array<[string, string]>) =>
+        new Promise<void>((resolve) => {
+          releaseWrite = () => {
+            pairs.forEach(([key, value]) => (mockStore[key] = value));
+            resolve();
+          };
+        })
+    );
+    await fetchTransport.send([log('first')]);
+    await settle();
+    const clearing = offline.clearCache();
+    const items = [log('during clear')];
+    await fetchTransport.send(items);
+    await settle();
+    releaseWrite();
+    await clearing;
+    await flush();
+    expect(cachedPayloads()).toEqual([]);
+
+    await fetchTransport.send(items);
+    await flush();
+    expect(cachedMessages()).toEqual([['during clear']]);
+  });
+
+  it('does not store an item twice that was handed over while clearCache() removed storage', async () => {
+    const offline = offlineTransport();
+    const fetchTransport = new FetchTransport({ url: COLLECTOR_URL });
+    initCore([offline, fetchTransport]);
+    await flush();
+    setOnline(false);
+    await fetchTransport.send([log('first')]);
+    await flush();
+    let releaseRemove: () => void = () => {};
+    (AsyncStorage.multiRemove as jest.Mock).mockImplementationOnce(
+      (keys: string[]) =>
+        new Promise<void>((resolve) => {
+          releaseRemove = () => {
+            keys.forEach((key) => delete mockStore[key]);
+            resolve();
+          };
+        })
+    );
+    const clearing = offline.clearCache();
+    await settle();
+    const items = [log('during remove')];
+    await fetchTransport.send(items);
+    releaseRemove();
+    await clearing;
+    await flush();
+    expect(cachedMessages()).toEqual([['during remove']]);
+
+    await fetchTransport.send(items);
+    await flush();
+    expect(cachedMessages()).toEqual([['during remove']]);
+  });
+
+  it('does not start a request queued in the request buffer after an earlier request got a 429', async () => {
+    const offline = offlineTransport();
+    const fetchTransport = new FetchTransport({ url: COLLECTOR_URL, concurrency: 1 });
+    initCore([offline, fetchTransport]);
+    await flush();
+    let releaseFirst: () => void = () => {};
+    fetchMock.mockImplementationOnce(() => new Promise((resolve) => (releaseFirst = () => resolve(response(429)))));
+
+    const first = fetchTransport.send([log('first')]);
+    await flush();
+    const queued = fetchTransport.send([log('queued')]);
+    await flush();
+    releaseFirst();
+    await Promise.all([first, queued]);
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(cachedMessages()).toEqual([['first'], ['queued']]);
+  });
+
   it('still writes items handed over just before dispose(), including ones queued behind a write', async () => {
     const offline = new OfflineTransport();
     const fetchTransport = new FetchTransport({ url: COLLECTOR_URL });
@@ -1777,6 +1876,31 @@ describe('paused Faro during replay', () => {
     await jest.advanceTimersByTimeAsync(5_000);
     await flush();
     expect(loggedMessages()).toEqual(['stored while paused']);
+  });
+
+  it('does not start a request queued in the request buffer after Faro is paused, and sends its items after unpause', async () => {
+    const offline = offlineTransport();
+    const fetchTransport = new FetchTransport({ url: COLLECTOR_URL, concurrency: 1 });
+    const faro = initCore([offline, fetchTransport]);
+    await flush();
+    let releaseFirst: () => void = () => {};
+    fetchMock.mockImplementationOnce(() => new Promise((resolve) => (releaseFirst = () => resolve(response(202)))));
+
+    const first = fetchTransport.send([log('first')]);
+    await flush();
+    const queued = fetchTransport.send([log('queued')]);
+    await flush();
+    faro.pause();
+    releaseFirst();
+    await Promise.all([first, queued]);
+    await flush();
+    expect(loggedMessages()).toEqual(['first']);
+    expect(cachedMessages()).toEqual([['queued']]);
+
+    faro.unpause();
+    await jest.advanceTimersByTimeAsync(5_000);
+    await flush();
+    expect(loggedMessages()).toEqual(['first', 'queued']);
   });
 });
 

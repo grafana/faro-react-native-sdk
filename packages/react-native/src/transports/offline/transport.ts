@@ -364,6 +364,9 @@ export class OfflineTransport extends BaseTransport {
     });
     this.writeQueue = [];
     await this.waitForWrites();
+    // Items written so far are removed below, so they can be stored again. Items handed over
+    // while the clear runs are written after it and stay deduplicated.
+    this.storedItems.clear();
     await this.cache.clear();
   }
 
