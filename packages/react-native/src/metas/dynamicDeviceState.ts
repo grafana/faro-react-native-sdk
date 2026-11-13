@@ -43,6 +43,35 @@ export interface DynamicDeviceState {
 }
 
 /**
+ * The groups of dynamic fields an app can turn off. A group that is off is not collected: its
+ * native listeners never start and none of its fields reach a signal.
+ *
+ * - `battery`: `device.battery_level`, `device.is_charging` and `device.low_power_mode`
+ * - `thermal`: `device.thermal_state`
+ * - `network`: `network.connection_type`, `network.connection_subtype` and `network.carrier_name`
+ */
+export interface DynamicDeviceStateGroups {
+  battery: boolean;
+  thermal: boolean;
+  network: boolean;
+}
+
+/** The `dynamicDeviceState` config option. A group is on unless its value is `false`. */
+export type DynamicDeviceStateOptions = Partial<DynamicDeviceStateGroups>;
+
+export function resolveDynamicDeviceStateGroups(options?: DynamicDeviceStateOptions): DynamicDeviceStateGroups {
+  return {
+    battery: options?.battery !== false,
+    thermal: options?.thermal !== false,
+    network: options?.network !== false,
+  };
+}
+
+export function hasEnabledDynamicDeviceStateGroup(groups: DynamicDeviceStateGroups): boolean {
+  return groups.battery || groups.thermal || groups.network;
+}
+
+/**
  * The longest a native read is reused. Faro core evaluates the meta item on every `metas.value`
  * access, several times per signal, so this bounds the synchronous bridge calls. It also bounds
  * how long a change that the native listeners already hold stays out of a signal.
@@ -82,40 +111,64 @@ function withoutUndefined<T extends object>(value: T): T {
 
 /**
  * Reads the map the native module returns. A value of the wrong type or range is dropped on its
- * own, so one bad field never costs the others.
+ * own, so one bad field never costs the others. A group that is off is dropped even when native
+ * code returns it, for example when an earlier initialization started that group.
  */
-export function parseDynamicDeviceState(native: unknown): DynamicDeviceState {
+export function parseDynamicDeviceState(
+  native: unknown,
+  groups: DynamicDeviceStateGroups = resolveDynamicDeviceStateGroups()
+): DynamicDeviceState {
   const raw = typeof native === 'object' && native !== null ? (native as Record<string, unknown>) : {};
 
   return {
     device: withoutUndefined({
-      battery_level: asPercent(raw['batteryLevel']),
-      is_charging: asBoolean(raw['isCharging']),
-      low_power_mode: asBoolean(raw['lowPowerMode']),
-      thermal_state: asOneOf<ThermalState>(raw['thermalState'], THERMAL_STATES),
+      battery_level: groups.battery ? asPercent(raw['batteryLevel']) : undefined,
+      is_charging: groups.battery ? asBoolean(raw['isCharging']) : undefined,
+      low_power_mode: groups.battery ? asBoolean(raw['lowPowerMode']) : undefined,
+      thermal_state: groups.thermal ? asOneOf<ThermalState>(raw['thermalState'], THERMAL_STATES) : undefined,
     }),
     network: withoutUndefined({
-      connection_type: asOneOf<ConnectionType>(raw['connectionType'], CONNECTION_TYPES),
-      connection_subtype: asText(raw['connectionSubtype']),
+      connection_type: groups.network ? asOneOf<ConnectionType>(raw['connectionType'], CONNECTION_TYPES) : undefined,
+      connection_subtype: groups.network ? asText(raw['connectionSubtype']) : undefined,
       // Apple deprecated the carrier API, so iOS never reports a carrier on any version.
-      carrier_name: Platform.OS === 'android' ? asText(raw['carrierName']) : undefined,
+      carrier_name: groups.network && Platform.OS === 'android' ? asText(raw['carrierName']) : undefined,
     }),
   };
 }
 
 interface DynamicDeviceStateNativeModule {
+  startDynamicDeviceState?: (battery: boolean, thermal: boolean, network: boolean) => void;
   getDynamicDeviceState?: () => unknown;
 }
 
+/**
+ * Starts the native listeners of the enabled groups. A group that is off starts nothing, and with
+ * every group off the native module is not called. Never throws.
+ */
+export function startDynamicDeviceState(groups: DynamicDeviceStateGroups): void {
+  if (!hasEnabledDynamicDeviceStateGroup(groups)) {
+    return;
+  }
+
+  try {
+    const nativeModule = NativeModules['FaroReactNativeModule'] as DynamicDeviceStateNativeModule | undefined;
+    if (typeof nativeModule?.startDynamicDeviceState === 'function') {
+      nativeModule.startDynamicDeviceState(groups.battery, groups.thermal, groups.network);
+    }
+  } catch {
+    // Without the listeners the values are omitted.
+  }
+}
+
 // A blocking call that returns a cache the native listeners keep current. Native does no system calls for it.
-function readNativeDynamicDeviceState(): DynamicDeviceState | undefined {
+function readNativeDynamicDeviceState(groups?: DynamicDeviceStateGroups): DynamicDeviceState | undefined {
   const nativeModule = NativeModules['FaroReactNativeModule'] as DynamicDeviceStateNativeModule | undefined;
   if (typeof nativeModule?.getDynamicDeviceState !== 'function') {
     return undefined;
   }
 
   const native = nativeModule.getDynamicDeviceState();
-  return native == null ? undefined : parseDynamicDeviceState(native);
+  return native == null ? undefined : parseDynamicDeviceState(native, groups);
 }
 
 /**
@@ -129,7 +182,7 @@ export class DynamicDeviceStateProvider {
   constructor(
     private readonly now: () => number = Date.now,
     private readonly timeToLiveMs: number = DYNAMIC_DEVICE_STATE_TTL_MS,
-    private readonly read: () => DynamicDeviceState | undefined = readNativeDynamicDeviceState
+    private readonly read: () => DynamicDeviceState | undefined = () => readNativeDynamicDeviceState()
   ) {}
 
   get current(): DynamicDeviceState | undefined {
@@ -149,8 +202,6 @@ export class DynamicDeviceStateProvider {
   }
 }
 
-const sharedProvider = new DynamicDeviceStateProvider();
-
 /**
  * A meta item for the `device` and `network` slices. Faro core evaluates it each time it builds a
  * signal's meta, so every signal carries the values that are current when it is captured, and no
@@ -158,13 +209,20 @@ const sharedProvider = new DynamicDeviceStateProvider();
  *
  * Core merges meta items shallowly, so this item supplies the complete `device` object: the static
  * fields given here plus the dynamic ones.
+ *
+ * With every group off the item serves the static fields and never reads the native module.
  */
 export function getDynamicDeviceStateMeta(
   staticDevice: MetaDevice | undefined,
-  provider: DynamicDeviceStateProvider = sharedProvider
+  groups: DynamicDeviceStateGroups = resolveDynamicDeviceStateGroups(),
+  provider: DynamicDeviceStateProvider = new DynamicDeviceStateProvider(Date.now, DYNAMIC_DEVICE_STATE_TTL_MS, () =>
+    readNativeDynamicDeviceState(groups)
+  )
 ): () => Partial<Meta> {
+  const enabled = hasEnabledDynamicDeviceStateGroup(groups);
+
   return () => {
-    const state = provider.current;
+    const state = enabled ? provider.current : undefined;
     const device = { ...staticDevice, ...state?.device };
     const hasNetwork = state !== undefined && Object.keys(state.network).length > 0;
 

@@ -6,7 +6,8 @@ import UIKit
 /// Device and network values that change while the app runs.
 ///
 /// Notifications and a path monitor update a lock-protected cache, so `current()` is safe to call
-/// from any thread and reads nothing from the system. Nothing here needs a permission, and every
+/// from any thread and reads nothing from the system. Each group (battery, thermal, network) starts
+/// only when the app asks for it. Nothing here needs a permission, and every
 /// value is omitted when it cannot be read. iOS never reports a carrier: Apple deprecated the API,
 /// and since iOS 16.4 it returns a placeholder.
 ///
@@ -20,8 +21,13 @@ import UIKit
     static let connectionSubtypeKey = "connectionSubtype"
 
     private static let lock = NSLock()
-    private static var started = false
-    private static var observers: [NSObjectProtocol] = []
+    private static var batteryStarted = false
+    private static var thermalStarted = false
+    private static var networkStarted = false
+    private static var owners: [ObjectIdentifier: (battery: Bool, thermal: Bool, network: Bool)] = [:]
+    private static var batteryObservers: [NSObjectProtocol] = []
+    private static var thermalObservers: [NSObjectProtocol] = []
+    private static var networkObservers: [NSObjectProtocol] = []
     private static var pathMonitor: NWPathMonitor?
     private static var latestPath: NWPath?
     private static var cachedBatteryLevel: Int?
@@ -31,71 +37,162 @@ import UIKit
     private static var cachedDataRadioTechnology: String?
     private static let telephonyInfo = CTTelephonyNetworkInfo()
 
-    /// Starts battery and network monitoring and seeds the cache. Safe to call more than once.
+    /// Records the groups a React Native runtime wants and starts the monitoring that no runtime had
+    /// asked for yet. A group that is off registers no observer and reads nothing from the system.
     /// UIDevice battery monitoring is main-thread-only, so call it on the main thread, early.
-    @MainActor @objc public static func start() {
+    @MainActor @objc public static func start(owner: AnyObject, battery: Bool, thermal: Bool, network: Bool) {
         lock.lock()
         defer { lock.unlock() }
-        guard !started else {
-            return
-        }
-        started = true
+        owners[ObjectIdentifier(owner)] = (battery, thermal, network)
+        reconcile()
+    }
 
+    /// Removes a runtime that was torn down and stops every group that no other runtime wants.
+    @MainActor @objc public static func detach(owner: AnyObject) {
+        lock.lock()
+        defer { lock.unlock() }
+        if owners.removeValue(forKey: ObjectIdentifier(owner)) != nil {
+            reconcile()
+        }
+    }
+
+    // The caller holds `lock`.
+    @MainActor private static func reconcile() {
+        let wanted = owners.values
+        if wanted.contains(where: { $0.battery }) {
+            if !batteryStarted {
+                batteryStarted = true
+                startBattery()
+            }
+        } else if batteryStarted {
+            batteryStarted = false
+            stopBattery()
+        }
+
+        if wanted.contains(where: { $0.thermal }) {
+            if !thermalStarted {
+                thermalStarted = true
+                startThermal()
+            }
+        } else if thermalStarted {
+            thermalStarted = false
+            stopThermal()
+        }
+
+        if wanted.contains(where: { $0.network }) {
+            if !networkStarted {
+                networkStarted = true
+                startNetwork()
+            }
+        } else if networkStarted {
+            networkStarted = false
+            stopNetwork()
+        }
+    }
+
+    // The caller holds `lock`.
+    @MainActor private static func startBattery() {
         let device = UIDevice.current
         device.isBatteryMonitoringEnabled = true
         readBattery(device)
         let center = NotificationCenter.default
         for name in [UIDevice.batteryLevelDidChangeNotification, UIDevice.batteryStateDidChangeNotification] {
-            observers.append(
+            batteryObservers.append(
                 center.addObserver(forName: name, object: nil, queue: nil) { _ in
                     lock.lock()
                     defer { lock.unlock() }
+                    guard batteryStarted else { return }
                     readBattery(UIDevice.current)
                 }
             )
         }
 
-        let processInfo = ProcessInfo.processInfo
-        cachedLowPowerMode = processInfo.isLowPowerModeEnabled
-        cachedThermalState = thermalStateName(processInfo.thermalState)
-        cachedDataRadioTechnology = currentDataRadioTechnology()
-        observers.append(
+        cachedLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+        batteryObservers.append(
             center.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: nil) { _ in
                 lock.lock()
                 defer { lock.unlock() }
+                guard batteryStarted else { return }
                 cachedLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
             }
         )
-        observers.append(
-            center.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: nil) { _ in
+    }
+
+    // The caller holds `lock`.
+    @MainActor private static func stopBattery() {
+        removeObservers(&batteryObservers)
+        // `isBatteryMonitoringEnabled` is app-wide, and `react-native-device-info` and the app can use it too.
+        cachedBatteryLevel = nil
+        cachedIsCharging = nil
+        cachedLowPowerMode = nil
+    }
+
+    // The caller holds `lock`.
+    private static func startThermal() {
+        cachedThermalState = thermalStateName(ProcessInfo.processInfo.thermalState)
+        thermalObservers.append(
+            NotificationCenter.default.addObserver(
+                forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: nil
+            ) { _ in
                 lock.lock()
                 defer { lock.unlock() }
+                guard thermalStarted else { return }
                 cachedThermalState = thermalStateName(ProcessInfo.processInfo.thermalState)
             }
         )
-        observers.append(
-            center.addObserver(
+    }
+
+    // The caller holds `lock`.
+    private static func stopThermal() {
+        removeObservers(&thermalObservers)
+        cachedThermalState = nil
+    }
+
+    // The caller holds `lock`.
+    private static func startNetwork() {
+        cachedDataRadioTechnology = currentDataRadioTechnology()
+        networkObservers.append(
+            NotificationCenter.default.addObserver(
                 forName: .CTServiceRadioAccessTechnologyDidChange, object: nil, queue: nil
             ) { _ in
                 let technology = currentDataRadioTechnology()
                 lock.lock()
                 defer { lock.unlock() }
+                guard networkStarted else { return }
                 cachedDataRadioTechnology = technology
             }
         )
 
         let monitor = NWPathMonitor()
-        monitor.pathUpdateHandler = { path in
+        monitor.pathUpdateHandler = { [weak monitor] path in
             lock.lock()
+            defer { lock.unlock() }
+            // A cancelled monitor can still deliver one last update.
+            guard let monitor, pathMonitor === monitor else { return }
             latestPath = path
             cachedDataRadioTechnology = currentDataRadioTechnology()
-            lock.unlock()
         }
         monitor.start(queue: DispatchQueue(label: "com.grafana.faro.network-path", qos: .utility))
         pathMonitor = monitor
     }
 
-    /// The cached values. Empty until `start()` has run.
+    // The caller holds `lock`.
+    private static func stopNetwork() {
+        removeObservers(&networkObservers)
+        pathMonitor?.cancel()
+        pathMonitor = nil
+        latestPath = nil
+        cachedDataRadioTechnology = nil
+    }
+
+    private static func removeObservers(_ observers: inout [NSObjectProtocol]) {
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        observers.removeAll()
+    }
+
+    /// The cached values of the started groups. Empty until `start` has run.
     @objc public static func current() -> [String: Any] {
         lock.lock()
         let level = cachedBatteryLevel

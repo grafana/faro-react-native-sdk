@@ -1,3 +1,5 @@
+import { NativeModules } from 'react-native';
+
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 import type { Meta } from '@grafana/faro-core';
 
@@ -166,6 +168,46 @@ describe('makeRNConfig', () => {
     });
     const names = cfg.instrumentations?.map((i) => i.name) ?? [];
     expect(names.at(-1)).toBe(extra.name);
+  });
+
+  describe('dynamicDeviceState', () => {
+    const originalNativeModule = NativeModules.FaroReactNativeModule;
+    const nativeState = { batteryLevel: 85, thermalState: 'fair', connectionType: 'wifi' };
+
+    afterEach(() => {
+      NativeModules.FaroReactNativeModule = originalNativeModule;
+    });
+
+    it('collects every group by default', () => {
+      NativeModules.FaroReactNativeModule = { getDynamicDeviceState: jest.fn(() => nativeState) };
+
+      const meta = metaValue(makeRNConfig(base).metas) as Meta & { network?: unknown };
+
+      expect(meta.device).toEqual({ battery_level: 85, thermal_state: 'fair' });
+      expect(meta.network).toEqual({ connection_type: 'wifi' });
+    });
+
+    it('omits the fields of a group that is off', () => {
+      NativeModules.FaroReactNativeModule = { getDynamicDeviceState: jest.fn(() => nativeState) };
+
+      const meta = metaValue(
+        makeRNConfig({ ...base, dynamicDeviceState: { battery: false, network: false } }).metas
+      ) as Meta & { network?: unknown };
+
+      expect(meta.device).toEqual({ thermal_state: 'fair' });
+      expect(meta.network).toBeUndefined();
+    });
+
+    it('does not read the native module when every group is off', () => {
+      const read = jest.fn(() => nativeState);
+      NativeModules.FaroReactNativeModule = { getDynamicDeviceState: read };
+
+      metaValue(
+        makeRNConfig({ ...base, dynamicDeviceState: { battery: false, thermal: false, network: false } }).metas
+      );
+
+      expect(read).not.toHaveBeenCalled();
+    });
   });
 
   describe('batching', () => {

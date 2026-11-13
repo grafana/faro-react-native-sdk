@@ -41,11 +41,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
 
     private var anrTracker: ANRTracker? = null
     private val sessionPersistenceOwner = Any()
-
-    init {
-        // Listeners keep the battery and thermal values current before the first read.
-        FaroDynamicDeviceState.start(reactContext.applicationContext)
-    }
+    private val dynamicDeviceStateOwner = Any()
 
     override fun getName(): String = NAME
 
@@ -75,6 +71,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
 
     override fun invalidate() {
         FaroSessionProcess.releasePersistence(sessionPersistenceOwner)
+        FaroDynamicDeviceState.detach(dynamicDeviceStateOwner)
         super.invalidate()
     }
 
@@ -122,10 +119,22 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
+     * Starts the listeners of the enabled groups. A group that is off registers nothing. It runs
+     * synchronously so the first read already sees the seeded values. A synchronous method must
+     * return a value, so it returns true.
+     */
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    fun startDynamicDeviceState(battery: Boolean, thermal: Boolean, network: Boolean): Boolean {
+        FaroDynamicDeviceState.start(dynamicDeviceStateOwner, reactApplicationContext, battery, thermal, network)
+        return true
+    }
+
+    /**
      * Battery, thermal and network values that change while the app runs.
      *
      * Returns cached values. System listeners keep them current, and a background thread polls the
-     * connection subtype and the carrier. Omits every value that cannot be read.
+     * connection subtype and the carrier. Omits every value that cannot be read, and every group
+     * that was not started.
      */
     @ReactMethod(isBlockingSynchronousMethod = true)
     fun getDynamicDeviceState(): WritableMap {

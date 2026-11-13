@@ -1,3 +1,5 @@
+import { NativeModules } from 'react-native';
+
 import { type Config, getTransportBody, type TransportItem, VERSION } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
 
@@ -7,8 +9,100 @@ import { initializeFaro } from './initialize';
 import { SessionInstrumentation } from './instrumentations/session';
 import * as sessionAttributes from './instrumentations/session/sessionAttributes';
 import * as appBuildIdentity from './metas/appBuildIdentity';
+import type { DynamicDeviceStateOptions } from './metas/dynamicDeviceState';
 
 describe('initializeFaro', () => {
+  describe('dynamic device state', () => {
+    const originalNativeModule = NativeModules.FaroReactNativeModule;
+
+    beforeEach(() => {
+      delete (global as any).faro;
+    });
+
+    afterEach(() => {
+      NativeModules.FaroReactNativeModule = originalNativeModule;
+      jest.restoreAllMocks();
+    });
+
+    function initialize(dynamicDeviceState?: DynamicDeviceStateOptions) {
+      return initializeFaro(
+        mockConfig({
+          url: 'http://localhost:12345/collect',
+          transports: [new MockTransport()],
+          sessionTracking: { enabled: true, persistent: false },
+          ...(dynamicDeviceState ? { dynamicDeviceState } : {}),
+        })
+      );
+    }
+
+    it('starts every group and collects the legacy attributes by default', async () => {
+      const start = jest.fn();
+      NativeModules.FaroReactNativeModule = { startDynamicDeviceState: start };
+      const mobileSpy = jest.spyOn(sessionAttributes, 'loadMobileMetaForInit');
+
+      await initialize();
+
+      expect(start).toHaveBeenCalledWith(true, true, true);
+      expect(mobileSpy).toHaveBeenCalledWith({ battery: true, thermal: true, network: true });
+    });
+
+    it('starts only the groups that are on', async () => {
+      const start = jest.fn();
+      NativeModules.FaroReactNativeModule = { startDynamicDeviceState: start };
+      const mobileSpy = jest.spyOn(sessionAttributes, 'loadMobileMetaForInit');
+
+      await initialize({ battery: false, network: false });
+
+      expect(start).toHaveBeenCalledWith(false, true, false);
+      expect(mobileSpy).toHaveBeenCalledWith({ battery: false, thermal: true, network: false });
+    });
+
+    it('does not restart the native groups when Faro is already initialized', async () => {
+      const start = jest.fn();
+      NativeModules.FaroReactNativeModule = { startDynamicDeviceState: start };
+      const sharedConfig = {
+        url: 'http://localhost:12345/collect',
+        transports: [new MockTransport()],
+        isolate: false,
+      };
+
+      await initializeFaro(mockConfig(sharedConfig));
+      start.mockClear();
+      await initializeFaro(
+        mockConfig({ ...sharedConfig, dynamicDeviceState: { battery: false, thermal: true, network: false } })
+      );
+
+      expect(start).not.toHaveBeenCalled();
+    });
+
+    it('starts the native groups for an isolated instance although Faro is already initialized', async () => {
+      const start = jest.fn();
+      NativeModules.FaroReactNativeModule = { startDynamicDeviceState: start };
+      const sharedConfig = { url: 'http://localhost:12345/collect', transports: [new MockTransport()] };
+
+      await initializeFaro(mockConfig({ ...sharedConfig, isolate: false }));
+      start.mockClear();
+      await initializeFaro(
+        mockConfig({
+          ...sharedConfig,
+          isolate: true,
+          dynamicDeviceState: { battery: false, thermal: true, network: false },
+        })
+      );
+
+      expect(start).toHaveBeenCalledWith(false, true, false);
+    });
+
+    it('starts nothing when every group is off', async () => {
+      const start = jest.fn();
+      NativeModules.FaroReactNativeModule = { startDynamicDeviceState: start };
+
+      await initialize({ battery: false, thermal: false, network: false });
+
+      expect(start).not.toHaveBeenCalled();
+    });
+  });
+
   const preambleKey = '__faroBundleId_test';
 
   beforeEach(() => {

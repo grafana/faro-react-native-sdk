@@ -1,9 +1,10 @@
-import { type Faro, initializeFaro as initializeFaroCore } from '@grafana/faro-core';
+import { type Faro, initializeFaro as initializeFaroCore, isInternalFaroOnGlobalObject } from '@grafana/faro-core';
 
 import { makeRNConfig } from './config/makeRNConfig';
 import type { ReactNativeConfig } from './config/types';
 import { loadMobileMetaForInit } from './instrumentations/session/sessionAttributes';
 import { loadAppSymbolsBundleIdForInit } from './metas/appBuildIdentity';
+import { resolveDynamicDeviceStateGroups, startDynamicDeviceState } from './metas/dynamicDeviceState';
 import { OfflineTransport } from './transports/offline';
 
 /**
@@ -16,8 +17,15 @@ import { OfflineTransport } from './transports/offline';
  * `isolate` is not set, for example after a Fast Refresh.
  */
 export async function initializeFaro(config: ReactNativeConfig): Promise<Faro> {
+  // Starts first so the native caches fill while the async collection runs. Core rejects a second
+  // call, so it must not replace the groups of the instance that is already running.
+  const dynamicDeviceStateGroups = resolveDynamicDeviceStateGroups(config.dynamicDeviceState);
+  if (!isInternalFaroOnGlobalObject() || config.isolate) {
+    startDynamicDeviceState(dynamicDeviceStateGroups);
+  }
+
   const [preloadedMobileMeta, appSymbolsBundleId] = await Promise.all([
-    loadMobileMetaForInit(),
+    loadMobileMetaForInit(dynamicDeviceStateGroups),
     loadAppSymbolsBundleIdForInit(),
   ]);
   const fullConfig = makeRNConfig(config, preloadedMobileMeta, appSymbolsBundleId);

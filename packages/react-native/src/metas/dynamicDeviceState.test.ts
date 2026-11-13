@@ -6,6 +6,8 @@ import {
   getDynamicDeviceStateMeta,
   omitDynamicDeviceFields,
   parseDynamicDeviceState,
+  resolveDynamicDeviceStateGroups,
+  startDynamicDeviceState,
 } from './dynamicDeviceState';
 import type { DynamicDeviceState } from './dynamicDeviceState';
 
@@ -83,6 +85,120 @@ describe('parseDynamicDeviceState', () => {
 
   it.each([undefined, null, 'text', 5])('returns empty groups for %p', (native) => {
     expect(parseDynamicDeviceState(native)).toEqual({ device: {}, network: {} });
+  });
+});
+
+describe('dynamic device state groups', () => {
+  const native = {
+    batteryLevel: 85,
+    isCharging: true,
+    lowPowerMode: false,
+    thermalState: 'fair',
+    connectionType: 'cell',
+    connectionSubtype: 'lte',
+    carrierName: 'Verizon',
+  };
+
+  it('turns every group on by default', () => {
+    expect(resolveDynamicDeviceStateGroups()).toEqual({ battery: true, thermal: true, network: true });
+    expect(resolveDynamicDeviceStateGroups({})).toEqual({ battery: true, thermal: true, network: true });
+  });
+
+  it('turns a group off only for false', () => {
+    expect(resolveDynamicDeviceStateGroups({ battery: false, thermal: undefined })).toEqual({
+      battery: false,
+      thermal: true,
+      network: true,
+    });
+  });
+
+  it.each([
+    ['battery', { device: { thermal_state: 'fair' }, network: expect.objectContaining({ connection_type: 'cell' }) }],
+    [
+      'thermal',
+      {
+        device: { battery_level: 85, is_charging: true, low_power_mode: false },
+        network: expect.objectContaining({ connection_type: 'cell' }),
+      },
+    ],
+    [
+      'network',
+      {
+        device: { battery_level: 85, is_charging: true, low_power_mode: false, thermal_state: 'fair' },
+        network: {},
+      },
+    ],
+  ])('drops the %s group when it is off', (group, expected) => {
+    setPlatform('android');
+
+    const groups = { ...resolveDynamicDeviceStateGroups(), [group]: false };
+
+    expect(parseDynamicDeviceState(native, groups)).toEqual(expected);
+  });
+
+  describe('startDynamicDeviceState', () => {
+    it('starts the native listeners of the enabled groups', () => {
+      const start = jest.fn();
+      NativeModules.FaroReactNativeModule = { startDynamicDeviceState: start };
+
+      startDynamicDeviceState({ battery: true, thermal: false, network: true });
+
+      expect(start).toHaveBeenCalledWith(true, false, true);
+    });
+
+    it('does not call the native module when every group is off', () => {
+      const start = jest.fn();
+      NativeModules.FaroReactNativeModule = { startDynamicDeviceState: start };
+
+      startDynamicDeviceState({ battery: false, thermal: false, network: false });
+
+      expect(start).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['the native module is missing', undefined],
+      ['the method is missing', {}],
+      [
+        'the native call throws',
+        {
+          startDynamicDeviceState: () => {
+            throw new Error('unavailable');
+          },
+        },
+      ],
+    ])('does not throw when %s', (_case, nativeModule) => {
+      NativeModules.FaroReactNativeModule = nativeModule;
+
+      expect(() => startDynamicDeviceState(resolveDynamicDeviceStateGroups())).not.toThrow();
+    });
+  });
+
+  describe('getDynamicDeviceStateMeta', () => {
+    beforeEach(() => setPlatform('android'));
+
+    it('keeps the fields of the groups that are on', () => {
+      NativeModules.FaroReactNativeModule = { getDynamicDeviceState: jest.fn(() => native) };
+
+      const getMeta = getDynamicDeviceStateMeta(
+        { is_physical: true },
+        { battery: false, thermal: true, network: false }
+      );
+
+      expect(getMeta()).toEqual({ device: { is_physical: true, thermal_state: 'fair' } });
+    });
+
+    it('never reads the native module when every group is off', () => {
+      const read = jest.fn(() => native);
+      NativeModules.FaroReactNativeModule = { getDynamicDeviceState: read };
+
+      const getMeta = getDynamicDeviceStateMeta(
+        { is_physical: true },
+        { battery: false, thermal: false, network: false }
+      );
+
+      expect(getMeta()).toEqual({ device: { is_physical: true } });
+      expect(read).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -167,6 +283,7 @@ describe('getDynamicDeviceStateMeta', () => {
   it('merges the dynamic values into the static device and adds the network', () => {
     const getMeta = getDynamicDeviceStateMeta(
       { is_physical: true, model_identifier: 'iPhone16,1' },
+      undefined,
       providerFor(() => ({
         device: { battery_level: 80, thermal_state: 'fair' },
         network: { connection_type: 'wifi' },
@@ -182,6 +299,7 @@ describe('getDynamicDeviceStateMeta', () => {
   it('returns a new object each time, so a captured signal is never changed', () => {
     const getMeta = getDynamicDeviceStateMeta(
       { is_physical: true },
+      undefined,
       providerFor(() => ({ device: { battery_level: 80 }, network: { connection_type: 'wifi' } }))
     );
 
@@ -200,7 +318,7 @@ describe('getDynamicDeviceStateMeta', () => {
       DYNAMIC_DEVICE_STATE_TTL_MS,
       () => ({ device: { battery_level: level }, network: {} })
     );
-    const getMeta = getDynamicDeviceStateMeta(undefined, provider);
+    const getMeta = getDynamicDeviceStateMeta(undefined, undefined, provider);
 
     expect(getMeta()).toEqual({ device: { battery_level: 80 } });
 
@@ -213,6 +331,7 @@ describe('getDynamicDeviceStateMeta', () => {
   it('keeps only the static device when no dynamic value is available', () => {
     const getMeta = getDynamicDeviceStateMeta(
       { is_physical: false },
+      undefined,
       providerFor(() => undefined)
     );
 
@@ -223,6 +342,7 @@ describe('getDynamicDeviceStateMeta', () => {
     expect(
       getDynamicDeviceStateMeta(
         undefined,
+        undefined,
         providerFor(() => undefined)
       )()
     ).toEqual({});
@@ -230,6 +350,7 @@ describe('getDynamicDeviceStateMeta', () => {
 
   it('omits an empty network', () => {
     const getMeta = getDynamicDeviceStateMeta(
+      undefined,
       undefined,
       providerFor(() => ({ device: { is_charging: false }, network: {} }))
     );
