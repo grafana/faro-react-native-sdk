@@ -1,5 +1,28 @@
 # Changelog
 
+## [3.0.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v2.0.4...faro-react-native-tracing-v3.0.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tracing:** XHR spans (enableXhrInstrumentation: true) use stable OpenTelemetry HTTP attributes only. In span queries, replace http.method, http.url, http.status_code and http.host with http.request.method, url.full, http.response.status_code and server.address/server.port; derive the scheme from url.full. Non-standard methods are named _OTHER. faro.tracing.xml-http-request events keep http.method, http.url, http.status_code, http.host and http.scheme; http.user_agent, http.status_text and response length attributes are no longer emitted.
+
+### Features
+
+* **tracing:** migrate XHR spans to stable HTTP attributes with OpenTelemetry 0.223 ([#258](https://github.com/grafana/faro-react-native-sdk/issues/258)) ([0cc29e9](https://github.com/grafana/faro-react-native-sdk/commit/0cc29e9de72a9f854200313fd679d6116338ff02))
+
+
+### Bug Fixes
+
+* **react-native-tracing:** stop OpenTelemetry from creating resource PerformanceObservers ([#266](https://github.com/grafana/faro-react-native-sdk/issues/266)) ([c4de3de](https://github.com/grafana/faro-react-native-sdk/commit/c4de3dece46c63e1a2a07323b38cd1053154c9f8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @grafana/faro-react-native bumped to 1.6.0
+
 ## [2.0.4](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v2.0.3...faro-react-native-tracing-v2.0.4) (2026-10-28)
 
 ### Dependencies
