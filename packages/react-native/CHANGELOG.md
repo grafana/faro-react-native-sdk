@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.6.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.5.0...faro-react-native-v1.6.0) (2026-11-13)
+
+### Features
+
+- **meta:** add battery, thermal and network opt-out groups ([3eb49ad](https://github.com/grafana/faro-react-native-sdk/commit/3eb49adced9587fd5d294e603923a4fe04bba3fc))
+- **meta:** add battery, thermal and network opt-out groups ([60630cb](https://github.com/grafana/faro-react-native-sdk/commit/60630cb0ca950dbde1dd2eafa8b1d43f68f3186b))
+- **meta:** drop network.reachable from the dynamic fields ([3dda50e](https://github.com/grafana/faro-react-native-sdk/commit/3dda50e767c252e8361fd2b69727251ef0d6b292))
+- **meta:** keep dynamic device fields current ([ed06012](https://github.com/grafana/faro-react-native-sdk/commit/ed06012873c07f3ce5997f215a77ebd67c6d2570))
+- **meta:** keep dynamic device fields current ([87f582b](https://github.com/grafana/faro-react-native-sdk/commit/87f582b7e01e28a1b40fae9139d99d0f0fd7221b))
+- **meta:** read the connection subtype with READ_BASIC_PHONE_STATE on Android 13+ ([557ac9d](https://github.com/grafana/faro-react-native-sdk/commit/557ac9d459e67a7afd07a754c7e1c2c01c6d2f1a))
+
+### Bug Fixes
+
+- clear connectivity timeouts and isolate test requests ([3caf7ac](https://github.com/grafana/faro-react-native-sdk/commit/3caf7ac772a8857cea614524b77af096984019e3))
+- clear connectivity timeouts and isolate test requests ([c71551b](https://github.com/grafana/faro-react-native-sdk/commit/c71551b53e44eec105be648a292e1c2cf8c12b75))
+- **deps:** update dependency com.google.protobuf:protobuf-gradle-plugin to v0.10.1 ([1943950](https://github.com/grafana/faro-react-native-sdk/commit/19439503fab17e0e216f03f60b5fbfcee1d8e67e))
+- **deps:** update dependency com.google.protobuf:protobuf-gradle-plugin to v0.10.1 ([39e557c](https://github.com/grafana/faro-react-native-sdk/commit/39e557cfb52a328075b92958bbeefed90b03bc50))
+- **meta:** address review findings ([ca857b1](https://github.com/grafana/faro-react-native-sdk/commit/ca857b1b265591d6997cb6661c0836ce57936795))
+- **meta:** check dynamic device flags under the lock on Android ([b60a9e5](https://github.com/grafana/faro-react-native-sdk/commit/b60a9e532ed0f8c9341bb62afc2b90189347220d))
+- **meta:** drop the iOS internet check from the dynamic network fields ([4870206](https://github.com/grafana/faro-react-native-sdk/commit/4870206503266c358401fd923147530467543a7f))
+- **meta:** keep the native groups of the running instance when initializeFaro is called again ([ca7122c](https://github.com/grafana/faro-react-native-sdk/commit/ca7122c9439bb40d38f2b4fa7a160a50c552e4e3))
+- **meta:** leave iOS battery monitoring on when the battery group stops ([1403ca1](https://github.com/grafana/faro-react-native-sdk/commit/1403ca17389c3b1e496d450b8bb2de497395931b))
+- **meta:** stop dynamic device collectors when the last runtime detaches ([5577e7a](https://github.com/grafana/faro-react-native-sdk/commit/5577e7a28067dca81e943ec1f57818a505f7b82f))
+- **meta:** strip relaunch values from buffered crashes and poll telephony off the JS thread ([9c49da0](https://github.com/grafana/faro-react-native-sdk/commit/9c49da05cb29eb39371efba233259353ebcc341f))
+- **meta:** update the connection type and reachability together ([5f299b2](https://github.com/grafana/faro-react-native-sdk/commit/5f299b2215b7624a93371cefcc5233d8e83b79ad))
+- **offline:** replay cached telemetry and store it when sends fail ([#269](https://github.com/grafana/faro-react-native-sdk/issues/269)) ([fff15cc](https://github.com/grafana/faro-react-native-sdk/commit/fff15ccd4f337cca7cb16d2fb9e8c38953fae2c4))
+- **react-native:** find the Swift header when built as a framework ([#243](https://github.com/grafana/faro-react-native-sdk/issues/243)) ([7730381](https://github.com/grafana/faro-react-native-sdk/commit/77303818e0036140e1d591d69611aadc592157c3)), closes [#135](https://github.com/grafana/faro-react-native-sdk/issues/135)
+- **react-native:** report React Native prerelease versions correctly ([#268](https://github.com/grafana/faro-react-native-sdk/issues/268)) ([aec9d65](https://github.com/grafana/faro-react-native-sdk/commit/aec9d65d4510b40a288d9241faa151262f8389b4))
+- **react-native:** skip resource PerformanceObserver registration on affected React Native versions ([#267](https://github.com/grafana/faro-react-native-sdk/issues/267)) ([baaf317](https://github.com/grafana/faro-react-native-sdk/commit/baaf3173f87ffac86c4de051a9dd67ae888e1a26))
+- **startup:** handle interruptions and lifecycle cleanup ([d509c8e](https://github.com/grafana/faro-react-native-sdk/commit/d509c8ecbfcd304dfcf4d0d74c29622031d4b198))
+- **startup:** handle interruptions and lifecycle cleanup ([16d8d14](https://github.com/grafana/faro-react-native-sdk/commit/16d8d14a3f32cc2626d889dd52af5ab1f404b949))
+- **startup:** rebind reused instrumentation ([65df7fd](https://github.com/grafana/faro-react-native-sdk/commit/65df7fd8ae858fb986f86aaa14c3578ef0f443e8))
+
 ## [1.5.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.3...faro-react-native-v1.5.0) (2026-10-28)
 
 ### Features
