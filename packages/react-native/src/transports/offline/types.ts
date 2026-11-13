@@ -19,8 +19,15 @@ export interface OfflineTransportOptions {
   maxCacheSize?: number;
 
   /**
-   * Interval in milliseconds to check connectivity and replay cached events.
-   * Default: 30000 (30 seconds)
+   * Maximum total size of cached events, as serialized JSON length.
+   * Oldest events are discarded when it is exceeded.
+   * Default: 2 MB (2097152)
+   */
+  maxCacheBytes?: number;
+
+  /**
+   * @deprecated Unused: connectivity is no longer polled. Telemetry is stored
+   * when sending it fails. Setting it logs a warning once.
    */
   connectivityCheckIntervalMs?: number;
 
@@ -36,6 +43,11 @@ export interface OfflineTransportOptions {
  */
 export interface CachedPayload {
   /**
+   * Id of the cache entry, set by the cache when it reads the entry.
+   */
+  id?: string;
+
+  /**
    * Timestamp when the payload was cached (milliseconds since epoch).
    */
   timestamp: number;
@@ -44,10 +56,31 @@ export interface CachedPayload {
    * The transport items to be sent.
    */
   items: TransportItem[];
+
+  /**
+   * Replay progress: for each destination key, how many items from the start
+   * of `items` it already received, so a retry resumes there.
+   */
+  progress?: Record<string, number>;
+
+  /**
+   * How many times replay got a retryable rejection (5xx or 408) for this
+   * payload, or the transport threw. See `firstRejectedAt`.
+   */
+  rejections?: number;
+
+  /**
+   * When replay first counted a rejection (milliseconds since epoch). The
+   * payload is dropped once it has enough rejections and this is old enough,
+   * so a collector outage does not drop it. Entries written without it start
+   * the clock at their next rejection.
+   */
+  firstRejectedAt?: number;
 }
 
 /**
- * Interface for connectivity detection service.
+ * Connectivity hint for the offline transport. While `isOnline` is false,
+ * telemetry is stored without trying to send it.
  */
 export interface ConnectivityService {
   /**
@@ -63,6 +96,12 @@ export interface ConnectivityService {
   subscribe(callback: (isOnline: boolean) => void): () => void;
 
   /**
+   * Resolves once the first connectivity state is known: immediately without
+   * NetInfo, otherwise after NetInfo's first answer.
+   */
+  whenKnown(): Promise<void>;
+
+  /**
    * Clean up resources.
    */
   dispose(): void;
@@ -73,14 +112,16 @@ export interface ConnectivityService {
  */
 export interface OfflineCache {
   /**
-   * Write a payload to the cache.
+   * Append payloads in order, dropping the oldest entries beyond the limits.
    */
-  write(payload: CachedPayload): Promise<void>;
+  writeMany(payloads: CachedPayload[]): Promise<void>;
 
   /**
-   * Read all cached payloads.
+   * Yields cached payloads oldest first, with their ids, reading a few at a
+   * time. Rejects when storage cannot be read, so callers do not mistake it
+   * for an empty cache.
    */
-  readAll(): Promise<CachedPayload[]>;
+  read(): AsyncIterable<CachedPayload>;
 
   /**
    * Clear all cached payloads.
@@ -88,12 +129,13 @@ export interface OfflineCache {
   clear(): Promise<void>;
 
   /**
-   * Remove specific payloads by their timestamps.
+   * Updates payloads in place by id: a payload replaces the stored one, `null`
+   * removes it. Unknown ids are ignored.
    */
-  removeByTimestamps(timestamps: number[]): Promise<void>;
+  update(changes: Record<string, CachedPayload | null>): Promise<void>;
 
   /**
-   * Get the number of cached payloads.
+   * Get the number of cached payloads; 0 when storage cannot be read.
    */
   getCount(): Promise<number>;
 }

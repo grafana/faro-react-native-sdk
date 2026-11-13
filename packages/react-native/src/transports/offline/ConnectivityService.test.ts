@@ -1,15 +1,31 @@
-import { DefaultConnectivityService } from './ConnectivityService';
+import type { DefaultConnectivityService as Service } from './ConnectivityService';
 
-jest.mock(
-  '@react-native-community/netinfo',
-  () => {
-    throw new Error('NetInfo is not installed');
-  },
-  { virtual: true }
-);
+type NetInfoState = { isConnected: boolean | null };
 
-describe('DefaultConnectivityService polling', () => {
-  let service: DefaultConnectivityService | undefined;
+function load(netInfo: unknown): typeof Service {
+  let service: typeof Service | undefined;
+  jest.isolateModules(() => {
+    jest.doMock(
+      '@react-native-community/netinfo',
+      () => {
+        if (!netInfo) {
+          throw new Error('NetInfo is not installed');
+        }
+        return { default: netInfo };
+      },
+      { virtual: true }
+    );
+    service = (require('./ConnectivityService') as { DefaultConnectivityService: typeof Service })
+      .DefaultConnectivityService;
+  });
+  if (!service) {
+    throw new Error('not loaded');
+  }
+  return service;
+}
+
+describe('DefaultConnectivityService', () => {
+  let service: Service | undefined;
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -22,73 +38,74 @@ describe('DefaultConnectivityService polling', () => {
     jest.useRealTimers();
   });
 
-  it('clears the request timeout when the connectivity check fails', async () => {
-    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('offline'));
+  describe('without NetInfo', () => {
+    it('reports online and does not poll or send requests, whatever the interval', () => {
+      const fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('offline'));
+      const DefaultConnectivityService = load(null);
 
-    service = new DefaultConnectivityService();
-    await Promise.resolve();
+      service = new DefaultConnectivityService(1_000);
+      const subscriber = jest.fn();
+      service.subscribe(subscriber);
+      jest.advanceTimersByTime(120_000);
 
-    expect(service.isOnline).toBe(false);
-    expect(jest.getTimerCount()).toBe(1);
-    service.dispose();
-    expect(jest.getTimerCount()).toBe(0);
+      expect(service.isOnline).toBe(true);
+      expect(subscriber).toHaveBeenCalledTimes(1);
+      expect(subscriber).toHaveBeenCalledWith(true);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    });
   });
 
-  it('clears the request timeout when the connectivity check succeeds', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
+  describe('with NetInfo', () => {
+    function netInfo(initial: NetInfoState) {
+      let listener: ((state: NetInfoState) => void) | undefined;
+      const unsubscribe = jest.fn();
+      return {
+        mock: {
+          fetch: jest.fn(() => Promise.resolve(initial)),
+          addEventListener: jest.fn((callback: (state: NetInfoState) => void) => {
+            listener = callback;
+            return unsubscribe;
+          }),
+        },
+        emit: (state: NetInfoState) => listener?.(state),
+        unsubscribe,
+      };
+    }
 
-    service = new DefaultConnectivityService();
-    await Promise.resolve();
+    it('is offline only while NetInfo reports isConnected false, and notifies changes', async () => {
+      const fake = netInfo({ isConnected: false });
+      const DefaultConnectivityService = load(fake.mock);
+      service = new DefaultConnectivityService();
+      const subscriber = jest.fn();
+      service.subscribe(subscriber);
+      await Promise.resolve();
+      await Promise.resolve();
 
-    expect(service.isOnline).toBe(true);
-    expect(jest.getTimerCount()).toBe(1);
-  });
+      expect(service.isOnline).toBe(false);
 
-  it('still aborts a connectivity check that exceeds its deadline', async () => {
-    let signal: AbortSignal | undefined;
-    jest.spyOn(global, 'fetch').mockImplementation(
-      (_url, options) =>
-        new Promise((_resolve, reject) => {
-          signal = options?.signal ?? undefined;
-          signal?.addEventListener('abort', () => reject(new Error('aborted')));
-        })
-    );
+      fake.emit({ isConnected: null });
+      expect(service.isOnline).toBe(true);
+      fake.emit({ isConnected: false });
+      fake.emit({ isConnected: true });
+      expect(subscriber.mock.calls.map(([online]) => online)).toEqual([true, false, true, false, true]);
 
-    service = new DefaultConnectivityService();
-    jest.advanceTimersByTime(5_000);
-    await Promise.resolve();
-
-    expect(signal?.aborted).toBe(true);
-    expect(service.isOnline).toBe(false);
-    expect(jest.getTimerCount()).toBe(1);
-  });
-
-  it('clears the timeout if fetch throws before returning a promise', () => {
-    jest.spyOn(global, 'fetch').mockImplementation(() => {
-      throw new Error('fetch unavailable');
+      service.dispose();
+      expect(fake.unsubscribe).toHaveBeenCalled();
     });
 
-    service = new DefaultConnectivityService();
+    it('stays online when NetInfo fails', async () => {
+      const DefaultConnectivityService = load({
+        fetch: () => Promise.reject(new Error('broken')),
+        addEventListener: () => {
+          throw new Error('broken');
+        },
+      });
+      service = new DefaultConnectivityService();
+      await Promise.resolve();
+      await Promise.resolve();
 
-    expect(service.isOnline).toBe(false);
-    expect(jest.getTimerCount()).toBe(1);
-  });
-
-  it('keeps polling and reports recovery after a failed request', async () => {
-    const fetchMock = jest.spyOn(global, 'fetch').mockRejectedValueOnce(new Error('offline'));
-    fetchMock.mockResolvedValue(new Response(null, { status: 200 }));
-    service = new DefaultConnectivityService();
-    const listener = jest.fn();
-    service.subscribe(listener);
-    await Promise.resolve();
-
-    expect(service.isOnline).toBe(false);
-    jest.advanceTimersByTime(30_000);
-    await Promise.resolve();
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(service.isOnline).toBe(true);
-    expect(listener.mock.calls.map(([online]) => online)).toEqual([true, false, true]);
-    expect(jest.getTimerCount()).toBe(1);
+      expect(service.isOnline).toBe(true);
+    });
   });
 });

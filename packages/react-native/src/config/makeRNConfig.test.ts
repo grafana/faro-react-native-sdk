@@ -92,6 +92,74 @@ describe('makeRNConfig', () => {
     expect(cfg.transports?.[2]).toBe(marker);
   });
 
+  it('moves a user-supplied OfflineTransport before the network transports', () => {
+    const marker = { transport: 'extra' } as unknown as NonNullable<ReactNativeConfig['transports']>[number];
+    const offline = new OfflineTransport();
+    try {
+      const cfg = makeRNConfig({ ...base, transports: [marker, offline] });
+      expect(cfg.transports?.[0]).toBe(offline);
+      expect(cfg.transports?.[1]).toBeInstanceOf(FetchTransport);
+      expect(cfg.transports?.[2]).toBe(marker);
+    } finally {
+      offline.dispose();
+    }
+  });
+
+  describe('with an offline transport', () => {
+    it('uses a supplied OfflineTransport instead of creating one for the flag, with a warning', () => {
+      const supplied = new OfflineTransport();
+      const dispose = jest.spyOn(supplied, 'dispose');
+      const warn = jest.fn();
+      const cfg = makeRNConfig({
+        ...base,
+        unpatchedConsole: { ...console, warn },
+        enableTransports: { offline: true },
+        transports: [supplied],
+      });
+      try {
+        expect((cfg.transports ?? []).filter((t) => t instanceof OfflineTransport)).toEqual([supplied]);
+        expect(cfg.transports?.[0]).toBe(supplied);
+        expect(dispose).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('enableTransports.offline is ignored'));
+      } finally {
+        supplied.dispose();
+      }
+    });
+
+    it('keeps the first of several supplied OfflineTransports and does not dispose one supplied twice', () => {
+      const first = new OfflineTransport();
+      const second = new OfflineTransport();
+      const disposeFirst = jest.spyOn(first, 'dispose');
+      const disposeSecond = jest.spyOn(second, 'dispose');
+      const cfg = makeRNConfig({
+        ...base,
+        unpatchedConsole: { ...console, warn: jest.fn() },
+        transports: [first, second, first],
+      });
+      try {
+        expect(cfg.transports?.[0]).toBe(first);
+        expect((cfg.transports ?? []).filter((t) => t instanceof OfflineTransport)).toEqual([first]);
+        expect(disposeFirst).not.toHaveBeenCalled();
+        expect(disposeSecond).toHaveBeenCalledTimes(1);
+      } finally {
+        first.dispose();
+      }
+    });
+
+    it('keeps every FetchTransport, as without an offline transport', () => {
+      const sameUrl = new FetchTransport({ url: base.url });
+      const cfg = makeRNConfig({ ...base, enableTransports: { offline: true }, transports: [sameUrl] });
+      try {
+        expect(cfg.transports).toHaveLength(3);
+        expect(cfg.transports?.[0]).toBeInstanceOf(OfflineTransport);
+        expect(cfg.transports?.[1]).toBeInstanceOf(FetchTransport);
+        expect(cfg.transports?.[2]).toBe(sameUrl);
+      } finally {
+        disposeOfflineTransportsFromConfig(cfg);
+      }
+    });
+  });
+
   it('appends extra instrumentations after getRNInstrumentations', () => {
     const extra = new ExtraInstrumentation();
     const cfg = makeRNConfig({

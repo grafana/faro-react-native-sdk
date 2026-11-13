@@ -1,6 +1,6 @@
 import type { ConnectivityService } from './types';
 
-// Try to use NetInfo if available, otherwise fall back to basic online detection
+// Optional: used when the app has it installed.
 let NetInfo: {
   fetch: () => Promise<{ isConnected: boolean | null }>;
   addEventListener: (callback: (state: { isConnected: boolean | null }) => void) => () => void;
@@ -9,32 +9,29 @@ let NetInfo: {
 try {
   NetInfo = require('@react-native-community/netinfo').default;
 } catch {
-  // NetInfo not available, will fall back to basic detection
+  // NetInfo not available: always reported online.
 }
 
 /**
- * Default connectivity check interval in milliseconds.
- */
-const DEFAULT_CHECK_INTERVAL_MS = 30000;
-
-/**
- * Service for detecting network connectivity changes.
+ * Connectivity hint for the offline transport.
  *
- * Uses @react-native-community/netinfo when available, otherwise falls back
- * to basic fetch-based connectivity detection.
- *
- * Monitors network connectivity for offline transport flush behavior.
+ * With `@react-native-community/netinfo` installed, `isOnline` is false only
+ * while NetInfo reports `isConnected === false`. Without it, `isOnline` is
+ * always true and nothing is polled: whether telemetry is stored depends on
+ * whether sending it succeeds.
  */
 export class DefaultConnectivityService implements ConnectivityService {
   private _isOnline: boolean = true;
   private readonly subscribers: Set<(isOnline: boolean) => void> = new Set();
   private unsubscribeNetInfo: (() => void) | null = null;
-  private checkIntervalId: ReturnType<typeof setInterval> | null = null;
-  private readonly checkIntervalMs: number;
+  private disposed = false;
+  private known: Promise<void> = Promise.resolve();
 
-  constructor(checkIntervalMs: number = DEFAULT_CHECK_INTERVAL_MS) {
-    this.checkIntervalMs = checkIntervalMs;
-    this.initialize();
+  /**
+   * @param _checkIntervalMs Unused; kept for compatibility. Connectivity is no longer polled.
+   */
+  constructor(_checkIntervalMs?: number) {
+    this.initializeWithNetInfo();
   }
 
   get isOnline(): boolean {
@@ -51,73 +48,46 @@ export class DefaultConnectivityService implements ConnectivityService {
     };
   }
 
+  whenKnown(): Promise<void> {
+    return this.known;
+  }
+
   dispose(): void {
+    this.disposed = true;
     if (this.unsubscribeNetInfo) {
       this.unsubscribeNetInfo();
       this.unsubscribeNetInfo = null;
     }
-    if (this.checkIntervalId) {
-      clearInterval(this.checkIntervalId);
-      this.checkIntervalId = null;
-    }
     this.subscribers.clear();
   }
 
-  private initialize(): void {
-    if (NetInfo) {
-      this.initializeWithNetInfo();
-    } else {
-      this.initializeWithPolling();
-    }
-  }
-
   private initializeWithNetInfo(): void {
-    if (!NetInfo) return;
+    if (!NetInfo) {
+      return;
+    }
 
-    // Initial check
-    NetInfo.fetch().then((state) => {
-      this.setOnline(state.isConnected ?? true);
+    let markKnown: () => void = () => {};
+    const known = new Promise<void>((resolve) => {
+      markKnown = resolve;
     });
-
-    // Subscribe to changes
-    this.unsubscribeNetInfo = NetInfo.addEventListener((state) => {
-      this.setOnline(state.isConnected ?? true);
-    });
-  }
-
-  private initializeWithPolling(): void {
-    // Initial check
-    this.checkConnectivity();
-
-    // Poll periodically
-    this.checkIntervalId = setInterval(() => {
-      this.checkConnectivity();
-    }, this.checkIntervalMs);
-  }
-
-  private async checkConnectivity(): Promise<void> {
     try {
-      // Simple fetch-based connectivity check
-      // We use a small, fast endpoint
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      try {
-        await fetch('https://one.one.one.one/cdn-cgi/trace', {
-          method: 'HEAD',
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timeoutId);
-      }
-      this.setOnline(true);
+      // Only `isConnected` is used: `isInternetReachable` is probed against a public URL.
+      NetInfo.fetch()
+        .then((state) => this.setOnline(state.isConnected !== false))
+        .catch(() => undefined)
+        .finally(markKnown);
+      this.unsubscribeNetInfo = NetInfo.addEventListener((state) => {
+        this.setOnline(state.isConnected !== false);
+        markKnown();
+      });
+      this.known = known;
     } catch {
-      this.setOnline(false);
+      // A broken NetInfo install must not break telemetry: stay online.
     }
   }
 
   private setOnline(isOnline: boolean): void {
-    if (this._isOnline !== isOnline) {
+    if (!this.disposed && this._isOnline !== isOnline) {
       this._isOnline = isOnline;
       this.notifySubscribers();
     }

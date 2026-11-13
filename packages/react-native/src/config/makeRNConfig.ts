@@ -51,6 +51,10 @@ function resolveAppBundleId(
 /**
  * Builds transports. FetchTransport is always added when url is provided.
  * User can enable offline and console via enableTransports.
+ *
+ * At most one OfflineTransport is kept. The first one in `config.transports`
+ * wins over `enableTransports.offline`, so its options apply; extra ones are
+ * disposed.
  */
 function buildTransports(config: ReactNativeConfig): Config['transports'] {
   const { enableTransports = { offline: false, console: false } } = config;
@@ -59,14 +63,27 @@ function buildTransports(config: ReactNativeConfig): Config['transports'] {
     throw new Error('url is required. Provide the Faro collector URL.');
   }
 
+  const extraTransports = config.transports ?? [];
+  const [suppliedOffline, ...extraOffline] = Array.from(
+    new Set(extraTransports.filter((transport): transport is OfflineTransport => transport instanceof OfflineTransport))
+  );
+  const warn = (message: string) => (config.unpatchedConsole ?? defaultUnpatchedConsole).warn(`Faro: ${message}`);
+
+  if (suppliedOffline && enableTransports.offline) {
+    warn('enableTransports.offline is ignored: using the OfflineTransport from transports');
+  }
+  if (extraOffline.length > 0) {
+    warn('Only one OfflineTransport is used; the others in transports were disposed');
+    extraOffline.forEach((transport) => transport.dispose());
+  }
+
   const builtTransports: Config['transports'] = [];
 
-  if (enableTransports.offline) {
-    builtTransports.push(
-      new OfflineTransport({
-        maxCacheDurationMs: DEFAULT_OFFLINE_CACHE_MS,
-      })
-    );
+  const offline =
+    suppliedOffline ??
+    (enableTransports.offline ? new OfflineTransport({ maxCacheDurationMs: DEFAULT_OFFLINE_CACHE_MS }) : undefined);
+  if (offline) {
+    builtTransports.push(offline);
   }
 
   builtTransports.push(
@@ -80,8 +97,13 @@ function buildTransports(config: ReactNativeConfig): Config['transports'] {
     builtTransports.push(new ConsoleTransport({ level: LogLevel.DEBUG }));
   }
 
-  const extraTransports = config.transports ?? [];
-  return [...builtTransports, ...extraTransports];
+  const transports = [
+    ...builtTransports,
+    ...extraTransports.filter((transport) => !(transport instanceof OfflineTransport)),
+  ];
+  // Before core initialization, so sends made while instrumentations initialize can be stored.
+  offline?.connectTransportList(transports);
+  return transports;
 }
 
 /**

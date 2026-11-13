@@ -33,7 +33,7 @@ export type ReactNativeSessionTrackingConfig = Omit<
  * FetchTransport is always instantiated when url is provided.
  */
 export interface EnableTransportsConfig {
-  /** Enable OfflineTransport for caching when offline (default: false) */
+  /** Enable OfflineTransport, which stores telemetry that could not be sent and sends it later (default: false) */
   offline?: boolean;
   /** Enable ConsoleTransport to log telemetry to Metro console for debugging (default: false) */
   console?: boolean;
