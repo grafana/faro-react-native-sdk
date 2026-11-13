@@ -1769,12 +1769,12 @@ __metadata:
   linkType: hard
 
 "@grafana/faro-core@npm:^2.8.2":
-  version: 2.13.0
-  resolution: "@grafana/faro-core@npm:2.13.0"
+  version: 2.14.0
+  resolution: "@grafana/faro-core@npm:2.14.0"
   dependencies:
     "@opentelemetry/api": "npm:^1.9.0"
     "@opentelemetry/otlp-transformer": "npm:^0.223.0"
-  checksum: 10c0/b9a69e3f89f708a6133d4a6bb4f38a96f9a63a0e59a2cf913d3a8a3c60592f9332955da138b12e983cd67cf4224f3e8966032748bfe92c36d79a83dda160083f
+  checksum: 10c0/34fd3d209ae88f5601bc39fffa0ef3e41ee795ccaff05de420985ce08b3a72361b176065c8477f41b2bead0fb7991725683121ac8d335d221f60a2591c10ef02
   languageName: node
   linkType: hard
 
@@ -3426,9 +3426,9 @@ __metadata:
   linkType: hard
 
 "@opentelemetry/semantic-conventions@npm:^1.29.0, @opentelemetry/semantic-conventions@npm:^1.43.0":
-  version: 1.44.0
-  resolution: "@opentelemetry/semantic-conventions@npm:1.44.0"
-  checksum: 10c0/38ce72dfe254e16177903cc42475eecdfd312d20487133a84d1ab8d97c452acabb186e0069ddcd9a8ba1f65d76535dfec670ce059ef4265f8f29fc395b0db5f0
+  version: 1.45.0
+  resolution: "@opentelemetry/semantic-conventions@npm:1.45.0"
+  checksum: 10c0/0b29d18a617f1eda2b57677f3363f856af6cdae68df2a24e958c17a4b0454ba3edc654e43b11dab102e624430557c69869af46521beaa39ae6c04f311bbd9390
   languageName: node
   linkType: hard
 
@@ -13465,10 +13465,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"re2js@npm:2.8.8":
-  version: 2.8.8
-  resolution: "re2js@npm:2.8.8"
-  checksum: 10c0/bf1192fb0f1ff065b1af4d69e77dc51d6f4ec439bf4fefb6c03bf2dbcb46f01fb91271b3fc401241d303522ba57f45150734b6531a71692df50893c63e8a41d5
+"re2js@npm:2.10.0":
+  version: 2.10.0
+  resolution: "re2js@npm:2.10.0"
+  checksum: 10c0/8e2be62abc851ba18cbb71f5cd45e79a5efd9b92991e8c9801d3520b2c98e5c597a04765fa857ce225520eaa60b0c555fcfb00ec07459a0dbbe5e8524b947121
   languageName: node
   linkType: hard
 
