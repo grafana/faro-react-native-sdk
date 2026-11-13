@@ -1506,6 +1506,28 @@ describe('storing on failed live sends', () => {
     expect(cachedMessages()).toEqual([['retry me']]);
   });
 
+  it('clearCache() drops the items of a request still running, and later failed sends are stored again', async () => {
+    const offline = offlineTransport();
+    const fetchTransport = new FetchTransport({ url: COLLECTOR_URL });
+    initCore([offline, fetchTransport]);
+    await flush();
+    let fail: () => void = () => {};
+    fetchMock.mockImplementationOnce(() => new Promise((resolve) => (fail = () => resolve(response(503)))));
+
+    const running = fetchTransport.send([log('before clear')]);
+    await flush();
+    await offline.clearCache();
+    fail();
+    await running;
+    await flush();
+    expect(cachedPayloads()).toEqual([]);
+
+    fetchMock.mockImplementationOnce(() => response(503));
+    await fetchTransport.send([log('after clear')]);
+    await flush();
+    expect(cachedMessages()).toEqual([['after clear']]);
+  });
+
   it('still writes items handed over just before dispose(), including ones queued behind a write', async () => {
     const offline = new OfflineTransport();
     const fetchTransport = new FetchTransport({ url: COLLECTOR_URL });

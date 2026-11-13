@@ -352,9 +352,16 @@ export class OfflineTransport extends BaseTransport {
   }
 
   /**
-   * Clear all cached payloads, including items waiting to be stored.
+   * Clear all cached payloads, including items waiting to be stored and items
+   * of requests still running.
    */
   async clearCache(): Promise<void> {
+    // Requests already running would store their items after the clear if they fail.
+    this.attached.forEach((store, transport) => {
+      if (transport.getOfflineStore() === store) {
+        this.attachStore(transport, transport.getDestinationKey());
+      }
+    });
     this.writeQueue = [];
     await this.waitForWrites();
     await this.cache.clear();
@@ -417,15 +424,20 @@ export class OfflineTransport extends BaseTransport {
       if (current?.isBound()) {
         continue;
       }
-      const store: FetchTransportOfflineStore = {
-        isOffline: () => !this.disposed && !this.connectivityService.isOnline,
-        store: (items) => this.store(items, [key]),
-        delivered: () => this.onLiveDelivered(),
-        isBound: () => this.isBound(),
-      };
-      transport.setOfflineStore(store);
-      this.attached.set(transport, store);
+      this.attachStore(transport, key);
     }
+  }
+
+  /** Attaches a new store object: a send that read the previous one doesn't hand its items to this one. */
+  private attachStore(transport: FetchTransport, key: string): void {
+    const store: FetchTransportOfflineStore = {
+      isOffline: () => !this.disposed && !this.connectivityService.isOnline,
+      store: (items) => this.store(items, [key]),
+      delivered: () => this.onLiveDelivered(),
+      isBound: () => this.isBound(),
+    };
+    transport.setOfflineStore(store);
+    this.attached.set(transport, store);
   }
 
   /**
