@@ -24,6 +24,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Device and network values that change while the app runs.
  *
+ * Each group (battery, thermal, network) starts only when the app asks for it, so a disabled
+ * group registers no listener and reads nothing from the system.
+ *
  * Battery, Battery Saver, thermal state and connection type come from system listeners that
  * update cached values. The connection subtype and the carrier name have no permission-free
  * listener: the listeners need the `READ_PHONE_STATE` runtime permission from API 31, and this SDK
@@ -46,8 +49,22 @@ internal object FaroDynamicDeviceState {
 
     private const val TELEPHONY_REFRESH_INTERVAL_MS = 5000L
 
+    private class Groups(val battery: Boolean, val thermal: Boolean, val network: Boolean)
+
     private val lock = Any()
-    private var started = false
+
+    // One entry per React Native runtime. A collector runs while any runtime wants its group.
+    private val owners = mutableMapOf<Any, Groups>()
+    private var applicationContext: Context? = null
+    @Volatile private var batteryStarted = false
+    @Volatile private var thermalStarted = false
+    @Volatile private var networkStarted = false
+
+    private var batteryReceiver: BroadcastReceiver? = null
+    private var thermalListener: Any? = null
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var connectionReceiver: BroadcastReceiver? = null
 
     private val telephonyRefreshQueued = AtomicBoolean(false)
     @Volatile private var telephonyRefreshAgain = false
@@ -70,66 +87,138 @@ internal object FaroDynamicDeviceState {
     @Volatile private var connectionSubtype: String? = null
     @Volatile private var carrierName: String? = null
 
-    // Only read and written on the connectivity callback thread, so the default network's loss is
-    // not confused with the loss of a network it replaced.
+    // Written on the connectivity callback thread, and cleared once that callback is unregistered,
+    // so the default network's loss is not confused with the loss of a network it replaced.
     private var defaultNetwork: Network? = null
 
-    /** The cached values. Starts the listeners once and keeps the subtype and carrier fresh. */
+    /** The cached values of the started groups. Keeps the subtype and carrier fresh. */
     fun current(context: Context?): Map<String, Any> {
         if (context == null) {
             return emptyMap()
         }
 
         val applicationContext = context.applicationContext ?: context
-        start(applicationContext)
-
         val state = mutableMapOf<String, Any>()
-        batteryLevel?.let { state[BATTERY_LEVEL_KEY] = it }
-        isCharging?.let { state[IS_CHARGING_KEY] = it }
-        lowPowerMode?.let { state[LOW_POWER_MODE_KEY] = it }
-        thermalState?.let { state[THERMAL_STATE_KEY] = it }
-        val type = connectionType
-        type?.let { state[CONNECTION_TYPE_KEY] = it }
-        if (type == "cell") {
-            connectionSubtype?.let { state[CONNECTION_SUBTYPE_KEY] = it }
+        if (batteryStarted) {
+            batteryLevel?.let { state[BATTERY_LEVEL_KEY] = it }
+            isCharging?.let { state[IS_CHARGING_KEY] = it }
+            lowPowerMode?.let { state[LOW_POWER_MODE_KEY] = it }
         }
-        carrierName?.let { state[CARRIER_NAME_KEY] = it }
-        requestTelephonyRefresh(applicationContext, force = false)
+        if (thermalStarted) {
+            thermalState?.let { state[THERMAL_STATE_KEY] = it }
+        }
+        if (networkStarted) {
+            val type = connectionType
+            type?.let { state[CONNECTION_TYPE_KEY] = it }
+            if (type == "cell") {
+                connectionSubtype?.let { state[CONNECTION_SUBTYPE_KEY] = it }
+            }
+            carrierName?.let { state[CARRIER_NAME_KEY] = it }
+            requestTelephonyRefresh(applicationContext, force = false)
+        }
         return state
     }
 
-    /** Registers the listeners once and seeds the cache from the current state. */
-    fun start(context: Context) {
+    /**
+     * Records the groups a React Native runtime wants and starts the listeners that no runtime had
+     * asked for yet. A group that no runtime wants is stopped, and a group that is off is never
+     * touched.
+     */
+    fun start(owner: Any, context: Context, battery: Boolean, thermal: Boolean, network: Boolean) {
         synchronized(lock) {
-            if (started) {
-                return
+            applicationContext = context.applicationContext ?: context
+            owners[owner] = Groups(battery, thermal, network)
+            reconcile()
+        }
+    }
+
+    /** Removes a runtime that was torn down and stops every group that no other runtime wants. */
+    fun detach(owner: Any) {
+        synchronized(lock) {
+            if (owners.remove(owner) != null) {
+                reconcile()
             }
-            started = true
+        }
+    }
+
+    // The caller holds `lock`.
+    private fun reconcile() {
+        val context = applicationContext ?: return
+        val wanted = owners.values
+
+        if (wanted.any { it.battery }) {
+            if (!batteryStarted) {
+                batteryStarted = true
+                startBatteryListener(context)
+            }
+        } else if (batteryStarted) {
+            batteryStarted = false
+            stopBatteryListener(context)
         }
 
+        if (wanted.any { it.thermal }) {
+            if (!thermalStarted) {
+                thermalStarted = true
+                startThermalListener(context)
+            }
+        } else if (thermalStarted) {
+            thermalStarted = false
+            stopThermalListener(context)
+        }
+
+        if (wanted.any { it.network }) {
+            if (!networkStarted) {
+                networkStarted = true
+                startConnectionListener(context)
+                requestTelephonyRefresh(context, force = true)
+            }
+        } else if (networkStarted) {
+            networkStarted = false
+            stopConnectionListener(context)
+        }
+    }
+
+    private fun startBatteryListener(context: Context) {
         try {
             val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
             filter.addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(receiverContext: Context?, intent: Intent?) {
-                    // Only the battery broadcast has battery extras. Reading them from the
-                    // Battery Saver broadcast would clear the level and the charging state.
-                    if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
-                        readBattery(intent)
+                    // The check and the writes share one lock hold, so a stop cannot fall between them.
+                    synchronized(lock) {
+                        if (!batteryStarted) {
+                            return
+                        }
+
+                        // Only the battery broadcast has battery extras. Reading them from the
+                        // Battery Saver broadcast would clear the level and the charging state.
+                        if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
+                            readBattery(intent)
+                        }
+                        readLowPowerMode(receiverContext)
                     }
-                    readLowPowerMode(receiverContext)
                 }
             }
             // Battery changes are sticky, so registering also returns the current value.
-            readBattery(context.registerReceiver(receiver, filter))
+            val sticky = context.registerReceiver(receiver, filter)
+            batteryReceiver = receiver
+            readBattery(sticky)
             readLowPowerMode(context)
         } catch (_: RuntimeException) {
             // Battery state stays unknown and is omitted.
         }
+    }
 
-        startThermalListener(context)
-        startConnectionListener(context)
-        requestTelephonyRefresh(context, force = true)
+    private fun stopBatteryListener(context: Context) {
+        try {
+            batteryReceiver?.let { context.unregisterReceiver(it) }
+        } catch (_: RuntimeException) {
+            // Already unregistered.
+        }
+        batteryReceiver = null
+        batteryLevel = null
+        isCharging = null
+        lowPowerMode = null
     }
 
     /**
@@ -165,8 +254,15 @@ internal object FaroDynamicDeviceState {
     }
 
     private fun refreshTelephony(context: Context) {
-        connectionSubtype = if (connectionType == "cell") readConnectionSubtype(context) else null
-        carrierName = readCarrierName(context)
+        val subtype = if (connectionType == "cell") readConnectionSubtype(context) else null
+        val carrier = readCarrierName(context)
+        // A refresh that was running when the network group stopped must not bring the cache back.
+        synchronized(lock) {
+            if (networkStarted) {
+                connectionSubtype = subtype
+                carrierName = carrier
+            }
+        }
     }
 
     private fun readBattery(intent: Intent?) {
@@ -200,59 +296,115 @@ internal object FaroDynamicDeviceState {
         try {
             val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
             thermalState = thermalStateName(powerManager.currentThermalStatus)
-            powerManager.addThermalStatusListener(context.mainExecutor) { status ->
-                thermalState = thermalStateName(status)
+            val listener = PowerManager.OnThermalStatusChangedListener { status ->
+                synchronized(lock) {
+                    if (thermalStarted) {
+                        thermalState = thermalStateName(status)
+                    }
+                }
             }
+            powerManager.addThermalStatusListener(context.mainExecutor, listener)
+            thermalListener = listener
         } catch (_: RuntimeException) {
             // Unknown, so omitted.
         }
+    }
+
+    private fun stopThermalListener(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                (thermalListener as? PowerManager.OnThermalStatusChangedListener)?.let {
+                    powerManager?.removeThermalStatusListener(it)
+                }
+            } catch (_: RuntimeException) {
+                // Already removed.
+            }
+        }
+        thermalListener = null
+        thermalState = null
     }
 
     private fun startConnectionListener(context: Context) {
         try {
             val connectivityManager =
                 context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+            this.connectivityManager = connectivityManager
 
             // Seeds the cache. The listeners below only report changes after this.
             readConnection(connectivityManager)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                connectivityManager.registerDefaultNetworkCallback(
-                    object : ConnectivityManager.NetworkCallback() {
-                        override fun onCapabilitiesChanged(
-                            network: Network,
-                            capabilities: NetworkCapabilities,
-                        ) {
+                val callback = object : ConnectivityManager.NetworkCallback() {
+                    override fun onCapabilitiesChanged(
+                        network: Network,
+                        capabilities: NetworkCapabilities,
+                    ) {
+                        synchronized(lock) {
+                            if (!networkStarted) {
+                                return
+                            }
+
                             defaultNetwork = network
                             applyCapabilities(capabilities)
-                            requestTelephonyRefresh(context, force = true)
                         }
+                        requestTelephonyRefresh(context, force = true)
+                    }
 
-                        override fun onLost(network: Network) {
-                            if (network == defaultNetwork) {
+                    override fun onLost(network: Network) {
+                        val lost = synchronized(lock) {
+                            if (networkStarted && network == defaultNetwork) {
                                 defaultNetwork = null
                                 connectionType = "unavailable"
-                                requestTelephonyRefresh(context, force = true)
+                                true
+                            } else {
+                                false
                             }
                         }
-                    },
-                )
-            } else {
-                // Before API 24 there is no default network callback.
-                @Suppress("DEPRECATION")
-                context.registerReceiver(
-                    object : BroadcastReceiver() {
-                        override fun onReceive(receiverContext: Context?, intent: Intent?) {
-                            readConnection(connectivityManager)
+                        if (lost) {
                             requestTelephonyRefresh(context, force = true)
                         }
-                    },
-                    IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION),
-                )
+                    }
+                }
+                connectivityManager.registerDefaultNetworkCallback(callback)
+                networkCallback = callback
+            } else {
+                // Before API 24 there is no default network callback.
+                val receiver = object : BroadcastReceiver() {
+                    override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                        synchronized(lock) {
+                            if (!networkStarted) {
+                                return
+                            }
+
+                            readConnection(connectivityManager)
+                        }
+                        requestTelephonyRefresh(context, force = true)
+                    }
+                }
+                @Suppress("DEPRECATION")
+                context.registerReceiver(receiver, IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION))
+                connectionReceiver = receiver
             }
         } catch (_: RuntimeException) {
             // Without ACCESS_NETWORK_STATE the connection stays unknown and is omitted.
         }
+    }
+
+    private fun stopConnectionListener(context: Context) {
+        try {
+            networkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) }
+            connectionReceiver?.let { context.unregisterReceiver(it) }
+        } catch (_: RuntimeException) {
+            // Already unregistered.
+        }
+        networkCallback = null
+        connectionReceiver = null
+        connectivityManager = null
+        defaultNetwork = null
+        connectionType = null
+        connectionSubtype = null
+        carrierName = null
     }
 
     @VisibleForTesting
@@ -341,7 +493,16 @@ internal object FaroDynamicDeviceState {
     @VisibleForTesting
     fun resetForTests() {
         synchronized(lock) {
-            started = false
+            owners.clear()
+            applicationContext = null
+            batteryStarted = false
+            thermalStarted = false
+            networkStarted = false
+            batteryReceiver = null
+            thermalListener = null
+            connectivityManager = null
+            networkCallback = null
+            connectionReceiver = null
         }
         batteryLevel = null
         isCharging = null

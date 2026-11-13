@@ -1094,6 +1094,48 @@ describe('sessionAttributes', () => {
 
         expect(attributes.device_carrier).toBe('T-Mobile');
       });
+
+      describe('with a group turned off', () => {
+        beforeEach(() => {
+          mockDevice('android');
+          NativeModules.FaroReactNativeModule = {
+            ...sessionNativeModule,
+            isConnectedToPower: jest.fn().mockResolvedValue(true),
+          };
+          (DeviceInfo.getPowerState as jest.Mock).mockResolvedValue({
+            batteryLevel: 0.8,
+            batteryState: 'charging',
+            lowPowerMode: false,
+          });
+          (DeviceInfo.getCarrier as jest.Mock).mockResolvedValue('Verizon');
+        });
+
+        it('reads no battery value and omits the battery attributes when battery is off', async () => {
+          const attributes = await getSessionAttributes({ battery: false, thermal: true, network: true });
+
+          expect(DeviceInfo.getPowerState).not.toHaveBeenCalled();
+          expect(NativeModules.FaroReactNativeModule.isConnectedToPower).not.toHaveBeenCalled();
+          expect(attributes.device_battery_level).toBeUndefined();
+          expect(attributes.device_is_charging).toBeUndefined();
+          expect(attributes.device_low_power_mode).toBeUndefined();
+          expect(attributes.device_carrier).toBe('Verizon');
+        });
+
+        it('reads no carrier and omits the carrier attribute when network is off', async () => {
+          const attributes = await getSessionAttributes({ battery: true, thermal: true, network: false });
+
+          expect(DeviceInfo.getCarrier).not.toHaveBeenCalled();
+          expect(attributes.device_carrier).toBeUndefined();
+          expect(attributes.device_battery_level).toBe('80');
+        });
+
+        it('keeps the battery attributes when only thermal is off', async () => {
+          const attributes = await getSessionAttributes({ battery: true, thermal: false, network: true });
+
+          expect(attributes.device_battery_level).toBe('80');
+          expect(attributes.device_carrier).toBe('Verizon');
+        });
+      });
     });
 
     it('omits process identity when the native bridge is unavailable', () => {

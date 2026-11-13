@@ -31,6 +31,8 @@ class FaroDynamicDeviceStateTest {
 
     private val queuedRefreshes = mutableListOf<Runnable>()
 
+    private val runtime = Any()
+
     // The state is a singleton that registers its listeners once, on the first context it sees.
     @Before
     fun resetState() {
@@ -128,6 +130,7 @@ class FaroDynamicDeviceStateTest {
     @Test
     fun current_followsBatteryBroadcastsWithoutRereadingTheSystem() {
         sendBattery(level = 80, plugged = 0)
+        startAllGroups()
         assertEquals(80, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
         assertEquals(false, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.IS_CHARGING_KEY])
 
@@ -141,6 +144,7 @@ class FaroDynamicDeviceStateTest {
     @Test
     fun current_keepsTheBatteryStateWhenBatterySaverChanges() {
         sendBattery(level = 64, plugged = BatteryManager.BATTERY_PLUGGED_AC)
+        startAllGroups()
         assertEquals(64, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
 
         context.sendBroadcast(Intent(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
@@ -152,11 +156,153 @@ class FaroDynamicDeviceStateTest {
     }
 
     @Test
+    fun start_registersNothingForAGroupThatIsOff() {
+        sendBattery(level = 80, plugged = 0)
+        shadowOf(application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+            .setActiveNetworkInfo(null)
+
+        FaroDynamicDeviceState.start(runtime, context, battery = false, thermal = false, network = false)
+
+        assertTrue(FaroDynamicDeviceState.current(context).isEmpty())
+        assertTrue(shadowOf(application).registeredReceivers.isEmpty())
+    }
+
+    @Test
+    fun start_collectsOnlyTheBatteryWhenThermalAndNetworkAreOff() {
+        sendBattery(level = 80, plugged = 0)
+
+        FaroDynamicDeviceState.start(runtime, context, battery = true, thermal = false, network = false)
+
+        val state = FaroDynamicDeviceState.current(context)
+        assertEquals(80, state[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
+        assertFalse(state.containsKey(FaroDynamicDeviceState.THERMAL_STATE_KEY))
+        assertFalse(state.containsKey(FaroDynamicDeviceState.CONNECTION_TYPE_KEY))
+        assertFalse(state.containsKey(FaroDynamicDeviceState.CARRIER_NAME_KEY))
+    }
+
+    @Test
+    fun start_leavesTheBatteryUnregisteredWhenOnlyTheNetworkIsOn() {
+        sendBattery(level = 80, plugged = 0)
+
+        FaroDynamicDeviceState.start(runtime, context, battery = false, thermal = false, network = true)
+
+        val state = FaroDynamicDeviceState.current(context)
+        assertFalse(state.containsKey(FaroDynamicDeviceState.BATTERY_LEVEL_KEY))
+        assertFalse(state.containsKey(FaroDynamicDeviceState.IS_CHARGING_KEY))
+        assertFalse(state.containsKey(FaroDynamicDeviceState.LOW_POWER_MODE_KEY))
+    }
+
+    @Test
+    fun start_startsAGroupOnlyOnce() {
+        sendBattery(level = 80, plugged = 0)
+
+        FaroDynamicDeviceState.start(runtime, context, battery = true, thermal = false, network = false)
+        val registered = shadowOf(application).registeredReceivers.size
+        FaroDynamicDeviceState.start(runtime, context, battery = true, thermal = false, network = false)
+
+        assertEquals(registered, shadowOf(application).registeredReceivers.size)
+    }
+
+    @Test
+    fun detach_stopsEveryGroupWhenTheLastRuntimeLeaves() {
+        sendBattery(level = 80, plugged = 0)
+        startAllGroups()
+        assertEquals(80, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
+        assertFalse(shadowOf(application).registeredReceivers.isEmpty())
+        assertFalse(networkCallbacks().isEmpty())
+
+        FaroDynamicDeviceState.detach(runtime)
+
+        assertTrue(FaroDynamicDeviceState.current(context).isEmpty())
+        assertTrue(shadowOf(application).registeredReceivers.isEmpty())
+        assertTrue(networkCallbacks().isEmpty())
+    }
+
+    @Test
+    fun detach_thenAReplacementRuntimeWithEveryGroupOff_collectsNothing() {
+        val replacement = Any()
+        sendBattery(level = 80, plugged = 0)
+        startAllGroups()
+
+        FaroDynamicDeviceState.detach(runtime)
+        FaroDynamicDeviceState.start(replacement, context, battery = false, thermal = false, network = false)
+
+        assertTrue(FaroDynamicDeviceState.current(context).isEmpty())
+        assertTrue(shadowOf(application).registeredReceivers.isEmpty())
+        assertTrue(networkCallbacks().isEmpty())
+    }
+
+    @Test
+    fun start_thenTheOldRuntimeDetaches_stopsOnlyTheGroupsTheReplacementLeavesOff() {
+        val replacement = Any()
+        sendBattery(level = 80, plugged = 0)
+        FaroDynamicDeviceState.start(runtime, context, battery = true, thermal = false, network = true)
+
+        FaroDynamicDeviceState.start(replacement, context, battery = true, thermal = false, network = false)
+        assertFalse(networkCallbacks().isEmpty())
+        FaroDynamicDeviceState.detach(runtime)
+
+        val state = FaroDynamicDeviceState.current(context)
+        assertEquals(80, state[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
+        assertFalse(state.containsKey(FaroDynamicDeviceState.CONNECTION_TYPE_KEY))
+        assertTrue(networkCallbacks().isEmpty())
+    }
+
+    @Test
+    fun detach_keepsAGroupThatAnotherRuntimeStillWants() {
+        val other = Any()
+        sendBattery(level = 80, plugged = 0)
+        FaroDynamicDeviceState.start(runtime, context, battery = true, thermal = false, network = false)
+        FaroDynamicDeviceState.start(other, context, battery = true, thermal = false, network = false)
+
+        FaroDynamicDeviceState.detach(runtime)
+        assertEquals(80, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
+
+        FaroDynamicDeviceState.detach(other)
+        assertTrue(FaroDynamicDeviceState.current(context).isEmpty())
+    }
+
+    @Test
+    fun detach_doesNotUpdateTheCacheFromABroadcastAfterwards() {
+        sendBattery(level = 80, plugged = 0)
+        FaroDynamicDeviceState.start(runtime, context, battery = true, thermal = false, network = false)
+        FaroDynamicDeviceState.detach(runtime)
+
+        sendBattery(level = 30, plugged = 0)
+        shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        assertTrue(FaroDynamicDeviceState.current(context).isEmpty())
+    }
+
+    @Test
+    fun start_afterADetach_startsTheGroupAgain() {
+        val replacement = Any()
+        sendBattery(level = 80, plugged = 0)
+        FaroDynamicDeviceState.start(runtime, context, battery = true, thermal = false, network = false)
+        FaroDynamicDeviceState.detach(runtime)
+
+        sendBattery(level = 55, plugged = 0)
+        FaroDynamicDeviceState.start(replacement, context, battery = true, thermal = false, network = false)
+
+        assertEquals(55, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
+    }
+
+    @Test
+    fun detach_ofARuntimeThatNeverStarted_changesNothing() {
+        sendBattery(level = 80, plugged = 0)
+        FaroDynamicDeviceState.start(runtime, context, battery = true, thermal = false, network = false)
+
+        FaroDynamicDeviceState.detach(Any())
+
+        assertEquals(80, FaroDynamicDeviceState.current(context)[FaroDynamicDeviceState.BATTERY_LEVEL_KEY])
+    }
+
+    @Test
     @Config(manifest = Config.NONE, sdk = [33])
     fun current_returnsTheCachedSubtypeAndCarrierAndReadsThemOffTheCallingThread() {
         prepareCellularNetwork(networkType = TelephonyManager.NETWORK_TYPE_LTE, operator = "Acme")
 
-        FaroDynamicDeviceState.start(context)
+        startAllGroups()
         val beforeRefresh = FaroDynamicDeviceState.current(context)
 
         assertEquals("cell", beforeRefresh[FaroDynamicDeviceState.CONNECTION_TYPE_KEY])
@@ -176,7 +322,7 @@ class FaroDynamicDeviceStateTest {
     fun current_queuesOneRefreshHoweverOftenItIsCalled() {
         prepareCellularNetwork(networkType = TelephonyManager.NETWORK_TYPE_LTE, operator = "Acme")
 
-        FaroDynamicDeviceState.start(context)
+        startAllGroups()
         repeat(5) { FaroDynamicDeviceState.current(context) }
 
         assertEquals(1, queuedRefreshes.size)
@@ -186,7 +332,7 @@ class FaroDynamicDeviceStateTest {
     @Config(manifest = Config.NONE, sdk = [33])
     fun current_refreshesAgainOnceTheIntervalHasPassed() {
         prepareCellularNetwork(networkType = TelephonyManager.NETWORK_TYPE_LTE, operator = "Acme")
-        FaroDynamicDeviceState.start(context)
+        startAllGroups()
         runQueuedRefreshes()
 
         FaroDynamicDeviceState.current(context)
@@ -206,7 +352,7 @@ class FaroDynamicDeviceStateTest {
             connectionType = ConnectivityManager.TYPE_WIFI,
         )
 
-        FaroDynamicDeviceState.start(context)
+        startAllGroups()
         runQueuedRefreshes()
         val state = FaroDynamicDeviceState.current(context)
 
@@ -216,6 +362,13 @@ class FaroDynamicDeviceStateTest {
     }
 
     private val application: Application get() = context as Application
+
+    private fun networkCallbacks() =
+        shadowOf(application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).networkCallbacks
+
+    private fun startAllGroups() {
+        FaroDynamicDeviceState.start(runtime, context, battery = true, thermal = true, network = true)
+    }
 
     @Suppress("DEPRECATION")
     private fun prepareCellularNetwork(
