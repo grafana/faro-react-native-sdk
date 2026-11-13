@@ -100,7 +100,7 @@
     "lerna/tar": "7.5.22",
     "markdownlint-cli/js-yaml": "5.4.3",
     "markdownlint-cli/minimatch": "11.0.1",
-    "markdownlint/re2js": "2.8.8",
+    "markdownlint/re2js": "2.10.0",
     "markdownlint-cli/smol-toml": "1.9.1",
     "markdown-it": "14.3.3",
     "brace-expansion@^1.1.7": "1.1.21",
