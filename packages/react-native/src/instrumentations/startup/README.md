@@ -55,6 +55,10 @@ The startup instrumentation captures both cold and warm starts (matches Faro Flu
 
 These are legacy timing intervals, not measurements of the first displayed app frame. Calling `destroy()` or `unpatch()` cancels pending startup measurements and removes the AppState listener.
 
+Only finite durations greater than zero and at most 60 seconds are emitted. Invalid values are dropped, not clamped. Warm intervals use `performance.now()` instead of `Date.now()`. If that clock is unavailable or throws, the warm measurement is omitted. Clock changes do not affect a native monotonic clock, but [React Native 0.70 can fall back to wall time](https://github.com/facebook/react-native/blob/v0.70.0/Libraries/Core/setUpPerformance.js) when its native clock is unavailable.
+
+The native cold-start calculation is unchanged. On iOS it still uses wall-clock timestamps, so clock adjustments during launch can affect that legacy measurement.
+
 ## Installation
 
 The native module is automatically linked via React Native autolinking. Just install dependencies and rebuild:
