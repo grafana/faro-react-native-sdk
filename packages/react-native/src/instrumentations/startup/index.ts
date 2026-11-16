@@ -6,6 +6,22 @@ import type { API } from '@grafana/faro-core';
 import type { StartupInstrumentationOptions } from './types';
 
 const { FaroReactNativeModule } = NativeModules;
+const MAX_STARTUP_DURATION_MS = 60_000;
+
+function isValidDuration(duration: unknown): duration is number {
+  return (
+    typeof duration === 'number' && Number.isFinite(duration) && duration > 0 && duration <= MAX_STARTUP_DURATION_MS
+  );
+}
+
+function getMonotonicTime(): number | undefined {
+  try {
+    const timestamp = global.performance?.now?.();
+    return Number.isFinite(timestamp) && timestamp >= 0 ? timestamp : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Measures React Native app startup time for both cold and warm starts.
@@ -81,11 +97,8 @@ export class StartupInstrumentation extends BaseInstrumentation {
 
       const appStartDuration = FaroReactNativeModule.getAppStartDuration();
 
-      if (appStartDuration === 0) {
-        this.logWarn(
-          'App startup duration is 0. This may indicate unsupported Android version (< API 24) ' +
-            'or an issue with the native module.'
-        );
+      if (!isValidDuration(appStartDuration)) {
+        this.logWarn('Native startup duration is invalid or unavailable; skipping the measurement.');
         return;
       }
 
@@ -124,8 +137,11 @@ export class StartupInstrumentation extends BaseInstrumentation {
           this.warmStartEligible = true;
         }
       } else if (this.warmStartEligible) {
-        const resumeTimestamp = Date.now();
         this.warmStartEligible = false;
+        const resumeTimestamp = getMonotonicTime();
+        if (resumeTimestamp === undefined) {
+          return;
+        }
         const generation = this.warmStartGeneration;
 
         this.warmStartFrame = requestAnimationFrame(() => {
@@ -133,8 +149,12 @@ export class StartupInstrumentation extends BaseInstrumentation {
             return;
           }
           this.warmStartFrame = undefined;
-          const appStartDuration = Date.now() - resumeTimestamp;
-          if (appStartDuration > 0) {
+          const endTimestamp = getMonotonicTime();
+          if (endTimestamp === undefined) {
+            return;
+          }
+          const appStartDuration = endTimestamp - resumeTimestamp;
+          if (isValidDuration(appStartDuration)) {
             this.api.pushMeasurement(
               {
                 type: 'app_startup',

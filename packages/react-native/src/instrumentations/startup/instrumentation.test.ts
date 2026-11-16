@@ -64,6 +64,39 @@ describe('StartupInstrumentation', () => {
     callbacks.forEach((callback) => callback(16));
   }
 
+  it.each([NaN, Infinity, -Infinity, undefined, null, '120', {}])(
+    'drops an invalid native duration: %p',
+    (duration) => {
+      NativeModules['FaroReactNativeModule'].getAppStartDuration.mockReturnValue(duration);
+      initialize();
+      jest.advanceTimersByTime(100);
+
+      expect(transport.items).toHaveLength(0);
+      expect(jest.getTimerCount()).toBe(0);
+    }
+  );
+
+  it.each([-1, 60_000.001])('drops an out-of-range cold-start duration of %s ms', (duration) => {
+    NativeModules['FaroReactNativeModule'].getAppStartDuration.mockReturnValue(duration);
+    initialize();
+    jest.advanceTimersByTime(100);
+
+    expect(transport.items).toHaveLength(0);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it.each([0.001, 60_000])('preserves a valid cold-start duration of %s ms', (duration) => {
+    NativeModules['FaroReactNativeModule'].getAppStartDuration.mockReturnValue(duration);
+    initialize();
+    jest.advanceTimersByTime(100);
+
+    expect(transport.items).toHaveLength(1);
+    expect(transport.items[0]?.payload).toMatchObject({
+      type: 'app_startup',
+      values: { appStartDuration: duration, coldStart: 1 },
+    });
+  });
+
   it('does not count an inactive interruption as a warm start', () => {
     initialize();
     changeState('inactive');
@@ -71,6 +104,118 @@ describe('StartupInstrumentation', () => {
     drawFrame();
 
     expect(transport.items).toHaveLength(0);
+  });
+
+  it('drops a warm start longer than a minute and allows the next return', () => {
+    initialize();
+    changeState('background');
+    changeState('active');
+    jest.advanceTimersByTime(60_001);
+    const frame = Array.from(frames.values())[0];
+    frames.clear();
+    frame?.(60_001);
+
+    expect(transport.items).toHaveLength(0);
+    changeState('background');
+    changeState('active');
+    drawFrame();
+    expect(transport.items).toHaveLength(1);
+    expect(transport.items[0]?.payload).toMatchObject({ values: { appStartDuration: 16, coldStart: 0 } });
+  });
+
+  it('preserves a warm start of exactly one minute', () => {
+    initialize();
+    changeState('background');
+    changeState('active');
+    jest.advanceTimersByTime(60_000);
+    const frame = Array.from(frames.values())[0];
+    frames.clear();
+    frame?.(60_000);
+
+    expect(transport.items).toHaveLength(1);
+    expect(transport.items[0]?.payload).toMatchObject({ values: { appStartDuration: 60_000, coldStart: 0 } });
+  });
+
+  it.each([-3_600_000, 3_600_000])('ignores a wall-clock adjustment of %s ms during a warm start', (adjustment) => {
+    initialize();
+    changeState('background');
+    changeState('active');
+    jest.setSystemTime(Date.now() + adjustment);
+    drawFrame();
+
+    expect(transport.items).toHaveLength(1);
+    expect(transport.items[0]?.payload).toMatchObject({ values: { appStartDuration: 16, coldStart: 0 } });
+  });
+
+  it('does not queue a return when the monotonic clock is unavailable', () => {
+    initialize();
+    const clock = jest.spyOn(performance, 'now').mockImplementationOnce(() => {
+      throw new Error('clock unavailable');
+    });
+    changeState('background');
+
+    expect(() => changeState('active')).not.toThrow();
+    expect(frames.size).toBe(0);
+    expect(transport.items).toHaveLength(0);
+    clock.mockRestore();
+    changeState('active');
+    expect(frames.size).toBe(0);
+    changeState('background');
+    changeState('active');
+    drawFrame();
+    expect(transport.items).toHaveLength(1);
+  });
+
+  it('drops a return if reading its end time fails', () => {
+    initialize();
+    changeState('background');
+    changeState('active');
+    jest.spyOn(performance, 'now').mockImplementationOnce(() => {
+      throw new Error('clock unavailable');
+    });
+
+    expect(drawFrame).not.toThrow();
+    expect(transport.items).toHaveLength(0);
+    expect(frames.size).toBe(0);
+  });
+
+  it.each([NaN, Infinity, -1])('does not queue a return with an invalid start timestamp: %s', (timestamp) => {
+    initialize();
+    jest.spyOn(performance, 'now').mockReturnValueOnce(timestamp);
+    changeState('background');
+    changeState('active');
+
+    expect(frames.size).toBe(0);
+    expect(transport.items).toHaveLength(0);
+  });
+
+  it.each([NaN, Infinity, -1, 5])('drops an invalid or backwards end timestamp: %s', (timestamp) => {
+    initialize();
+    jest.spyOn(performance, 'now').mockReturnValueOnce(10).mockReturnValueOnce(timestamp);
+    changeState('background');
+    changeState('active');
+    drawFrame();
+
+    expect(transport.items).toHaveLength(0);
+    expect(frames.size).toBe(0);
+  });
+
+  it('does not fall back to the wall clock if performance is missing', () => {
+    initialize();
+    const descriptor = Object.getOwnPropertyDescriptor(global, 'performance');
+    try {
+      Object.defineProperty(global, 'performance', { configurable: true, value: undefined });
+      changeState('background');
+      expect(() => changeState('active')).not.toThrow();
+      expect(frames.size).toBe(0);
+      expect(transport.items).toHaveLength(0);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(global, 'performance', descriptor);
+      } else {
+        Reflect.deleteProperty(global, 'performance');
+      }
+    }
   });
 
   it.each<AppStateStatus>(['background', 'inactive'])('discards a pending warm start on %s', (state) => {
