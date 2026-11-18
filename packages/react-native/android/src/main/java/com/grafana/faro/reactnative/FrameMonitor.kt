@@ -30,6 +30,13 @@ object FrameMonitor {
 
     data class FrozenFrameMetrics(val count: Int, val durationMs: Double)
 
+    data class FrameMetrics(
+        val refreshRate: Double,
+        val slowFrames: Int,
+        val frozenFrames: Int,
+        val frozenDurationMs: Double
+    )
+
     // Configuration
     private var targetFps: Double = DEFAULT_TARGET_FPS
     private var frozenFrameThresholdNs: Long =
@@ -52,6 +59,7 @@ object FrameMonitor {
     private val slowFrameEventMinDurationNs: Long = 50 * NANOSECONDS_IN_MILLISECOND
 
     // Callbacks
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var frameCallback: Choreographer.FrameCallback? = null
     private var onSlowFrames: ((Int) -> Unit)? = null
     private var onFrozenFrame: ((Int, Double) -> Unit)? = null
@@ -91,30 +99,30 @@ object FrameMonitor {
      * Start frame monitoring.
      */
     fun start() {
-        if (isMonitoring.get()) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN) return
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+        // Keep registration, removal and frame callbacks on the same queue.
+        mainHandler.post {
+            if (isMonitoring.get()) return@post
             isMonitoring.set(true)
             lastFrameTimeNanos = 0
             lastRefreshRateEmitTimeMs = 0
             slowFrameEventCount.set(0)
-            frozenFrameCount = 0
-            frozenFrameDurationMs = 0.0
+            getAndResetFrozenMetrics()
             inSlowFrameEvent = false
             slowFrameEventStartTimeNanos = 0
 
-            frameCallback = object : Choreographer.FrameCallback {
+            val callback = object : Choreographer.FrameCallback {
                 override fun doFrame(frameTimeNanos: Long) {
-                    if (isMonitoring.get()) {
+                    if (isMonitoring.get() && frameCallback === this) {
                         checkFrameDuration(frameTimeNanos)
                         Choreographer.getInstance().postFrameCallback(this)
                     }
                 }
             }
 
-            Handler(Looper.getMainLooper()).post {
-                Choreographer.getInstance().postFrameCallback(frameCallback!!)
-            }
+            frameCallback = callback
+            Choreographer.getInstance().postFrameCallback(callback)
         }
     }
 
@@ -122,24 +130,19 @@ object FrameMonitor {
      * Stop frame monitoring.
      */
     fun stop() {
-        isMonitoring.set(false)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN && frameCallback != null) {
-            Handler(Looper.getMainLooper()).post {
-                try {
-                    Choreographer.getInstance().removeFrameCallback(frameCallback!!)
-                } catch (_: Exception) {
-                    // Ignore errors during cleanup
+        mainHandler.post {
+            isMonitoring.set(false)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                frameCallback?.let { callback ->
+                    Choreographer.getInstance().removeFrameCallback(callback)
                 }
             }
             frameCallback = null
-        }
 
-        // Reset state
-        lastFrameTimeNanos = 0
-        slowFrameEventCount.set(0)
-        frozenFrameCount = 0
-        frozenFrameDurationMs = 0.0
+            lastFrameTimeNanos = 0
+            slowFrameEventCount.set(0)
+            getAndResetFrozenMetrics()
+        }
     }
 
     /**
@@ -147,6 +150,14 @@ object FrameMonitor {
      */
     fun getRefreshRate(): Double {
         return lastRefreshRate
+    }
+
+    fun getFrameMetrics(callback: (FrameMetrics) -> Unit) {
+        // A poll must not overtake a queued stop or restart and drain the previous run.
+        mainHandler.post {
+            val frozen = getAndResetFrozenMetrics()
+            callback(FrameMetrics(lastRefreshRate, getAndResetSlowFrames(), frozen.count, frozen.durationMs))
+        }
     }
 
     /**
