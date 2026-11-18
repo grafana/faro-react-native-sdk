@@ -1,6 +1,7 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
+import type { API } from '@grafana/faro-core';
 
 import type { ReactNativeConfig } from '../../config/types';
 
@@ -20,6 +21,8 @@ const DEFAULT_NORMALIZED_REFRESH_RATE = 60;
  *
  * Monitors frame rendering performance and detects slow/frozen frames.
  * Uses native CADisplayLink (iOS) and Choreographer (Android) for accurate metrics.
+ * The native monitor has one owner per process. Remove an instance from its old
+ * Faro before registering it with another; do not share it between active Faros.
  *
  * ## Slow Frame Detection
  * Slow frames are detected using **event-based grouping** to report user-perceptible jank:
@@ -61,6 +64,9 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
   private eventEmitter: NativeEventEmitter | null = null;
   private eventSubscriptions: Array<{ remove: () => void }> = [];
+  private generation = 0;
+  private initializedApi: API | undefined;
+  private nativeModule: typeof NativeModules.FaroReactNativeModule | null = null;
 
   constructor(options: FrameMonitoringOptions = {}) {
     super();
@@ -83,6 +89,12 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   initialize(): void {
+    if (this.nativeModule !== null) {
+      if (this.initializedApi === this.api) {
+        return;
+      }
+      this.unpatch();
+    }
     this.logDebug('Initializing frame monitoring instrumentation');
 
     const nativeModule = this.getNativeModule();
@@ -90,6 +102,9 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
       this.logWarn('Native module not available for frame monitoring');
       return;
     }
+
+    this.nativeModule = nativeModule;
+    this.initializedApi = this.api;
 
     // Start native frame monitoring with configuration
     this.startNativeMonitoring(nativeModule);
@@ -127,12 +142,16 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private setupEventListeners(nativeModule: typeof NativeModules.FaroReactNativeModule): void {
+    const generation = this.generation;
     // Android: refresh rate only. Slow and frozen frames are polled (same as iOS) to avoid duplicate reports.
     if (Platform.OS === 'android' && this.refreshRateVitalsEnabled) {
       try {
         this.eventEmitter = new NativeEventEmitter(nativeModule);
 
         const refreshRateSubscription = this.eventEmitter.addListener('onRefreshRate', (...args: readonly Object[]) => {
+          if (!this.isCurrent(generation)) {
+            return;
+          }
           const [refreshRate] = args;
 
           if (typeof refreshRate !== 'number') {
@@ -152,15 +171,20 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   }
 
   private startPolling(): void {
+    const generation = this.generation;
     // Both iOS and Android use polling for slow and frozen frames (avoids duplicate reports on Android).
     this.pollingIntervalId = setInterval(() => {
-      this.pollFrameMetrics();
+      this.pollFrameMetrics(generation);
     }, this.options.refreshRatePollingInterval);
   }
 
-  private async pollFrameMetrics(): Promise<void> {
-    const nativeModule = this.getNativeModule();
-    if (!nativeModule) {
+  private isCurrent(generation: number): boolean {
+    return this.nativeModule !== null && generation === this.generation;
+  }
+
+  private async pollFrameMetrics(generation: number): Promise<void> {
+    const nativeModule = this.nativeModule;
+    if (!nativeModule || !this.isCurrent(generation)) {
       return;
     }
 
@@ -169,6 +193,9 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
       if (this.refreshRateVitalsEnabled) {
         if (typeof nativeModule.getRefreshRate === 'function') {
           const refreshRate = await nativeModule.getRefreshRate();
+          if (!this.isCurrent(generation)) {
+            return;
+          }
           if (refreshRate !== null && refreshRate > 0) {
             this.handleRefreshRate(refreshRate);
           }
@@ -176,22 +203,30 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
       }
 
       // Get full frame metrics if available
+      if (!this.isCurrent(generation)) {
+        return;
+      }
       if (typeof nativeModule.getFrameMetrics === 'function') {
         const metrics = (await nativeModule.getFrameMetrics()) as FrameMetrics | null;
+        if (!this.isCurrent(generation)) {
+          return;
+        }
         if (metrics) {
           if (this.refreshRateVitalsEnabled && metrics.refreshRate > 0) {
             this.handleRefreshRate(metrics.refreshRate);
           }
-          if (metrics.slowFrames > 0) {
+          if (this.isCurrent(generation) && metrics.slowFrames > 0) {
             this.handleSlowFrames(metrics.slowFrames);
           }
-          if (metrics.frozenFrames > 0) {
+          if (this.isCurrent(generation) && metrics.frozenFrames > 0) {
             this.handleFrozenFrame(metrics.frozenFrames, metrics.frozenDurationMs);
           }
         }
       }
     } catch (error) {
-      this.logError('Failed to poll frame metrics', error);
+      if (this.isCurrent(generation)) {
+        this.logError('Failed to poll frame metrics', error);
+      }
     }
   }
 
@@ -236,6 +271,10 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
    * Clean up resources when instrumentation is disabled.
    */
   unpatch(): void {
+    const nativeModule = this.nativeModule;
+    this.nativeModule = null;
+    this.initializedApi = undefined;
+    this.generation++;
     // Stop polling
     if (this.pollingIntervalId !== null) {
       clearInterval(this.pollingIntervalId);
@@ -243,14 +282,18 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     }
 
     // Remove event subscriptions
-    for (const subscription of this.eventSubscriptions) {
-      subscription.remove();
-    }
+    const subscriptions = this.eventSubscriptions;
     this.eventSubscriptions = [];
     this.eventEmitter = null;
+    for (const subscription of subscriptions) {
+      try {
+        subscription.remove();
+      } catch (error) {
+        this.logError('Failed to remove frame event listener', error);
+      }
+    }
 
     // Stop native monitoring
-    const nativeModule = this.getNativeModule();
     if (nativeModule && typeof nativeModule.stopFrameMonitoring === 'function') {
       try {
         nativeModule.stopFrameMonitoring();
@@ -260,5 +303,9 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     }
 
     this.logDebug('Frame monitoring instrumentation stopped');
+  }
+
+  destroy(): void {
+    this.unpatch();
   }
 }

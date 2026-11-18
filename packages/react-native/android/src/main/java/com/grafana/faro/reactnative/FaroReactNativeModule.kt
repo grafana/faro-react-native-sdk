@@ -211,14 +211,15 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun getFrameMetrics(promise: Promise) {
-        val frozenMetrics = FrameMonitor.getAndResetFrozenMetrics()
-        val metrics = WritableNativeMap().apply {
-            putDouble("refreshRate", FrameMonitor.getRefreshRate())
-            putInt("slowFrames", FrameMonitor.getAndResetSlowFrames())
-            putInt("frozenFrames", frozenMetrics.count)
-            putDouble("frozenDurationMs", frozenMetrics.durationMs)
+        FrameMonitor.getFrameMetrics { snapshot ->
+            val metrics = WritableNativeMap().apply {
+                putDouble("refreshRate", snapshot.refreshRate)
+                putInt("slowFrames", snapshot.slowFrames)
+                putInt("frozenFrames", snapshot.frozenFrames)
+                putDouble("frozenDurationMs", snapshot.frozenDurationMs)
+            }
+            promise.resolve(metrics)
         }
-        promise.resolve(metrics)
     }
 
     /**
