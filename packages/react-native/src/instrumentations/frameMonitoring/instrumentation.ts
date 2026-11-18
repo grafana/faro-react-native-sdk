@@ -1,6 +1,7 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
+import type { API } from '@grafana/faro-core';
 
 import type { ReactNativeConfig } from '../../config/types';
 
@@ -20,6 +21,8 @@ const DEFAULT_NORMALIZED_REFRESH_RATE = 60;
  *
  * Monitors frame rendering performance and detects slow/frozen frames.
  * Uses native CADisplayLink (iOS) and Choreographer (Android) for accurate metrics.
+ * The native monitor has one owner per process. Remove an instance from its old
+ * Faro before registering it with another; do not share it between active Faros.
  *
  * ## Slow Frame Detection
  * Slow frames are detected using **event-based grouping** to report user-perceptible jank:
@@ -62,6 +65,7 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   private eventEmitter: NativeEventEmitter | null = null;
   private eventSubscriptions: Array<{ remove: () => void }> = [];
   private generation = 0;
+  private initializedApi: API | undefined;
   private nativeModule: typeof NativeModules.FaroReactNativeModule | null = null;
 
   constructor(options: FrameMonitoringOptions = {}) {
@@ -86,7 +90,10 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
 
   initialize(): void {
     if (this.nativeModule !== null) {
-      return;
+      if (this.initializedApi === this.api) {
+        return;
+      }
+      this.unpatch();
     }
     this.logDebug('Initializing frame monitoring instrumentation');
 
@@ -97,6 +104,7 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     }
 
     this.nativeModule = nativeModule;
+    this.initializedApi = this.api;
 
     // Start native frame monitoring with configuration
     this.startNativeMonitoring(nativeModule);
@@ -265,6 +273,7 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
   unpatch(): void {
     const nativeModule = this.nativeModule;
     this.nativeModule = null;
+    this.initializedApi = undefined;
     this.generation++;
     // Stop polling
     if (this.pollingIntervalId !== null) {

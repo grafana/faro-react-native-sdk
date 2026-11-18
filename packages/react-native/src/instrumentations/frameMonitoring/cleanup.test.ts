@@ -151,6 +151,149 @@ describe('frame monitoring cleanup', () => {
     expect(nativeModule.getFrameMetrics).toHaveBeenCalledTimes(1);
   });
 
+  it('discards an old metrics response when reused by a different Faro instance', async () => {
+    const pending = deferred<typeof metrics>();
+    nativeModule.getFrameMetrics.mockReturnValueOnce(pending.promise);
+    const { frame, transport } = setup();
+    await jest.advanceTimersByTimeAsync(1000);
+    const nextTransport = new MockTransport();
+    const nextFaro = initializeFaro(
+      mockConfig({ isolate: true, transports: [nextTransport], instrumentations: [frame] })
+    );
+
+    pending.resolve(metrics);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(transport.items).toHaveLength(0);
+    expect(nextTransport.items).toHaveLength(0);
+    expect(nativeModule.stopFrameMonitoring).toHaveBeenCalledTimes(1);
+    expect(nativeModule.startFrameMonitoring).toHaveBeenCalledTimes(2);
+
+    nativeModule.getFrameMetrics.mockResolvedValueOnce(metrics);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(nextTransport.items).toHaveLength(2);
+    expect(transport.items).toHaveLength(0);
+    nextFaro.instrumentations.remove(frame);
+    expect(nativeModule.stopFrameMonitoring).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not drain metrics after an old refresh-rate response reaches a new Faro instance', async () => {
+    const pending = deferred<number>();
+    nativeModule.getRefreshRate.mockReturnValueOnce(pending.promise);
+    const { frame, transport } = setup(true);
+    await jest.advanceTimersByTimeAsync(1000);
+    const nextTransport = new MockTransport();
+    initializeFaro(
+      mockConfig({ isolate: true, refreshRateVitals: false, transports: [nextTransport], instrumentations: [frame] })
+    );
+    pending.resolve(60);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(transport.items).toHaveLength(0);
+    expect(nextTransport.items).toHaveLength(0);
+    expect(nativeModule.getFrameMetrics).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(nativeModule.getFrameMetrics).toHaveBeenCalledTimes(1);
+    expect(nativeModule.getRefreshRate).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])('replaces Android listeners for a new Faro (refresh rate: %s)', (refreshRateVitals) => {
+    Platform.OS = 'android';
+    const listeners: Array<(rate: number) => void> = [];
+    const remove = jest.fn();
+    jest.mocked(NativeEventEmitter).mockImplementation(
+      () =>
+        ({
+          addListener: (_name: string, listener: (rate: number) => void) => {
+            listeners.push(listener);
+            return { remove };
+          },
+        }) as unknown as NativeEventEmitter
+    );
+    const { frame, transport } = setup(true);
+    const nextTransport = new MockTransport();
+    initializeFaro(
+      mockConfig({ isolate: true, refreshRateVitals, transports: [nextTransport], instrumentations: [frame] })
+    );
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(listeners).toHaveLength(refreshRateVitals ? 2 : 1);
+    listeners[0](60);
+    expect(transport.items).toHaveLength(0);
+    expect(nextTransport.items).toHaveLength(0);
+    if (refreshRateVitals) {
+      listeners[1](60);
+      expect(nextTransport.items).toHaveLength(1);
+    }
+  });
+
+  it('ignores an old queued timer after rebinding without adding extra pollers', async () => {
+    const interval = jest.spyOn(global, 'setInterval');
+    const { frame } = setup();
+    const frameTimers = interval.mock.calls.filter(([, delay]) => delay === 1000);
+    expect(frameTimers).toHaveLength(1);
+    const callback = frameTimers[0][0] as () => void;
+    initializeFaro(mockConfig({ isolate: true, transports: [new MockTransport()], instrumentations: [frame] }));
+    frame.initialize();
+    callback();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(nativeModule.getFrameMetrics).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(nativeModule.getFrameMetrics).toHaveBeenCalledTimes(1);
+    expect(nativeModule.startFrameMonitoring).toHaveBeenCalledTimes(2);
+  });
+
+  it('cleans up the old Faro when the new one has no native module', async () => {
+    const { frame, transport } = setup();
+    NativeModules.FaroReactNativeModule = undefined;
+    const nextTransport = new MockTransport();
+    initializeFaro(mockConfig({ isolate: true, transports: [nextTransport], instrumentations: [frame] }));
+    expect(nativeModule.stopFrameMonitoring).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(nativeModule.getFrameMetrics).not.toHaveBeenCalled();
+
+    NativeModules.FaroReactNativeModule = nativeModule;
+    nativeModule.getFrameMetrics.mockResolvedValueOnce(metrics);
+    frame.initialize();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(nextTransport.items).toHaveLength(2);
+    expect(transport.items).toHaveLength(0);
+    expect(nativeModule.startFrameMonitoring).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops the old poll if delivery registers the instrumentation with another Faro', async () => {
+    nativeModule.getFrameMetrics.mockResolvedValue(metrics);
+    const { frame, transport } = setup();
+    const nextTransport = new MockTransport();
+    const originalSend = transport.send.bind(transport);
+    jest.spyOn(transport, 'send').mockImplementation((...args) => {
+      originalSend(...args);
+      initializeFaro(mockConfig({ isolate: true, transports: [nextTransport], instrumentations: [frame] }));
+    });
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(transport.items).toHaveLength(1);
+    expect(nextTransport.items).toHaveLength(0);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(nextTransport.items).toHaveLength(2);
+    expect(nativeModule.startFrameMonitoring).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the new Faro running after an orderly transfer from the old one', async () => {
+    const { frame, faro, transport } = setup();
+    faro.instrumentations.remove(frame);
+    const nextTransport = new MockTransport();
+    const nextFaro = initializeFaro(
+      mockConfig({ isolate: true, transports: [nextTransport], instrumentations: [frame] })
+    );
+    faro.instrumentations.remove(frame);
+    expect(nativeModule.stopFrameMonitoring).toHaveBeenCalledTimes(1);
+    nativeModule.getFrameMetrics.mockResolvedValueOnce(metrics);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(nextTransport.items).toHaveLength(2);
+    expect(transport.items).toHaveLength(0);
+    nextFaro.instrumentations.remove(frame);
+    expect(nativeModule.stopFrameMonitoring).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(nativeModule.getFrameMetrics).toHaveBeenCalledTimes(1);
+  });
+
   it('cleans up only once before allowing the same instance to restart', async () => {
     const { frame, faro } = setup();
     faro.instrumentations.remove(frame);
