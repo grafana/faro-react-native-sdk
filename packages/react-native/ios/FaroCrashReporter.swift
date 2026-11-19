@@ -22,6 +22,10 @@ public class FaroCrashReporter: NSObject {
     private static var crashReporter: PLCrashReporter?
     private static var isEnabled = false
     private static let stateLock = NSLock()
+    private static var latestSessionContext: [String: Any]?
+    private static var lastCustomData: Data?
+    // The report embeds this payload, so a value that is too large is dropped rather than stored.
+    private static let maxMetaBytes = 16 * 1024
     // activatedAt keeps the persisted context aligned with Android. iOS does not
     // use it to match a pending PLCrashReporter report.
     private static let sessionContextKeys = [
@@ -30,7 +34,9 @@ public class FaroCrashReporter: NSObject {
         "isSampled",
         "appVersion",
         "appRelease",
-        "appBundleId"
+        "appBundleId",
+        "meta",
+        "dynamicDeviceState"
     ]
 
     /// Signal descriptions for human-readable crash messages.
@@ -107,29 +113,66 @@ public class FaroCrashReporter: NSObject {
         }
     }
 
-    /// Records the active Faro session in PLCrashReporter's crash-safe custom data.
+    /// Records the active Faro session and the metadata of this process in PLCrashReporter's
+    /// crash-safe custom data.
     ///
     /// PLCrashReporter copies this data into the report at crash time, allowing a
-    /// recovered crash to retain its original session after the app restarts.
-    /// Keep this payload minimal because it is embedded in every crash report.
+    /// recovered crash to retain its original session and metadata after the app restarts.
+    /// The dynamic device and network values are added here and refreshed whenever they change,
+    /// so the report holds the values that were current when the process crashed.
     ///
-    /// - Parameter sessionContext: Sanitized session and app fields from JavaScript
+    /// - Parameter sessionContext: Sanitized session, app and metadata fields from JavaScript
     /// - Returns: true when the context was stored, false when it was invalid
     @objc public static func recordSessionContext(_ sessionContext: [String: Any]) -> Bool {
-        let sanitizedContext = sanitizeSessionContext(sessionContext)
-        guard sanitizedContext["sessionId"] != nil,
-              JSONSerialization.isValidJSONObject(sanitizedContext) else {
+        var sanitizedContext = sanitizeSessionContext(sessionContext)
+        sanitizedContext.removeValue(forKey: "dynamicDeviceState")
+        guard sanitizedContext["sessionId"] != nil else {
             return false
         }
 
+        let dynamicState = FaroDynamicDeviceState.current()
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard enableLocked(), let reporter = crashReporter else {
+            return false
+        }
+        FaroDynamicDeviceState.setChangeHandler { refreshDynamicState() }
+        latestSessionContext = sanitizedContext
+        return storeCustomDataLocked(reporter, dynamicState: dynamicState)
+    }
+
+    /// Stores the current dynamic device and network values with the active session context.
+    /// Runs when a cached value changes. It rewrites the custom data only when the values differ.
+    static func refreshDynamicState() {
+        let dynamicState = FaroDynamicDeviceState.current()
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard let reporter = crashReporter, latestSessionContext != nil else {
+            return
+        }
+        _ = storeCustomDataLocked(reporter, dynamicState: dynamicState)
+    }
+
+    // The caller holds `stateLock`.
+    private static func storeCustomDataLocked(_ reporter: PLCrashReporter, dynamicState: [String: Any]) -> Bool {
+        guard var context = latestSessionContext else {
+            return false
+        }
+        if dynamicState.isEmpty {
+            context.removeValue(forKey: "dynamicDeviceState")
+        } else {
+            context["dynamicDeviceState"] = dynamicState
+        }
+
+        guard JSONSerialization.isValidJSONObject(context) else {
+            return false
+        }
         do {
-            let data = try JSONSerialization.data(withJSONObject: sanitizedContext)
-            stateLock.lock()
-            defer { stateLock.unlock() }
-            guard enableLocked(), let reporter = crashReporter else {
-                return false
+            let data = try JSONSerialization.data(withJSONObject: context, options: [.sortedKeys])
+            if data != lastCustomData {
+                reporter.customData = data
+                lastCustomData = data
             }
-            reporter.customData = data
             return true
         } catch {
             print("[FaroCrashReporter] Failed to serialize crash session context: \(error)")
@@ -325,6 +368,12 @@ public class FaroCrashReporter: NSObject {
                 sanitized[key] = value
             }
         }
+        if let meta = jsonObject(context["meta"], maxBytes: maxMetaBytes) {
+            sanitized["meta"] = meta
+        }
+        if let dynamicState = context["dynamicDeviceState"] as? [String: Any], !dynamicState.isEmpty {
+            sanitized["dynamicDeviceState"] = dynamicState
+        }
 
         return sanitized
     }
@@ -343,6 +392,25 @@ public class FaroCrashReporter: NSObject {
             print("[FaroCrashReporter] Failed to decode crash session context: \(error)")
             return nil
         }
+    }
+
+    /// Reads a JSON object from a JSON string, as JavaScript sends it, or from an object that was
+    /// decoded from stored custom data. Returns nil when it is empty, too large or not an object.
+    private static func jsonObject(_ value: Any?, maxBytes: Int) -> [String: Any]? {
+        let object: [String: Any]?
+        if let string = value as? String {
+            guard string.utf8.count <= maxBytes,
+                  let data = string.data(using: .utf8) else {
+                return nil
+            }
+            object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        } else {
+            object = value as? [String: Any]
+        }
+        guard let object, !object.isEmpty else {
+            return nil
+        }
+        return object
     }
 
     private static func nonEmptyString(_ value: Any?) -> String? {

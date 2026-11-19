@@ -246,11 +246,141 @@ class FaroCrashSessionStoreTest {
         assertNull(match)
     }
 
+    @Test
+    fun recordSessionContext_savesMetaOfTheProcessAndReplacesItOnUpdate() {
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L, metaJson = SDK_V1)
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 2_000L, metaJson = SDK_V2)
+
+        val saved = FaroCrashSessionStore.sessionContextsForTest(context, nowMs = 2_000L).single()
+
+        assertEquals(SDK_V2, saved.metaJson)
+    }
+
+    @Test
+    fun recordSessionContext_dropsMetaThatIsNotAJsonObjectOrIsTooLarge() {
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L, metaJson = "not json")
+        assertNull(FaroCrashSessionStore.sessionContextsForTest(context, nowMs = 1_000L).single().metaJson)
+
+        val oversized = "{\"value\":\"" + "x".repeat(20_000) + "\"}"
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 2_000L, metaJson = oversized)
+        assertNull(FaroCrashSessionStore.sessionContextsForTest(context, nowMs = 2_000L).single().metaJson)
+    }
+
+    @Test
+    fun sessionContext_withoutSavedMetaStaysReadable() {
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L)
+
+        val saved = FaroCrashSessionStore.sessionContextsForTest(context, nowMs = 1_000L).single()
+
+        assertNull(saved.metaJson)
+        assertNull(saved.dynamicStateForCrashAt(1_000L))
+    }
+
+    @Test
+    fun findMatchingContext_returnsTheDynamicStateOfTheCrashedProcess() {
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L)
+        recordSession("session-b", activatedAtMs = 2_000L, nowMs = 2_000L)
+
+        val recorded = recordDynamicState(nowMs = 3_000L)
+
+        val match = findContext(crashTimestampMs = 3_000L)
+        assertTrue(recorded)
+        assertEquals("session-b", match?.sessionId)
+        assertEquals(BATTERY_42, match?.dynamicStateForCrashAt(3_000L))
+    }
+
+    @Test
+    fun dynamicState_survivesLaterSessionContextUpdates() {
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L)
+        recordDynamicState(nowMs = 3_000L)
+
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 3_500L, metaJson = SDK_V2)
+        recordSession("session-b", activatedAtMs = 3_600L, nowMs = 3_600L)
+
+        assertEquals(BATTERY_42, findContext(crashTimestampMs = 3_700L)?.dynamicStateForCrashAt(3_700L))
+    }
+
+    @Test
+    fun dynamicState_isKeptApartPerProcess() {
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L, pid = 101)
+        recordSession("session-b", activatedAtMs = 1_000L, nowMs = 1_000L, pid = 202)
+        recordDynamicState(nowMs = 3_000L)
+
+        assertEquals(BATTERY_42, findContext(crashTimestampMs = 3_000L, pid = 101)?.dynamicStateForCrashAt(3_000L))
+        assertNull(findContext(crashTimestampMs = 3_000L, pid = 202)?.dynamicStateForCrashAt(3_000L))
+    }
+
+    @Test
+    fun recordCrashTimeDynamicState_rejectsInvalidInput() {
+        assertFalse(
+            FaroCrashSessionStore.recordCrashTimeDynamicState(
+                context = context,
+                dynamicStateJson = "not json",
+                nowMs = 2_000L,
+                pid = 101,
+                processName = "com.example.app",
+            )
+        )
+        assertFalse(
+            FaroCrashSessionStore.recordCrashTimeDynamicState(
+                context = context,
+                dynamicStateJson = BATTERY_42,
+                nowMs = 2_000L,
+                pid = 0,
+                processName = "com.example.app",
+            )
+        )
+    }
+
+    @Test
+    fun dynamicStateForCrashAt_ignoresValuesThatWereNotReadAtCrashTime() {
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L)
+        recordDynamicState(nowMs = 100_000L)
+
+        val saved = findContext(crashTimestampMs = 100_000L)
+
+        assertEquals(BATTERY_42, saved?.dynamicStateForCrashAt(160_000L))
+        assertNull(saved?.dynamicStateForCrashAt(160_001L))
+        assertNull(saved?.dynamicStateForCrashAt(39_999L))
+    }
+
+    @Test
+    fun dynamicStateForCrashAt_keepsValuesWhenAChainedHandlerDelaysProcessDeath() {
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L)
+        recordDynamicState(nowMs = 3_000L)
+
+        assertEquals(BATTERY_42, findContext(crashTimestampMs = 3_000L)?.dynamicStateForCrashAt(33_000L))
+    }
+
+    private fun findContext(
+        crashTimestampMs: Long,
+        pid: Int = 101,
+    ): FaroCrashSessionStore.SessionContext? {
+        return FaroCrashSessionStore.findMatchingContext(
+            context = context,
+            crashTimestampMs = crashTimestampMs,
+            pid = pid,
+            processName = "com.example.app",
+            nowMs = crashTimestampMs,
+        )
+    }
+
+    private fun recordDynamicState(nowMs: Long): Boolean {
+        return FaroCrashSessionStore.recordCrashTimeDynamicState(
+            context = context,
+            dynamicStateJson = BATTERY_42,
+            nowMs = nowMs,
+            pid = 101,
+            processName = "com.example.app",
+        )
+    }
+
     private fun recordSession(
         sessionId: String,
         activatedAtMs: Long,
         nowMs: Long,
         pid: Int = 101,
+        metaJson: String? = null,
     ): Boolean {
         return FaroCrashSessionStore.recordSessionContext(
             context = context,
@@ -260,9 +390,16 @@ class FaroCrashSessionStoreTest {
             appVersion = "1.0.0",
             appRelease = "42",
             appBundleId = "com.example.app@42@1.0.0",
+            metaJson = metaJson,
             nowMs = nowMs,
             pid = pid,
             processName = "com.example.app",
         )
+    }
+
+    private companion object {
+        const val SDK_V1 = "{\"sdk\":{\"version\":\"1.0.0\"}}"
+        const val SDK_V2 = "{\"sdk\":{\"version\":\"2.0.0\"}}"
+        const val BATTERY_42 = "{\"batteryLevel\":42}"
     }
 }

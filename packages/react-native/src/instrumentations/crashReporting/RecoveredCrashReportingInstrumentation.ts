@@ -3,11 +3,11 @@ import { NativeModules } from 'react-native';
 import { TransportItemType } from '@grafana/faro-core';
 import type { ExceptionEvent, Meta, TransportItem } from '@grafana/faro-core';
 
-import { omitDynamicDeviceFields } from '../../metas/dynamicDeviceState';
 import { FetchTransport } from '../../transports/fetch';
 import { captureSessionItem } from '../session/sessionCapture';
 
 import { BaseCrashReportingInstrumentation } from './BaseCrashReportingInstrumentation';
+import { restoreCrashDynamicState, restoreCrashMeta, serializeCrashMeta } from './crashMeta';
 import type { CrashReport } from './types';
 
 // Keep aligned with FaroCrashSessionStore.MAX_CONTEXT_AGE_MS on Android.
@@ -152,6 +152,7 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
       this.activeSessionIsSampled = incomingIsSampled;
     }
     const isSampled = incomingIsSampled ?? this.activeSessionIsSampled;
+    const crashMeta = serializeCrashMeta(meta);
     const sessionContext = {
       sessionId,
       activatedAt: this.activeSessionActivatedAtMs,
@@ -159,6 +160,7 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
       ...(meta.app?.version ? { appVersion: meta.app.version } : {}),
       ...(meta.app?.release ? { appRelease: meta.app.release } : {}),
       ...(meta.app?.bundleId ? { appBundleId: meta.app.bundleId } : {}),
+      ...(crashMeta ? { meta: crashMeta } : {}),
     };
     const signature = JSON.stringify(sessionContext);
     if (signature === this.lastRecordedSessionSignature) {
@@ -217,25 +219,32 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
 
   private buildRecoveredCrashItem(crash: RecoveredCrashReport): TransportItem<ExceptionEvent> {
     const { context, errorMessage, stackFrames } = this.buildCrashReportDetails(crash);
-    const currentMeta = this.metas.value;
     const isSampledAttribute = crash.isSampled === undefined ? undefined : { isSampled: String(crash.isSampled) };
-    // Current user, view, and page metadata belong to the restarted session.
-    const meta: Meta = {
-      ...(currentMeta.sdk ? { sdk: { ...currentMeta.sdk } } : {}),
-      app: {
-        ...(currentMeta.app ?? {}),
-        ...(crash.appVersion ? { version: crash.appVersion } : {}),
-        ...(crash.appRelease ? { release: crash.appRelease } : {}),
-        ...(crash.appBundleId ? { bundleId: crash.appBundleId } : {}),
-      },
-      ...(currentMeta.os ? { os: { ...currentMeta.os } } : {}),
-      // Dynamic values are the relaunch's, so only the static device fields describe the crashed process.
-      ...(currentMeta.device ? { device: omitDynamicDeviceFields(currentMeta.device) } : {}),
+    // Only values saved from the crashed process go in. A value that an older record did not save is
+    // omitted, and the relaunch's metadata never stands in for it.
+    const saved = restoreCrashMeta(crash.meta);
+    const dynamicState = restoreCrashDynamicState(crash.dynamicDeviceState);
+    const app = {
+      ...saved?.app,
+      ...(crash.appVersion ? { version: crash.appVersion } : {}),
+      ...(crash.appRelease ? { release: crash.appRelease } : {}),
+      ...(crash.appBundleId ? { bundleId: crash.appBundleId } : {}),
+    };
+    const device = { ...saved?.device, ...dynamicState?.device };
+    const sessionAttributes = { ...saved?.sessionAttributes, ...isSampledAttribute };
+    const meta = {
+      ...(saved?.sdk ? { sdk: saved.sdk } : {}),
+      ...(Object.keys(app).length > 0 ? { app } : {}),
+      ...(saved?.os ? { os: saved.os } : {}),
+      ...(Object.keys(device).length > 0 ? { device } : {}),
+      ...(dynamicState && Object.keys(dynamicState.network).length > 0 ? { network: dynamicState.network } : {}),
+      ...(saved?.page ? { page: saved.page } : {}),
+      ...(saved?.view ? { view: saved.view } : {}),
       session: {
         id: crash.sessionId,
-        ...(isSampledAttribute ? { attributes: isSampledAttribute } : {}),
+        ...(Object.keys(sessionAttributes).length > 0 ? { attributes: sessionAttributes } : {}),
       },
-    };
+    } as Meta;
 
     return {
       type: TransportItemType.EXCEPTION,
