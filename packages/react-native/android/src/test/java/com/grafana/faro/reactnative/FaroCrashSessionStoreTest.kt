@@ -352,6 +352,39 @@ class FaroCrashSessionStoreTest {
         assertEquals(BATTERY_42, findContext(crashTimestampMs = 3_000L)?.dynamicStateForCrashAt(33_000L))
     }
 
+    @Test
+    fun dynamicState_isNotReplayedForAProcessThatReusesThePid() {
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L, processStartMs = 500L)
+        recordDynamicState(nowMs = 3_000L, processStartMs = 500L)
+
+        recordSession("session-b", activatedAtMs = 10_000L, nowMs = 10_000L, processStartMs = 9_000L)
+
+        assertNull(findContext(crashTimestampMs = 11_000L)?.dynamicStateForCrashAt(11_000L))
+    }
+
+    @Test
+    fun dynamicState_isNotReplayedForARecordWithoutProcessStart() {
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L)
+        recordDynamicState(nowMs = 3_000L)
+        val prefs = context.getSharedPreferences("com.grafana.faro.crash_session_store", Context.MODE_PRIVATE)
+        val withoutStart = prefs.getString("session_contexts", "[]").orEmpty().replace(Regex(",?\"processStartedAt\":\\d+"), "")
+        prefs.edit().putString("session_contexts", withoutStart).commit()
+
+        assertNull(findContext(crashTimestampMs = 3_000L)?.dynamicStateForCrashAt(3_000L))
+    }
+
+    @Test
+    fun recordSessionContext_measuresTheMetaLimitInUtf8Bytes() {
+        val fits = "{\"value\":\"" + "x".repeat(10_000) + "\"}"
+        val multibyteOverLimit = "{\"value\":\"" + "é".repeat(9_000) + "\"}"
+
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 1_000L, metaJson = fits)
+        assertEquals(fits, FaroCrashSessionStore.sessionContextsForTest(context, nowMs = 1_000L).single().metaJson)
+
+        recordSession("session-a", activatedAtMs = 1_000L, nowMs = 2_000L, metaJson = multibyteOverLimit)
+        assertNull(FaroCrashSessionStore.sessionContextsForTest(context, nowMs = 2_000L).single().metaJson)
+    }
+
     private fun findContext(
         crashTimestampMs: Long,
         pid: Int = 101,
@@ -365,13 +398,14 @@ class FaroCrashSessionStoreTest {
         )
     }
 
-    private fun recordDynamicState(nowMs: Long): Boolean {
+    private fun recordDynamicState(nowMs: Long, processStartMs: Long = PROCESS_START_MS): Boolean {
         return FaroCrashSessionStore.recordCrashTimeDynamicState(
             context = context,
             dynamicStateJson = BATTERY_42,
             nowMs = nowMs,
             pid = 101,
             processName = "com.example.app",
+            processStartMs = processStartMs,
         )
     }
 
@@ -381,6 +415,7 @@ class FaroCrashSessionStoreTest {
         nowMs: Long,
         pid: Int = 101,
         metaJson: String? = null,
+        processStartMs: Long = PROCESS_START_MS,
     ): Boolean {
         return FaroCrashSessionStore.recordSessionContext(
             context = context,
@@ -394,10 +429,12 @@ class FaroCrashSessionStoreTest {
             nowMs = nowMs,
             pid = pid,
             processName = "com.example.app",
+            processStartMs = processStartMs,
         )
     }
 
     private companion object {
+        const val PROCESS_START_MS = 500L
         const val SDK_V1 = "{\"sdk\":{\"version\":\"1.0.0\"}}"
         const val SDK_V2 = "{\"sdk\":{\"version\":\"2.0.0\"}}"
         const val BATTERY_42 = "{\"batteryLevel\":42}"

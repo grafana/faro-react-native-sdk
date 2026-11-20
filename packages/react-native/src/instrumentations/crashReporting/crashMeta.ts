@@ -10,7 +10,7 @@ import type {
 } from '@grafana/faro-core';
 
 import { omitDynamicDeviceFields, parseDynamicDeviceState } from '../../metas/dynamicDeviceState';
-import type { DynamicDeviceState } from '../../metas/dynamicDeviceState';
+import type { DynamicDeviceState, DynamicDeviceStateGroups } from '../../metas/dynamicDeviceState';
 import { DYNAMIC_SESSION_ATTRIBUTE_KEYS } from '../session/sessionAttributes';
 
 /**
@@ -18,7 +18,8 @@ import { DYNAMIC_SESSION_ATTRIBUTE_KEYS } from '../session/sessionAttributes';
  *
  * `meta.user` is not saved: it can hold an ID, name or email, and the SDK does not write those to
  * disk. Dynamic device and network values are not saved here either. Native code captures them at
- * crash time.
+ * crash time. `dynamicGroups` records which groups of them the session collects, so a replay never
+ * adds a group that the session turned off.
  */
 export interface SavedCrashMeta {
   sdk?: MetaSDK;
@@ -28,6 +29,7 @@ export interface SavedCrashMeta {
   page?: MetaPage;
   view?: MetaView;
   sessionAttributes?: MetaAttributes;
+  dynamicGroups?: DynamicDeviceStateGroups;
 }
 
 const OBJECT_KEYS = ['sdk', 'app', 'os', 'device', 'page'] as const;
@@ -60,7 +62,7 @@ function stringAttributes(value: unknown): MetaAttributes | undefined {
  * Serializes the parts of `meta` that describe the running process and do not change on their own.
  * Returns `undefined` when there is nothing to save.
  */
-export function serializeCrashMeta(meta: Meta): string | undefined {
+export function serializeCrashMeta(meta: Meta, dynamicGroups: DynamicDeviceStateGroups): string | undefined {
   const snapshot: Record<string, unknown> = {};
   for (const key of OBJECT_KEYS) {
     const value = meta[key];
@@ -79,7 +81,17 @@ export function serializeCrashMeta(meta: Meta): string | undefined {
   const populated = Object.fromEntries(
     Object.entries(snapshot).filter(([, value]) => !isPlainObject(value) || Object.keys(value).length > 0)
   );
-  return Object.keys(populated).length > 0 ? JSON.stringify(populated) : undefined;
+  return Object.keys(populated).length > 0 ? JSON.stringify({ ...populated, dynamicGroups }) : undefined;
+}
+
+function restoreDynamicGroups(value: unknown): DynamicDeviceStateGroups | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  const { battery, thermal, network } = value;
+  return typeof battery === 'boolean' && typeof thermal === 'boolean' && typeof network === 'boolean'
+    ? { battery, thermal, network }
+    : undefined;
 }
 
 /**
@@ -106,18 +118,26 @@ export function restoreCrashMeta(raw: unknown): SavedCrashMeta | undefined {
   if (sessionAttributes) {
     restored.sessionAttributes = sessionAttributes;
   }
+  const dynamicGroups = restoreDynamicGroups(raw['dynamicGroups']);
+  if (dynamicGroups) {
+    restored.dynamicGroups = dynamicGroups;
+  }
 
   return withoutEmpty(restored);
 }
 
 /**
- * Reads the dynamic device and network values that native code captured at crash time. Returns
- * `undefined` when native code did not save any.
+ * Reads the dynamic device and network values that native code captured at crash time. Keeps only
+ * the groups that the crashed session collected. Returns `undefined` when native code did not save
+ * any, or when the record does not say which groups the session collected.
  */
-export function restoreCrashDynamicState(raw: unknown): DynamicDeviceState | undefined {
-  if (!isPlainObject(raw)) {
+export function restoreCrashDynamicState(
+  raw: unknown,
+  groups: DynamicDeviceStateGroups | undefined
+): DynamicDeviceState | undefined {
+  if (!groups || !isPlainObject(raw)) {
     return undefined;
   }
-  const state = parseDynamicDeviceState(raw);
+  const state = parseDynamicDeviceState(raw, groups);
   return Object.keys(state.device).length > 0 || Object.keys(state.network).length > 0 ? state : undefined;
 }

@@ -3,6 +3,7 @@ import { NativeModules } from 'react-native';
 import { TransportItemType } from '@grafana/faro-core';
 import type { ExceptionEvent, Meta, TransportItem } from '@grafana/faro-core';
 
+import { getActiveDynamicDeviceStateGroups } from '../../metas/dynamicDeviceState';
 import { FetchTransport } from '../../transports/fetch';
 import { captureSessionItem } from '../session/sessionCapture';
 
@@ -152,7 +153,7 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
       this.activeSessionIsSampled = incomingIsSampled;
     }
     const isSampled = incomingIsSampled ?? this.activeSessionIsSampled;
-    const crashMeta = serializeCrashMeta(meta);
+    const crashMeta = serializeCrashMeta(meta, getActiveDynamicDeviceStateGroups());
     const sessionContext = {
       sessionId,
       activatedAt: this.activeSessionActivatedAtMs,
@@ -223,7 +224,7 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
     // Only values saved from the crashed process go in. A value that an older record did not save is
     // omitted, and the relaunch's metadata never stands in for it.
     const saved = restoreCrashMeta(crash.meta);
-    const dynamicState = restoreCrashDynamicState(crash.dynamicDeviceState);
+    const dynamicState = restoreCrashDynamicState(crash.dynamicDeviceState, saved?.dynamicGroups);
     const app = {
       ...saved?.app,
       ...(crash.appVersion ? { version: crash.appVersion } : {}),

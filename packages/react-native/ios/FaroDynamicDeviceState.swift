@@ -39,13 +39,9 @@ import UIKit
     private static let changeQueue = DispatchQueue(label: "com.grafana.faro.dynamic-state-changes", qos: .utility)
     private static var changeHandler: (() -> Void)?
     private static var changePending = false
-    // Each handler run can rewrite PLCrashReporter's custom data. PLCrashReporter frees and
-    // reallocates that buffer without a lock, and the crash handler reads it, so keep runs rare.
-    private static let changeDelay: DispatchTimeInterval = .seconds(5)
 
     /// Sets the handler that runs after a cached value may have changed. It runs on a background
-    /// queue and never under `lock`. It runs at most once per `changeDelay`, and it sees the values
-    /// from when it runs.
+    /// queue and never under `lock`, and a burst of changes runs it once.
     static func setChangeHandler(_ handler: (() -> Void)?) {
         lock.lock()
         changeHandler = handler
@@ -58,7 +54,7 @@ import UIKit
             return
         }
         changePending = true
-        changeQueue.asyncAfter(deadline: .now() + changeDelay) {
+        changeQueue.async {
             lock.lock()
             changePending = false
             let handler = changeHandler

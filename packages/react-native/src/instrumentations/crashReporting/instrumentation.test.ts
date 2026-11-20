@@ -664,6 +664,7 @@ describe('CrashReportingInstrumentation', () => {
       page: { id: 'page-a', url: 'Checkout' },
       view: { name: 'Checkout' },
       sessionAttributes: { device_brand: 'Google', plan: 'pro' },
+      dynamicGroups: { battery: true, thermal: true, network: true },
     };
     const relaunchSessionAttributes = { device_battery_level: '9', device_brand: 'Apple', plan: 'free' };
 
@@ -780,10 +781,41 @@ describe('CrashReportingInstrumentation', () => {
       }
     });
 
+    it('drops a dynamic group that the crashed session turned off', async () => {
+      const item = await replay(
+        createCrashReport({
+          meta: { ...savedMeta, dynamicGroups: { battery: true, thermal: false, network: false } },
+          dynamicDeviceState: { batteryLevel: 42, thermalState: 'fair', connectionType: 'cell', carrierName: 'Acme' },
+        })
+      );
+
+      expect(item.meta.device).toEqual({ ...savedMeta.device, battery_level: 42 });
+      expect(item.meta).not.toHaveProperty('network');
+    });
+
+    it('drops the dynamic values when the record does not say which groups the session collected', async () => {
+      const { dynamicGroups: _dynamicGroups, ...metaWithoutGroups } = savedMeta;
+      const item = await replay(
+        createCrashReport({
+          meta: metaWithoutGroups,
+          dynamicDeviceState: { batteryLevel: 42, thermalState: 'fair', connectionType: 'cell' },
+        })
+      );
+
+      expect(item.meta.device).toEqual(savedMeta.device);
+      expect(item.meta).not.toHaveProperty('network');
+    });
+
     it('ignores malformed saved metadata without losing the valid parts', async () => {
       const item = await replay(
         createCrashReport({
-          meta: { sdk: 'bad', os: savedMeta.os, view: { name: 5 }, sessionAttributes: { plan: 'pro', n: 1 } },
+          meta: {
+            sdk: 'bad',
+            os: savedMeta.os,
+            view: { name: 5 },
+            sessionAttributes: { plan: 'pro', n: 1 },
+            dynamicGroups: savedMeta.dynamicGroups,
+          },
           dynamicDeviceState: { batteryLevel: 'full', connectionType: 'cell' },
         })
       );

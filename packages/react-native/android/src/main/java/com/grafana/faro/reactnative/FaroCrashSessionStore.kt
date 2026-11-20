@@ -1,7 +1,9 @@
 package com.grafana.faro.reactnative
 
 import android.content.Context
+import android.os.Build
 import android.os.Process
+import android.os.SystemClock
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -23,9 +25,20 @@ internal object FaroCrashSessionStore {
     private const val MAX_ACKNOWLEDGED_REPORTS = 100
     private const val MAX_CRASH_DYNAMIC_STATES = 20
     private const val SCHEMA_VERSION = 1
-    private const val MAX_META_JSON_LENGTH = 16 * 1024
+    private const val MAX_META_JSON_BYTES = 16 * 1024
     // A chained uncaught exception handler can run for a while before the process dies.
     private const val MAX_DYNAMIC_STATE_DELTA_MS = 60_000L
+
+    // Fixed per process, so a context and a crash-time snapshot of one process compare equal. A reused
+    // pid starts at a later time.
+    private val currentProcessStartMs: Long by lazy {
+        val now = System.currentTimeMillis()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            now - (SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime())
+        } else {
+            now
+        }
+    }
 
     data class SessionContext(
         val id: String,
@@ -38,6 +51,8 @@ internal object FaroCrashSessionStore {
         val appVersion: String?,
         val appRelease: String?,
         val appBundleId: String?,
+        /** Start time of the process. Null for a record that an older version saved. */
+        val processStartMs: Long? = null,
         /** JSON object with the static metadata of the process. Null when an older record or JavaScript did not save it. */
         val metaJson: String? = null,
         /** JSON object with the dynamic device and network values that the crash handler read. Filled in on read. */
@@ -66,6 +81,7 @@ internal object FaroCrashSessionStore {
     private data class CrashDynamicState(
         val pid: Int,
         val processName: String,
+        val processStartMs: Long,
         val json: String,
         val savedAtMs: Long,
     )
@@ -100,6 +116,7 @@ internal object FaroCrashSessionStore {
         nowMs: Long = System.currentTimeMillis(),
         pid: Int = Process.myPid(),
         processName: String = currentProcessName(context.applicationContext),
+        processStartMs: Long = currentProcessStartMs,
     ): Boolean {
         val normalizedSessionId = sessionId.trim()
         if (normalizedSessionId.isEmpty() || activatedAtMs <= 0L) {
@@ -137,6 +154,7 @@ internal object FaroCrashSessionStore {
             appVersion = appVersion.normalized(),
             appRelease = appRelease.normalized(),
             appBundleId = appBundleId.normalized(),
+            processStartMs = processStartMs,
             metaJson = metaJson.asJsonObjectString(),
         )
 
@@ -163,6 +181,7 @@ internal object FaroCrashSessionStore {
         nowMs: Long = System.currentTimeMillis(),
         pid: Int = Process.myPid(),
         processName: String = currentProcessName(context.applicationContext),
+        processStartMs: Long = currentProcessStartMs,
     ): Boolean {
         val normalizedState = dynamicStateJson.asJsonObjectString() ?: return false
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -172,8 +191,12 @@ internal object FaroCrashSessionStore {
             return false
         }
 
-        state.crashDynamicStates.removeAll { it.pid == pid && it.processName == normalizedProcessName }
-        state.crashDynamicStates.add(CrashDynamicState(pid, normalizedProcessName, normalizedState, nowMs))
+        state.crashDynamicStates.removeAll {
+            it.pid == pid && it.processName == normalizedProcessName && it.processStartMs == processStartMs
+        }
+        state.crashDynamicStates.add(
+            CrashDynamicState(pid, normalizedProcessName, processStartMs, normalizedState, nowMs),
+        )
         trimOldest(state.crashDynamicStates, MAX_CRASH_DYNAMIC_STATES)
         return writeState(prefs, state)
     }
@@ -219,8 +242,11 @@ internal object FaroCrashSessionStore {
     }
 
     private fun withCrashDynamicState(context: SessionContext, state: State): SessionContext {
+        val processStartMs = context.processStartMs ?: return context
         val saved = state.crashDynamicStates.lastOrNull {
-            it.pid == context.pid && it.processName == context.processName
+            it.pid == context.pid &&
+                it.processName == context.processName &&
+                it.processStartMs == processStartMs
         } ?: return context
         return context.copy(dynamicStateJson = saved.json, dynamicStateAtMs = saved.savedAtMs)
     }
@@ -392,6 +418,7 @@ internal object FaroCrashSessionStore {
             .putOptional("appVersion", context.appVersion)
             .putOptional("appRelease", context.appRelease)
             .putOptional("appBundleId", context.appBundleId)
+            .putOptional("processStartedAt", context.processStartMs)
             .putOptional("meta", context.metaJson)
     }
 
@@ -428,6 +455,7 @@ internal object FaroCrashSessionStore {
             appVersion = json.optionalString("appVersion"),
             appRelease = json.optionalString("appRelease"),
             appBundleId = json.optionalString("appBundleId"),
+            processStartMs = json.optionalLong("processStartedAt"),
             metaJson = json.optionalString("meta").asJsonObjectString(),
         )
     }
@@ -436,6 +464,7 @@ internal object FaroCrashSessionStore {
         return JSONObject()
             .put("pid", state.pid)
             .put("processName", state.processName)
+            .put("processStartedAt", state.processStartMs)
             .put("state", state.json)
             .put("savedAt", state.savedAtMs)
     }
@@ -443,12 +472,13 @@ internal object FaroCrashSessionStore {
     private fun crashDynamicStateFromJson(json: JSONObject): CrashDynamicState? {
         val pid = json.optInt("pid", 0)
         val processName = json.optString("processName").trim()
+        val processStartMs = json.optLong("processStartedAt", 0L)
         val savedAtMs = json.optLong("savedAt", 0L)
         val stateJson = json.optionalString("state").asJsonObjectString()
-        if (pid <= 0 || processName.isEmpty() || savedAtMs <= 0L || stateJson == null) {
+        if (pid <= 0 || processName.isEmpty() || processStartMs <= 0L || savedAtMs <= 0L || stateJson == null) {
             return null
         }
-        return CrashDynamicState(pid, processName, stateJson, savedAtMs)
+        return CrashDynamicState(pid, processName, processStartMs, stateJson, savedAtMs)
     }
 
     private fun pendingReportToJson(report: PendingReport): JSONObject {
@@ -516,14 +546,18 @@ internal object FaroCrashSessionStore {
         return optLong(key).takeIf { it > 0L }
     }
 
-    /** Keeps a value only when it is a JSON object of a size that is safe to store with every context. */
+    /**
+     * Keeps a value only when it is a JSON object whose normalized UTF-8 form fits the limit, so the
+     * size of every stored context stays bounded.
+     */
     private fun String?.asJsonObjectString(): String? {
-        val value = this?.trim()?.takeIf { it.isNotEmpty() && it.length <= MAX_META_JSON_LENGTH } ?: return null
-        return try {
+        val value = this?.trim()?.takeIf { it.isNotEmpty() && it.length <= MAX_META_JSON_BYTES } ?: return null
+        val normalized = try {
             JSONObject(value).toString()
         } catch (_: Exception) {
-            null
+            return null
         }
+        return normalized.takeIf { it.toByteArray(Charsets.UTF_8).size <= MAX_META_JSON_BYTES }
     }
 
     private fun String?.normalized(): String? {
