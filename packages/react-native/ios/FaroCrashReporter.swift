@@ -22,6 +22,20 @@ public class FaroCrashReporter: NSObject {
     private static var crashReporter: PLCrashReporter?
     private static var isEnabled = false
     private static let stateLock = NSLock()
+    // PLCrashReporter frees and reallocates the custom data buffer on every write, without a lock,
+    // and its crash handler reads that buffer. Custom data therefore holds only fields that change
+    // with the session, and the changing metadata lives in a file that this class writes atomically.
+    private static var latestSessionContext: [String: Any]?
+    private static var lastCustomData: Data?
+    private static var latestMeta: [String: Any]?
+    private static var lastMetadataFileData: Data?
+    private static var metadataDirectory: URL?
+    // Names the metadata file of this process. A relaunch never overwrites the file of a crashed process.
+    private static let processToken = UUID().uuidString
+    // The report embeds this payload, so a value that is too large is dropped rather than stored.
+    private static let maxMetaBytes = 16 * 1024
+    private static let maxMetadataFileBytes = 64 * 1024
+    private static let metadataTokenKey = "metadataToken"
     // activatedAt keeps the persisted context aligned with Android. iOS does not
     // use it to match a pending PLCrashReporter report.
     private static let sessionContextKeys = [
@@ -99,6 +113,7 @@ public class FaroCrashReporter: NSObject {
             try reporter.enableAndReturnError()
             crashReporter = reporter
             isEnabled = true
+            prepareMetadataDirectory(in: crashDir, reporter: reporter)
             print("[FaroCrashReporter] Successfully enabled crash reporting")
             return true
         } catch {
@@ -107,33 +122,153 @@ public class FaroCrashReporter: NSObject {
         }
     }
 
-    /// Records the active Faro session in PLCrashReporter's crash-safe custom data.
+    /// Records the active Faro session and the metadata of this process.
     ///
-    /// PLCrashReporter copies this data into the report at crash time, allowing a
-    /// recovered crash to retain its original session after the app restarts.
-    /// Keep this payload minimal because it is embedded in every crash report.
+    /// The session fields go in PLCrashReporter's crash-safe custom data, which changes only with the
+    /// session. The metadata and the dynamic device and network values go in a file that is written
+    /// atomically and refreshed whenever they change. A recovered crash reads both, so it keeps its
+    /// original session and metadata after the app restarts.
     ///
-    /// - Parameter sessionContext: Sanitized session and app fields from JavaScript
+    /// - Parameter sessionContext: Sanitized session, app and metadata fields from JavaScript
     /// - Returns: true when the context was stored, false when it was invalid
     @objc public static func recordSessionContext(_ sessionContext: [String: Any]) -> Bool {
-        let sanitizedContext = sanitizeSessionContext(sessionContext)
-        guard sanitizedContext["sessionId"] != nil,
-              JSONSerialization.isValidJSONObject(sanitizedContext) else {
+        var sanitizedContext = sanitizeSessionContext(sessionContext)
+        guard sanitizedContext["sessionId"] != nil else {
             return false
         }
+        let meta = sanitizedContext.removeValue(forKey: "meta") as? [String: Any]
 
+        let dynamicState = FaroDynamicDeviceState.current()
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard enableLocked(), let reporter = crashReporter else {
+            return false
+        }
+        FaroDynamicDeviceState.setChangeHandler { refreshDynamicState() }
+        latestSessionContext = sanitizedContext
+        latestMeta = meta
+        writeMetadataFileLocked(dynamicState: dynamicState)
+        return storeCustomDataLocked(reporter)
+    }
+
+    /// Writes the current dynamic device and network values to the metadata file.
+    /// Runs when a cached value changes. It rewrites the file only when the content differs.
+    static func refreshDynamicState() {
+        let dynamicState = FaroDynamicDeviceState.current()
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard latestSessionContext != nil else {
+            return
+        }
+        writeMetadataFileLocked(dynamicState: dynamicState)
+    }
+
+    // The caller holds `stateLock`.
+    private static func storeCustomDataLocked(_ reporter: PLCrashReporter) -> Bool {
+        guard var context = latestSessionContext else {
+            return false
+        }
+        context[metadataTokenKey] = processToken
+
+        guard JSONSerialization.isValidJSONObject(context) else {
+            return false
+        }
         do {
-            let data = try JSONSerialization.data(withJSONObject: sanitizedContext)
-            stateLock.lock()
-            defer { stateLock.unlock() }
-            guard enableLocked(), let reporter = crashReporter else {
-                return false
+            let data = try JSONSerialization.data(withJSONObject: context, options: [.sortedKeys])
+            if data != lastCustomData {
+                reporter.customData = data
+                lastCustomData = data
             }
-            reporter.customData = data
             return true
         } catch {
             print("[FaroCrashReporter] Failed to serialize crash session context: \(error)")
             return false
+        }
+    }
+
+    // The caller holds `stateLock`.
+    private static func writeMetadataFileLocked(dynamicState: [String: Any]) {
+        guard let url = metadataFileURL(token: processToken) else {
+            return
+        }
+        var content: [String: Any] = [:]
+        if let meta = latestMeta {
+            content["meta"] = meta
+        }
+        if !dynamicState.isEmpty {
+            content["dynamicDeviceState"] = dynamicState
+        }
+
+        do {
+            if content.isEmpty {
+                if lastMetadataFileData != nil {
+                    try? FileManager.default.removeItem(at: url)
+                    lastMetadataFileData = nil
+                }
+                return
+            }
+            guard JSONSerialization.isValidJSONObject(content) else {
+                return
+            }
+            let data = try JSONSerialization.data(withJSONObject: content, options: [.sortedKeys])
+            guard data != lastMetadataFileData, data.count <= maxMetadataFileBytes else {
+                return
+            }
+            try data.write(to: url, options: .atomic)
+            lastMetadataFileData = data
+        } catch {
+            print("[FaroCrashReporter] Failed to write crash metadata: \(error)")
+        }
+    }
+
+    private static func metadataFileURL(token: String) -> URL? {
+        // The token comes from stored custom data, so only a UUID may name a file.
+        guard let directory = metadataDirectory, UUID(uuidString: token) != nil else {
+            return nil
+        }
+        return directory.appendingPathComponent("\(token).json", isDirectory: false)
+    }
+
+    /// Creates the metadata directory and removes the files of earlier processes. Only the file of the
+    /// pending crash report survives, because a recovered crash still reads it.
+    private static func prepareMetadataDirectory(in crashDir: URL, reporter: PLCrashReporter) {
+        let directory = crashDir.appendingPathComponent("metadata", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        metadataDirectory = directory
+
+        var keptTokens: Set<String> = [processToken]
+        if reporter.hasPendingCrashReport(),
+           let data = try? reporter.loadPendingCrashReportDataAndReturnError(),
+           let token = metadataToken(inReportData: data) {
+            keptTokens.insert(token)
+        }
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        for file in files where !keptTokens.contains(file.deletingPathExtension().lastPathComponent) {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
+    private static func metadataToken(inReportData data: Data) -> String? {
+        guard let report = try? PLCrashReport(data: data),
+              let crashReport = try? FaroCrashReport(from: report),
+              let context = decodeSessionContext(crashReport.contextData) else {
+            return nil
+        }
+        return nonEmptyString(context[metadataTokenKey])
+    }
+
+    private static func readMetadataFile(token: String) -> [String: Any]? {
+        guard let url = metadataFileURL(token: token),
+              let data = try? Data(contentsOf: url),
+              data.count <= maxMetadataFileBytes else {
+            return nil
+        }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    private static func removeMetadataFile(token: String) {
+        if let url = metadataFileURL(token: token) {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
@@ -198,7 +333,12 @@ public class FaroCrashReporter: NSObject {
             guard acknowledgedIds.contains(reportIdentifier(for: data)) else {
                 return true
             }
-            return reporter.purgePendingCrashReport()
+            let token = metadataToken(inReportData: data)
+            let purged = reporter.purgePendingCrashReport()
+            if purged, let token {
+                removeMetadataFile(token: token)
+            }
+            return purged
         } catch {
             print("[FaroCrashReporter] Failed to acknowledge pending crash report: \(error)")
             return purgeUnreadablePendingReport(reporter)
@@ -291,6 +431,15 @@ public class FaroCrashReporter: NSObject {
                     json[key] = value
                 }
             }
+            if let token = nonEmptyString(sessionContext[metadataTokenKey]),
+               let file = readMetadataFile(token: token) {
+                if let meta = jsonObject(file["meta"], maxBytes: maxMetaBytes) {
+                    json["meta"] = meta
+                }
+                if let dynamicState = file["dynamicDeviceState"] as? [String: Any], !dynamicState.isEmpty {
+                    json["dynamicDeviceState"] = dynamicState
+                }
+            }
         }
 
         // Convert to JSON string
@@ -325,6 +474,9 @@ public class FaroCrashReporter: NSObject {
                 sanitized[key] = value
             }
         }
+        if let meta = jsonObject(context["meta"], maxBytes: maxMetaBytes) {
+            sanitized["meta"] = meta
+        }
 
         return sanitized
     }
@@ -338,11 +490,34 @@ public class FaroCrashReporter: NSObject {
                   nonEmptyString(context["sessionId"]) != nil else {
                 return nil
             }
-            return sanitizeSessionContext(context)
+            var sanitized = sanitizeSessionContext(context)
+            if let token = nonEmptyString(context[metadataTokenKey]) {
+                sanitized[metadataTokenKey] = token
+            }
+            return sanitized
         } catch {
             print("[FaroCrashReporter] Failed to decode crash session context: \(error)")
             return nil
         }
+    }
+
+    /// Reads a JSON object from a JSON string, as JavaScript sends it, or from an object that was
+    /// decoded from stored custom data. Returns nil when it is empty, too large or not an object.
+    private static func jsonObject(_ value: Any?, maxBytes: Int) -> [String: Any]? {
+        let object: [String: Any]?
+        if let string = value as? String {
+            guard string.utf8.count <= maxBytes,
+                  let data = string.data(using: .utf8) else {
+                return nil
+            }
+            object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        } else {
+            object = value as? [String: Any]
+        }
+        guard let object, !object.isEmpty else {
+            return nil
+        }
+        return object
     }
 
     private static func nonEmptyString(_ value: Any?) -> String? {

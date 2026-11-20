@@ -253,7 +253,6 @@ describe('CrashReportingInstrumentation', () => {
       id: 'session-b',
       attributes: { isSampled: 'false' },
     });
-    const callsBeforeMetadataUpdate = setup.nativeModule.recordCrashSessionContext.mock.calls.length;
     expect(setup.nativeModule.recordCrashSessionContext).toHaveBeenLastCalledWith(
       expect.objectContaining({ sessionId: 'session-b', isSampled: false })
     );
@@ -263,7 +262,9 @@ describe('CrashReportingInstrumentation', () => {
       attributes: { custom: 'value' },
     });
 
-    expect(setup.nativeModule.recordCrashSessionContext).toHaveBeenCalledTimes(callsBeforeMetadataUpdate);
+    expect(setup.nativeModule.recordCrashSessionContext).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: 'session-b', isSampled: false })
+    );
   });
 
   it('does not carry a sampling decision into a different session', () => {
@@ -648,9 +649,183 @@ describe('CrashReportingInstrumentation', () => {
 
       const item = sendSpy.mock.calls[0]?.[0]?.[0] as TransportItem<ExceptionEvent>;
       expect(item.meta.session?.id).toBe('session-a');
-      expect(item.meta.device).toEqual({ is_physical: true, brand: 'Apple' });
+      expect(item.meta).not.toHaveProperty('device');
       expect(item.meta).not.toHaveProperty('network');
       expect(item.meta.session?.attributes?.['device_battery_level']).toBeUndefined();
+    });
+  });
+
+  describe('metadata of the crashed process', () => {
+    const savedMeta = {
+      sdk: { name: '@grafana/faro-react-native', version: '1.0.0', integrations: [] },
+      app: { name: 'shop', environment: 'production', installationId: 'install-a', version: '1.2.3' },
+      os: { name: 'Android', version: '13' },
+      device: { brand: 'Google', is_physical: true },
+      page: { id: 'page-a', url: 'Checkout' },
+      view: { name: 'Checkout' },
+      sessionAttributes: { device_brand: 'Google', plan: 'pro' },
+      dynamicGroups: { battery: true, thermal: true, network: true },
+    };
+    const relaunchSessionAttributes = { device_battery_level: '9', device_brand: 'Apple', plan: 'free' };
+
+    function setupRelaunchedReplay(report: CrashReport) {
+      const transport = new FetchTransport({ url: 'http://example.com/collect' });
+      const instrumentation = new AndroidCrashReportingInstrumentation({ enabled: false });
+      const faro = initializeFaro(
+        mockConfig({
+          metas: [
+            () => ({
+              sdk: { name: '@grafana/faro-react-native', version: '2.0.0', integrations: [] },
+              app: { name: 'shop', environment: 'staging', version: '2.0.0' },
+              os: { name: 'Android', version: '14' },
+              user: { id: 'user-b' },
+              view: { name: 'Home' },
+              page: { id: 'page-b', url: 'Home' },
+            }),
+            getDynamicDeviceStateMeta(
+              { brand: 'Apple' },
+              undefined,
+              new DynamicDeviceStateProvider(
+                () => 0,
+                DYNAMIC_DEVICE_STATE_TTL_MS,
+                () => ({ device: { battery_level: 9 }, network: { connection_type: 'wifi' } })
+              )
+            ),
+          ],
+          transports: [transport],
+          instrumentations: [instrumentation],
+        })
+      );
+      faro.api.setSession({ id: 'session-b', attributes: relaunchSessionAttributes });
+      androidInstrumentations.push(instrumentation);
+      const nativeModule = createNativeCrashModule([report]);
+      const sendSpy = jest.spyOn(transport, 'sendWithResult').mockResolvedValue({ outcome: 'accepted', status: 202 });
+      const testable = instrumentation as unknown as TestableAndroidCrashInstrumentation;
+      testable.prepareCrashReporting(nativeModule);
+      return { nativeModule, sendSpy, testable };
+    }
+
+    async function replay(report: CrashReport) {
+      const setup = setupRelaunchedReplay(report);
+      await setup.testable.processCrashReports(setup.nativeModule);
+      return setup.sendSpy.mock.calls[0]?.[0]?.[0] as TransportItem<ExceptionEvent>;
+    }
+
+    it('saves the static metadata of the running process and leaves out the user and dynamic values', () => {
+      const setup = setupRelaunchedReplay(createCrashReport());
+
+      const saved = setup.nativeModule.recordCrashSessionContext.mock.lastCall?.[0] as { meta?: string };
+      const meta = JSON.parse(saved.meta ?? '{}');
+      expect(meta).toMatchObject({
+        sdk: { version: '2.0.0' },
+        app: { environment: 'staging' },
+        os: { version: '14' },
+        device: { brand: 'Apple' },
+        page: { url: 'Home' },
+        view: { name: 'Home' },
+      });
+      expect(meta).not.toHaveProperty('user');
+      expect(meta).not.toHaveProperty('network');
+      expect(meta.device).not.toHaveProperty('battery_level');
+      expect(meta.sessionAttributes).toEqual({ device_brand: 'Apple', plan: 'free' });
+      expect(saved.meta).not.toContain('user-b');
+    });
+
+    it('replays the metadata that was saved with the crash instead of the relaunch metadata', async () => {
+      const item = await replay(createCrashReport({ meta: savedMeta, isSampled: true, appVersion: '1.2.3' }));
+
+      expect(item.meta.sdk).toEqual(savedMeta.sdk);
+      expect(item.meta.app).toEqual(savedMeta.app);
+      expect(item.meta.os).toEqual(savedMeta.os);
+      expect(item.meta.device).toEqual(savedMeta.device);
+      expect(item.meta.page).toEqual(savedMeta.page);
+      expect(item.meta.view).toEqual(savedMeta.view);
+      expect(item.meta.session).toEqual({
+        id: 'session-a',
+        attributes: { device_brand: 'Google', plan: 'pro', isSampled: 'true' },
+      });
+      expect(item.meta).not.toHaveProperty('user');
+      expect(item.meta).not.toHaveProperty('network');
+    });
+
+    it('adds the dynamic values captured at crash time', async () => {
+      const item = await replay(
+        createCrashReport({
+          meta: savedMeta,
+          dynamicDeviceState: {
+            batteryLevel: 42,
+            isCharging: false,
+            thermalState: 'fair',
+            connectionType: 'cell',
+            connectionSubtype: 'lte',
+          },
+        })
+      );
+
+      expect(item.meta.device).toEqual({
+        ...savedMeta.device,
+        battery_level: 42,
+        is_charging: false,
+        thermal_state: 'fair',
+      });
+      expect(item.meta).toHaveProperty('network', { connection_type: 'cell', connection_subtype: 'lte' });
+    });
+
+    it('omits a value that the record did not save instead of using the relaunch value', async () => {
+      const item = await replay(createCrashReport({ appVersion: '1.2.3', appBundleId: 'bundle-a' }));
+
+      expect(item.meta.app).toEqual({ version: '1.2.3', bundleId: 'bundle-a' });
+      expect(item.meta.session).toEqual({ id: 'session-a' });
+      for (const key of ['sdk', 'os', 'device', 'network', 'page', 'view', 'user']) {
+        expect(item.meta).not.toHaveProperty(key);
+      }
+    });
+
+    it('drops a dynamic group that the crashed session turned off', async () => {
+      const item = await replay(
+        createCrashReport({
+          meta: { ...savedMeta, dynamicGroups: { battery: true, thermal: false, network: false } },
+          dynamicDeviceState: { batteryLevel: 42, thermalState: 'fair', connectionType: 'cell', carrierName: 'Acme' },
+        })
+      );
+
+      expect(item.meta.device).toEqual({ ...savedMeta.device, battery_level: 42 });
+      expect(item.meta).not.toHaveProperty('network');
+    });
+
+    it('drops the dynamic values when the record does not say which groups the session collected', async () => {
+      const { dynamicGroups: _dynamicGroups, ...metaWithoutGroups } = savedMeta;
+      const item = await replay(
+        createCrashReport({
+          meta: metaWithoutGroups,
+          dynamicDeviceState: { batteryLevel: 42, thermalState: 'fair', connectionType: 'cell' },
+        })
+      );
+
+      expect(item.meta.device).toEqual(savedMeta.device);
+      expect(item.meta).not.toHaveProperty('network');
+    });
+
+    it('ignores malformed saved metadata without losing the valid parts', async () => {
+      const item = await replay(
+        createCrashReport({
+          meta: {
+            sdk: 'bad',
+            os: savedMeta.os,
+            view: { name: 5 },
+            sessionAttributes: { plan: 'pro', n: 1 },
+            dynamicGroups: savedMeta.dynamicGroups,
+          },
+          dynamicDeviceState: { batteryLevel: 'full', connectionType: 'cell' },
+        })
+      );
+
+      expect(item.meta).not.toHaveProperty('sdk');
+      expect(item.meta).not.toHaveProperty('view');
+      expect(item.meta.os).toEqual(savedMeta.os);
+      expect(item.meta.session?.attributes).toEqual({ plan: 'pro' });
+      expect(item.meta).not.toHaveProperty('device');
+      expect(item.meta).toHaveProperty('network', { connection_type: 'cell' });
     });
   });
 });

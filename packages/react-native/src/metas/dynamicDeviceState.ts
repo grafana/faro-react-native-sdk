@@ -141,11 +141,19 @@ interface DynamicDeviceStateNativeModule {
   getDynamicDeviceState?: () => unknown;
 }
 
+let activeGroups: DynamicDeviceStateGroups | undefined;
+
+/** The groups of the Faro instance that started the native listeners. Every group is on before one starts. */
+export function getActiveDynamicDeviceStateGroups(): DynamicDeviceStateGroups {
+  return activeGroups ?? resolveDynamicDeviceStateGroups();
+}
+
 /**
  * Starts the native listeners of the enabled groups. A group that is off starts nothing, and with
  * every group off the native module is not called. Never throws.
  */
 export function startDynamicDeviceState(groups: DynamicDeviceStateGroups): void {
+  activeGroups = groups;
   if (!hasEnabledDynamicDeviceStateGroup(groups)) {
     return;
   }

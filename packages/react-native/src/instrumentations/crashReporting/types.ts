@@ -19,6 +19,10 @@ export interface CrashReport {
   appVersion?: string;
   appRelease?: string;
   appBundleId?: string;
+  // Metadata of the crashed process. Absent on a record saved by an older SDK.
+  meta?: unknown;
+  // Dynamic device and network values that native code captured at crash time.
+  dynamicDeviceState?: unknown;
 }
 
 /**

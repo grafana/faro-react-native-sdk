@@ -314,6 +314,7 @@ object FaroCrashReporter {
                 sessionContext.appVersion?.let { json.put("appVersion", it) }
                 sessionContext.appRelease?.let { json.put("appRelease", it) }
                 sessionContext.appBundleId?.let { json.put("appBundleId", it) }
+                putSavedMetadata(json, sessionContext, exitInfo.timestamp)
             }
 
             if (isAnrTimeoutDescription(rawDescription)) {
@@ -373,6 +374,19 @@ object FaroCrashReporter {
         } catch (_: Exception) {
             ExportResult.Failed
         }
+    }
+
+    /**
+     * Adds the metadata that the crashed process saved. A value that was not saved stays out, so the
+     * JavaScript layer never substitutes the relaunch value for it.
+     */
+    private fun putSavedMetadata(
+        json: JSONObject,
+        sessionContext: FaroCrashSessionStore.SessionContext,
+        crashTimestampMs: Long,
+    ) {
+        sessionContext.metaJson?.let { json.put("meta", JSONObject(it)) }
+        sessionContext.dynamicStateForCrashAt(crashTimestampMs)?.let { json.put("dynamicDeviceState", JSONObject(it)) }
     }
 
     private fun cachedTraceForExit(
