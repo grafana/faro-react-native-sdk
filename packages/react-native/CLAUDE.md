@@ -239,19 +239,19 @@ this.api.pushError(error, { type: 'react_native_error' });
 
 ### Performance Instrumentation
 
-Uses native code for accurate metrics:
+Native code only reads raw process counters through the async `getPerformanceSnapshot(cpu, memory)` method, on a background thread or queue. `src/instrumentations/performance/` computes CPU utilization per window, converts memory to MB, applies the foreground cadence and emits `app.cpu_usage` / `app.memory` events.
 
-**iOS (`ios/FaroReactNative.swift`):**
+**iOS (`ios/CPUInfo.swift`, `ios/FaroReactNative.swift`, `ios/FaroReactNativeModule.mm`):**
 
-- CPU: `host_statistics()` with differential calculation
-- Memory: `task_info()` for RSS
-- Returns values in milliseconds/kilobytes
+- CPU time: `getrusage(RUSAGE_SELF)` user + system, in ms
+- Clock: `clock_gettime_nsec_np(CLOCK_UPTIME_RAW)`; CPU count: `ProcessInfo.activeProcessorCount`
+- Memory: `phys_footprint` from `task_info(TASK_VM_INFO)`, in bytes
 
-**Android (`android/src/main/java/com/grafana/faro/reactnative/`):**
+**Android (`android/src/main/java/com/grafana/faro/reactnative/ProcessUsage.kt`):**
 
-- CPU: Parses `/proc/[pid]/stat`
-- Memory: Parses `/proc/[pid]/status` for VmRSS
-- Currently blocked by workspace gradle issues (code is ready)
+- CPU time: `utime + stime` from `/proc/self/stat` (no child time), in ms
+- Clock: `SystemClock.elapsedRealtimeNanos()`; CPU count: `Runtime.availableProcessors()`
+- Memory: `VmRSS` from `/proc/self/status`, in bytes
 
 ### Startup Instrumentation
 

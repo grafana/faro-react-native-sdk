@@ -1,9 +1,7 @@
-import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { NativeModules } from 'react-native';
 
 import { BaseInstrumentation, VERSION } from '@grafana/faro-core';
 import type { API } from '@grafana/faro-core';
-
-import type { ReactNativeConfig } from '../../config/types';
 
 import type { FrameMetrics, FrameMonitoringOptions } from './types';
 
@@ -21,6 +19,8 @@ const DEFAULT_NORMALIZED_REFRESH_RATE = 60;
  *
  * Monitors frame rendering performance and detects slow/frozen frames.
  * Uses native CADisplayLink (iOS) and Choreographer (Android) for accurate metrics.
+ * `getRNInstrumentations()` adds it when `refreshRateVitals: true`. It reports slow and frozen
+ * frames only, not a refresh rate.
  * The native monitor has one owner per process. Remove an instance from its old
  * Faro before registering it with another; do not share it between active Faros.
  *
@@ -36,7 +36,6 @@ const DEFAULT_NORMALIZED_REFRESH_RATE = 60;
  * These represent severe jank where the app appears unresponsive.
  *
  * Sends measurements via Faro API:
- * - `app_refresh_rate`: Current refresh rate in FPS
  * - `app_frames_rate`: Number of slow frame events (not individual frames)
  * - `app_frozen_frame`: Number of frozen frames (exceeding frozenFrameThresholdMs)
  *
@@ -62,8 +61,6 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
 
   private readonly options: Required<FrameMonitoringOptions>;
   private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
-  private eventEmitter: NativeEventEmitter | null = null;
-  private eventSubscriptions: Array<{ remove: () => void }> = [];
   private generation = 0;
   private initializedApi: API | undefined;
   private nativeModule: typeof NativeModules.FaroReactNativeModule | null = null;
@@ -76,16 +73,6 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
       refreshRatePollingInterval: options.refreshRatePollingInterval ?? DEFAULT_REFRESH_RATE_POLLING_INTERVAL,
       normalizedRefreshRate: options.normalizedRefreshRate ?? DEFAULT_NORMALIZED_REFRESH_RATE,
     };
-  }
-
-  /**
-   * Check if refresh rate vitals are enabled in Faro config.
-   * Reads from faro.config.refreshRateVitals (single source of truth).
-   */
-  private get refreshRateVitalsEnabled(): boolean {
-    // Access config via this.config which is set by BaseInstrumentation after initialization
-    const config = this.config as ReactNativeConfig | undefined;
-    return config?.refreshRateVitals ?? false;
   }
 
   initialize(): void {
@@ -109,10 +96,7 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     // Start native frame monitoring with configuration
     this.startNativeMonitoring(nativeModule);
 
-    // Set up Android refresh rate events (throttled on native side); frozen/slow frames use polling
-    this.setupEventListeners(nativeModule);
-
-    // Set up polling for periodic metrics collection (iOS pattern)
+    // Slow and frozen frames are polled on both platforms
     this.startPolling();
   }
 
@@ -141,35 +125,6 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     }
   }
 
-  private setupEventListeners(nativeModule: typeof NativeModules.FaroReactNativeModule): void {
-    const generation = this.generation;
-    // Android: refresh rate only. Slow and frozen frames are polled (same as iOS) to avoid duplicate reports.
-    if (Platform.OS === 'android' && this.refreshRateVitalsEnabled) {
-      try {
-        this.eventEmitter = new NativeEventEmitter(nativeModule);
-
-        const refreshRateSubscription = this.eventEmitter.addListener('onRefreshRate', (...args: readonly Object[]) => {
-          if (!this.isCurrent(generation)) {
-            return;
-          }
-          const [refreshRate] = args;
-
-          if (typeof refreshRate !== 'number') {
-            this.logWarn('Ignoring onRefreshRate event without a numeric payload');
-            return;
-          }
-
-          this.handleRefreshRate(refreshRate);
-        });
-        this.eventSubscriptions.push(refreshRateSubscription);
-
-        this.logDebug('Set up Android refresh rate event listener');
-      } catch (error) {
-        this.logError('Failed to set up frame event listeners', error);
-      }
-    }
-  }
-
   private startPolling(): void {
     const generation = this.generation;
     // Both iOS and Android use polling for slow and frozen frames (avoids duplicate reports on Android).
@@ -189,33 +144,13 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     }
 
     try {
-      // Get refresh rate (only send when refreshRateVitals is enabled in config)
-      if (this.refreshRateVitalsEnabled) {
-        if (typeof nativeModule.getRefreshRate === 'function') {
-          const refreshRate = await nativeModule.getRefreshRate();
-          if (!this.isCurrent(generation)) {
-            return;
-          }
-          if (refreshRate !== null && refreshRate > 0) {
-            this.handleRefreshRate(refreshRate);
-          }
-        }
-      }
-
-      // Get full frame metrics if available
-      if (!this.isCurrent(generation)) {
-        return;
-      }
       if (typeof nativeModule.getFrameMetrics === 'function') {
         const metrics = (await nativeModule.getFrameMetrics()) as FrameMetrics | null;
         if (!this.isCurrent(generation)) {
           return;
         }
         if (metrics) {
-          if (this.refreshRateVitalsEnabled && metrics.refreshRate > 0) {
-            this.handleRefreshRate(metrics.refreshRate);
-          }
-          if (this.isCurrent(generation) && metrics.slowFrames > 0) {
+          if (metrics.slowFrames > 0) {
             this.handleSlowFrames(metrics.slowFrames);
           }
           if (this.isCurrent(generation) && metrics.frozenFrames > 0) {
@@ -228,16 +163,6 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
         this.logError('Failed to poll frame metrics', error);
       }
     }
-  }
-
-  private handleRefreshRate(refreshRate: number): void {
-    this.api.pushMeasurement(
-      {
-        type: 'app_refresh_rate',
-        values: { refresh_rate: refreshRate },
-      },
-      { skipDedupe: true }
-    );
   }
 
   private handleSlowFrames(count: number): void {
@@ -279,18 +204,6 @@ export class FrameMonitoringInstrumentation extends BaseInstrumentation {
     if (this.pollingIntervalId !== null) {
       clearInterval(this.pollingIntervalId);
       this.pollingIntervalId = null;
-    }
-
-    // Remove event subscriptions
-    const subscriptions = this.eventSubscriptions;
-    this.eventSubscriptions = [];
-    this.eventEmitter = null;
-    for (const subscription of subscriptions) {
-      try {
-        subscription.remove();
-      } catch (error) {
-        this.logError('Failed to remove frame event listener', error);
-      }
     }
 
     // Stop native monitoring

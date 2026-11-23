@@ -1,3 +1,4 @@
+#include <time.h>
 #import "FaroReactNativeModule.h"
 #import <React/RCTBridgeModule.h>
 #if __has_include(<FaroReactNative/FaroReactNative-Swift.h>)
@@ -154,21 +155,27 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getAppStartDuration)
   return @([FaroReactNative getAppStartDuration]);
 }
 
-/// Synchronous method for immediate access from JavaScript
-/// Returns current memory usage in kilobytes (RSS)
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getMemoryUsage)
+/// Promise-based reads on a background queue. No process reads run on the main/JS thread.
+RCT_EXPORT_METHOD(getPerformanceSnapshot:(BOOL)cpu memory:(BOOL)memory
+                  resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject)
 {
-  return @([FaroReactNative getMemoryUsage]);
-}
-
-/// Synchronous method for immediate access from JavaScript
-/// Returns current CPU usage percentage (0-100+), or -1 on error
-/// First call returns 0 (baseline), subsequent calls return actual usage
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCpuUsage)
-{
-  double cpuUsage = [FaroReactNative getCpuUsage];
-  // Return null for error case (-1.0) to match JavaScript expectations
-  return cpuUsage < 0 ? [NSNull null] : @(cpuUsage);
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+    NSNumber *cpuTime = nil;
+    @try { if (cpu) cpuTime = [CPUInfo getCpuTimeMs]; }
+    @catch (NSException *exception) { cpuTime = nil; }
+    double elapsed = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000000.0;
+    double timestamp = [[NSDate date] timeIntervalSince1970] * 1000.0;
+    NSNumber *bytes = nil;
+    @try { if (memory) bytes = [FaroReactNative getMemoryUsage]; }
+    @catch (NSException *exception) { bytes = nil; }
+    resolve(@{
+      @"cpuTimeMs": cpuTime ?: [NSNull null],
+      @"elapsedMs": @(elapsed),
+      @"timestampMs": @(timestamp),
+      @"logicalCount": @([[NSProcessInfo processInfo] activeProcessorCount]),
+      @"memoryBytes": bytes ?: [NSNull null]
+    });
+  });
 }
 
 /// Start frame monitoring with configuration
@@ -195,23 +202,7 @@ RCT_EXPORT_METHOD(stopFrameMonitoring)
   });
 }
 
-/// Get current refresh rate
-/// @param resolve Promise resolve callback
-/// @param reject Promise reject callback
-RCT_EXPORT_METHOD(getRefreshRate:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject)
-{
-  dispatch_async(dispatch_get_main_queue(), ^{
-    double refreshRate = [[RefreshRateVitals shared] getRefreshRate];
-    if (refreshRate > 0) {
-      resolve(@(refreshRate));
-    } else {
-      resolve([NSNull null]);
-    }
-  });
-}
-
-/// Get frame metrics (refresh rate, slow frame events, frozen frames, frozen duration)
+/// Get frame metrics (slow frame events, frozen frames, frozen duration)
 /// Note: slowFrames contains the count of slow frame EVENTS (not individual frames)
 /// @param resolve Promise resolve callback
 /// @param reject Promise reject callback
@@ -223,7 +214,6 @@ RCT_EXPORT_METHOD(getFrameMetrics:(RCTPromiseResolveBlock)resolve
     NSDictionary *frozenMetrics = [vitals getAndResetFrozenMetrics];
 
     NSDictionary *metrics = @{
-      @"refreshRate": @([vitals getRefreshRate]),
       @"slowFrames": @([vitals getAndResetSlowFrames]),
       @"frozenFrames": frozenMetrics[@"count"],
       @"frozenDurationMs": frozenMetrics[@"durationMs"]

@@ -10,7 +10,7 @@ import UIKit
 /// ## Metrics Provided
 /// - **App Startup Time**: Cold start duration using kernel process info
 /// - **Memory Usage**: Physical memory footprint via Mach task API
-/// - **CPU Usage**: Per-process CPU percentage via thread aggregation
+/// - **CPU Usage**: Task CPU counters are read by CPUInfo on a background queue
 ///
 /// ## Implementation Notes
 /// All methods use low-level iOS/Darwin APIs for accurate measurements:
@@ -109,29 +109,8 @@ public class FaroReactNative: NSObject {
 
     // MARK: - Memory Usage
 
-    /// Returns current memory usage in kilobytes.
-    ///
-    /// Uses `task_info()` with `TASK_VM_INFO` to get the process's physical
-    /// memory footprint. This is the recommended metric for iOS memory monitoring.
-    ///
-    /// ## Memory Metrics Explained
-    /// - **`phys_footprint`** (used here): Physical memory attributed to this app.
-    ///   This is what Apple recommends and what Xcode's Memory Gauge shows.
-    /// - **`resident_size`**: Physical pages currently in RAM (less accurate,
-    ///   can include shared memory counted multiple times).
-    ///
-    /// ## RUM Best Practices
-    /// - ✅ Uses `phys_footprint` (Apple-recommended metric)
-    /// - ✅ Matches Xcode Memory Gauge for easy correlation
-    /// - ✅ Suitable for periodic sampling (low overhead)
-    ///
-    /// ## Typical Values
-    /// - Small apps: 50-100 MB
-    /// - Medium apps: 100-300 MB
-    /// - Memory warnings start around 1GB+ on modern devices
-    ///
-    /// - Returns: Memory usage in KB, or 0.0 on error
-    @objc public static func getMemoryUsage() -> Double {
+    /// Physical footprint in bytes, or nil on failure. Called on a background queue.
+    @objc public static func getMemoryUsage() -> NSNumber? {
         var vmInfo = task_vm_info_data_t()
         var count = mach_msg_type_number_t(MemoryLayout<task_vm_info>.size / MemoryLayout<integer_t>.size)
 
@@ -141,49 +120,11 @@ public class FaroReactNative: NSObject {
             }
         }
 
-        guard result == KERN_SUCCESS else {
-            return 0.0
+        guard result == KERN_SUCCESS, vmInfo.phys_footprint > 0 else {
+            return nil
         }
 
-        // phys_footprint is in bytes, convert to KB
-        // This is the recommended iOS memory metric (matches Xcode Memory Gauge)
-        let memoryBytes = Double(vmInfo.phys_footprint)
-        return memoryBytes / 1024.0
-    }
-
-    // MARK: - CPU Usage
-
-    /// Returns current CPU usage as a percentage (0-100+).
-    ///
-    /// Uses differential calculation - first call establishes a baseline and
-    /// returns 0.0, subsequent calls return the actual CPU usage percentage.
-    ///
-    /// ## How It Works
-    /// Delegates to `CPUInfo.getCpuInfo()` which:
-    /// 1. Enumerates all threads via `task_threads()`
-    /// 2. Sums CPU time (user + system) across all threads
-    /// 3. Calculates percentage: `(cpuTimeDelta / wallTimeDelta) * 100`
-    ///
-    /// ## RUM Best Practices
-    /// - ✅ Per-process CPU (not system-wide)
-    /// - ✅ Per-thread aggregation (accurate on multi-core)
-    /// - ✅ Differential calculation (measures actual usage between calls)
-    /// - ✅ Low overhead (suitable for periodic sampling)
-    ///
-    /// ## Return Values
-    /// - `0.0`: First call (baseline) or very low CPU usage
-    /// - `0-100`: Normal CPU usage percentage
-    /// - `>100`: Possible on multi-core (e.g., 200% = 2 cores fully utilized)
-    /// - `-1.0`: Error occurred
-    ///
-    /// ## Sampling Recommendations
-    /// - Sample every 1-5 seconds for general monitoring
-    /// - Sample more frequently during performance investigations
-    /// - First call after app start returns 0 (baseline), ignore this value
-    ///
-    /// - Returns: CPU usage percentage, or -1.0 on error
-    @objc public static func getCpuUsage() -> Double {
-        return CPUInfo.getCpuInfo()
+        return NSNumber(value: vmInfo.phys_footprint)
     }
 
     // MARK: - Crash Reporting

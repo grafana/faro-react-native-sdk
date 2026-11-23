@@ -20,7 +20,7 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
  * Provides methods for monitoring:
  * - App startup time
  * - Memory usage (VmRSS)
- * - CPU usage (via CPUInfo helper)
+ * - CPU usage (via ProcessUsage helper)
  *
  * Uses Android OS APIs to get accurate metrics without requiring
  * manual initialization or timestamp capture.
@@ -70,6 +70,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     override fun invalidate() {
+        performanceExecutor.shutdown()
         FaroSessionProcess.releasePersistence(sessionPersistenceOwner)
         FaroDynamicDeviceState.detach(dynamicDeviceStateOwner)
         super.invalidate()
@@ -95,17 +96,35 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
         return 0.0
     }
 
-    /**
-     * Gets current memory usage in kilobytes
-     *
-     * Reads VmRSS (Virtual Memory Resident Set Size) from /proc/[pid]/status.
-     * This represents the actual physical memory currently used by the process.
-     *
-     * @return Memory usage in KB, or null on error
-     */
-    @ReactMethod(isBlockingSynchronousMethod = true)
-    fun getMemoryUsage(): Double? {
-        return MemoryInfo.getMemoryUsage()
+    private val performanceExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "FaroPerformance").apply { isDaemon = true }
+    }
+
+    /** CPU and memory reads run off the UI and JS threads; times are milliseconds, memory bytes. */
+    @ReactMethod
+    fun getPerformanceSnapshot(cpu: Boolean, memory: Boolean, promise: Promise) {
+        try {
+            performanceExecutor.execute {
+                try {
+                    val cpuTime = if (cpu) runCatching { ProcessUsage.readCpuTimeMs() }.getOrNull() else null
+                    val elapsed = SystemClock.elapsedRealtimeNanos() / 1_000_000.0
+                    val timestamp = System.currentTimeMillis().toDouble()
+                    val bytes = if (memory) runCatching { ProcessUsage.readMemoryBytes() }.getOrNull() else null
+                    val snapshot = WritableNativeMap().apply {
+                        if (cpuTime == null) putNull("cpuTimeMs") else putDouble("cpuTimeMs", cpuTime)
+                        putDouble("elapsedMs", elapsed)
+                        putDouble("timestampMs", timestamp)
+                        putInt("logicalCount", Runtime.getRuntime().availableProcessors())
+                        if (bytes == null) putNull("memoryBytes") else putDouble("memoryBytes", bytes)
+                    }
+                    promise.resolve(snapshot)
+                } catch (error: Exception) {
+                    promise.reject("performance_read", error)
+                }
+            }
+        } catch (error: java.util.concurrent.RejectedExecutionException) {
+            promise.reject("performance_unavailable", error)
+        }
     }
 
     /**
@@ -142,20 +161,6 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
-     * Gets current CPU usage percentage
-     *
-     * Uses differential calculation - first call returns 0.0 (baseline),
-     * subsequent calls return CPU usage percentage (0-100+).
-     * Requires Android API 21+ (Lollipop).
-     *
-     * @return CPU usage percentage, or null on error or unsupported Android version
-     */
-    @ReactMethod(isBlockingSynchronousMethod = true)
-    fun getCpuUsage(): Double? {
-        return CPUInfo.getCpuInfo()
-    }
-
-    /**
      * Start frame monitoring with configuration
      *
      * @param config Configuration map with targetFps, frozenFrameThresholdMs, normalizedRefreshRate
@@ -172,11 +177,6 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
             normalizedRefreshRate = normalizedRefreshRate
         )
 
-        // Refresh rate events only; slow/frozen frames are read via getFrameMetrics polling
-        FrameMonitor.setCallbacks(
-            onRefreshRate = { rate -> sendEvent("onRefreshRate", rate) }
-        )
-
         FrameMonitor.start()
     }
 
@@ -189,22 +189,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     }
 
     /**
-     * Get current refresh rate
-     *
-     * @param promise Promise to resolve with the refresh rate
-     */
-    @ReactMethod
-    fun getRefreshRate(promise: Promise) {
-        val refreshRate = FrameMonitor.getRefreshRate()
-        if (refreshRate > 0) {
-            promise.resolve(refreshRate)
-        } else {
-            promise.resolve(null)
-        }
-    }
-
-    /**
-     * Get frame metrics (refresh rate, slow frame events, frozen frames)
+     * Get frame metrics (slow frame events, frozen frames)
      * Note: slowFrames contains the count of slow frame EVENTS (not individual frames)
      *
      * @param promise Promise to resolve with the metrics map
@@ -213,7 +198,6 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
     fun getFrameMetrics(promise: Promise) {
         FrameMonitor.getFrameMetrics { snapshot ->
             val metrics = WritableNativeMap().apply {
-                putDouble("refreshRate", snapshot.refreshRate)
                 putInt("slowFrames", snapshot.slowFrames)
                 putInt("frozenFrames", snapshot.frozenFrames)
                 putDouble("frozenDurationMs", snapshot.frozenDurationMs)
@@ -428,6 +412,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
                 appVersion = sessionContext.getOptionalString("appVersion"),
                 appRelease = sessionContext.getOptionalString("appRelease"),
                 appBundleId = sessionContext.getOptionalString("appBundleId"),
+                metaJson = sessionContext.getOptionalString("meta"),
             )
         } catch (_: Exception) {
             false

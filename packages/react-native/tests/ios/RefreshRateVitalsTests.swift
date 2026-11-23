@@ -215,11 +215,14 @@ final class RefreshRateVitalsTests: XCTestCase {
         }
     }
 
-    func testPromotionNormalizationIsUnchanged() {
+    func testPromotionNormalizationStillDetectsSlowEpisode() {
         withMonitor { monitor, _ in
             tick(monitor, 1, hz: 120)
-            tick(monitor, 1 + 1.0 / 120, hz: 120)
-            XCTAssertEqual(monitor.getRefreshRate(), 60, accuracy: 0.001)
+            tick(monitor, 1.01, hz: 120)
+            tick(monitor, 1.04, hz: 120)
+            tick(monitor, 1.07, hz: 120)
+            tick(monitor, 1.075, hz: 120)
+            XCTAssertEqual(monitor.getAndResetSlowFrames(), 1)
         }
     }
 

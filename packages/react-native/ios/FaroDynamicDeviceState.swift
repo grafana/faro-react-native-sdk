@@ -36,6 +36,32 @@ import UIKit
     private static var cachedThermalState: String?
     private static var cachedDataRadioTechnology: String?
     private static let telephonyInfo = CTTelephonyNetworkInfo()
+    private static let changeQueue = DispatchQueue(label: "com.grafana.faro.dynamic-state-changes", qos: .utility)
+    private static var changeHandler: (() -> Void)?
+    private static var changePending = false
+
+    /// Sets the handler that runs after a cached value may have changed. It runs on a background
+    /// queue and never under `lock`, and a burst of changes runs it once.
+    static func setChangeHandler(_ handler: (() -> Void)?) {
+        lock.lock()
+        changeHandler = handler
+        lock.unlock()
+    }
+
+    // The caller holds `lock`.
+    private static func scheduleChangeNotification() {
+        guard changeHandler != nil, !changePending else {
+            return
+        }
+        changePending = true
+        changeQueue.async {
+            lock.lock()
+            changePending = false
+            let handler = changeHandler
+            lock.unlock()
+            handler?()
+        }
+    }
 
     /// Records the groups a React Native runtime wants and starts the monitoring that no runtime had
     /// asked for yet. A group that is off registers no observer and reads nothing from the system.
@@ -88,6 +114,7 @@ import UIKit
             networkStarted = false
             stopNetwork()
         }
+        scheduleChangeNotification()
     }
 
     // The caller holds `lock`.
@@ -103,6 +130,7 @@ import UIKit
                     defer { lock.unlock() }
                     guard batteryStarted else { return }
                     readBattery(UIDevice.current)
+                    scheduleChangeNotification()
                 }
             )
         }
@@ -114,6 +142,7 @@ import UIKit
                 defer { lock.unlock() }
                 guard batteryStarted else { return }
                 cachedLowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+                scheduleChangeNotification()
             }
         )
     }
@@ -138,6 +167,7 @@ import UIKit
                 defer { lock.unlock() }
                 guard thermalStarted else { return }
                 cachedThermalState = thermalStateName(ProcessInfo.processInfo.thermalState)
+                scheduleChangeNotification()
             }
         )
     }
@@ -160,6 +190,7 @@ import UIKit
                 defer { lock.unlock() }
                 guard networkStarted else { return }
                 cachedDataRadioTechnology = technology
+                scheduleChangeNotification()
             }
         )
 
@@ -171,6 +202,7 @@ import UIKit
             guard let monitor, pathMonitor === monitor else { return }
             latestPath = path
             cachedDataRadioTechnology = currentDataRadioTechnology()
+            scheduleChangeNotification()
         }
         monitor.start(queue: DispatchQueue(label: "com.grafana.faro.network-path", qos: .utility))
         pathMonitor = monitor

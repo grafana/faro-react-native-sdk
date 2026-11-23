@@ -312,8 +312,7 @@ export function CrashDemoScreen() {
                     await NativeModules.FaroReactNativeModule?.getFrameMetrics();
                   Alert.alert(
                     'Frame Metrics',
-                    `Refresh Rate: ${metrics?.refreshRate || 0} FPS\n` +
-                      `Slow Frames: ${metrics?.slowFrames || 0}\n` +
+                    `Slow Frames: ${metrics?.slowFrames || 0}\n` +
                       `Frozen Frames: ${metrics?.frozenFrames || 0}\n\n` +
                       `Note: Counters reset after each read.`,
                   );
