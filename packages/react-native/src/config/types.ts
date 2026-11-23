@@ -62,6 +62,7 @@ type ReactNativeConfigOverrides = {
   tracingOptions?: Record<string, unknown>;
   cpuUsageVitals?: boolean;
   memoryUsageVitals?: boolean;
+  /** Enables slow/frozen frame monitoring. No refresh-rate value is collected or sent. */
   refreshRateVitals?: boolean;
   fetchVitalsInterval?: number;
   frameMonitoringOptions?: FrameMonitoringOptions;

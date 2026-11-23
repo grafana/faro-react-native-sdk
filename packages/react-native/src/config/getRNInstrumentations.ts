@@ -130,7 +130,7 @@ export function getRNInstrumentations(config: Partial<ReactNativeConfig> = {}): 
   instrumentations.push(new StartupInstrumentation());
 
   // Frame monitoring: enabled when refreshRateVitals is true
-  // The instrumentation reads refreshRateVitals from faro.config (single source of truth)
+  // The legacy option name retains slow/frozen frame monitoring; no refresh value is sent.
   if (refreshRateVitals) {
     instrumentations.push(new FrameMonitoringInstrumentation(frameMonitoringOptions));
   }

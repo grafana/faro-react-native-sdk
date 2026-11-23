@@ -210,7 +210,7 @@ This package’s **`android/build.gradle`** registers **`faroUploadComposedSourc
 
 **Disabled by default** (opt-in via config):
 
-- **Frame Monitoring Instrumentation** - Monitors refresh rate / frame drops — `refreshRateVitals` (default: false)
+- **Frame Monitoring Instrumentation** - Monitors slow and frozen frames — `refreshRateVitals` (default: false)
 - **ANR Instrumentation** - Detects Application Not Responding (Android only) — `anrTracking` (default: false)
 - **Crash Reporting Instrumentation** - Captures native crashes — `enableCrashReporting` (default: false)
 - **Tracing Instrumentation** - OpenTelemetry distributed tracing (requires `@grafana/faro-react-native-tracing`) — `enableTracing` (default: false)
@@ -1138,21 +1138,11 @@ For a complete example of app state tracking in action, see the [demo](../../dem
 
 ### Performance Instrumentation Configuration
 
-The Performance Instrumentation provides comprehensive performance monitoring for React Native applications, including **CPU usage**, **memory usage**, and **app startup time tracking**.
+The Performance Instrumentation reports **app CPU**, **app memory**, and **app startup time**.
 
-#### System Resource Monitoring (CPU & Memory)
+#### App CPU and Memory
 
-The SDK automatically monitors system resources using **native OS-level APIs** for accurate metrics:
-
-**iOS Implementation:**
-
-- **CPU**: Uses `host_statistics()` with differential calculation for precise CPU percentage
-- **Memory**: Uses `task_info()` to measure RSS (Resident Set Size) in kilobytes
-
-**Android Implementation:**
-
-- **CPU**: Parses `/proc/[pid]/stat` with differential calculation
-- **Memory**: Parses `/proc/[pid]/status` for VmRSS in kilobytes
+`cpuUsageVitals` and `memoryUsageVitals` (both default `true`) report how much CPU and memory your app uses while it is on screen. They send two events, `app.cpu_usage` and `app.memory`. The older `app_cpu_usage` and `app_memory` measurements are no longer sent, so dashboards built on them show no new data.
 
 **Configuration:**
 
@@ -1165,57 +1155,86 @@ initializeFaro({
     name: 'my-app',
     version: '1.0.0',
   },
-  // Enable performance monitoring (defaults)
-  cpuUsageVitals: true,
-  memoryUsageVitals: true,
-  // Collection interval in milliseconds (default: 30000 - 30 seconds)
-  fetchVitalsInterval: 30000,
+  cpuUsageVitals: true, // default
+  memoryUsageVitals: true, // default
+  fetchVitalsInterval: 30000, // sampling window in ms (default: 30000)
 });
 ```
 
-**Metrics Collected:**
+**What the values mean:**
 
-1. **CPU Usage** (`app_cpu_usage` measurement):
-   - `cpu_usage` - CPU usage percentage (0-100+)
-   - Collected periodically based on `fetchVitalsInterval`
-   - First reading establishes baseline (returns 0)
-   - Subsequent readings show actual CPU percentage
+- **CPU** is the percentage of the device's available CPU time your app used during the window, from 0 to 100. It covers all of the app's threads and is divided by the number of CPU cores, so one fully busy thread on an 8-core phone reads 12.5. An idle app reports 0.
+- **Memory** is the physical memory your app uses at that moment, in MB (1 MB = 1,048,576 bytes). Android reports resident memory (RSS) and iOS reports the memory footprint that Xcode shows. The two are measured differently, so compare memory within one platform.
 
-2. **Memory Usage** (`app_memory` measurement):
-   - `mem_usage` - Memory usage in kilobytes (RSS)
-   - Collected periodically based on `fetchVitalsInterval`
-   - Measures physical memory currently used by the app
+<details>
+<summary>Platform sources</summary>
+
+| Platform | CPU time                                 | Clock                                     | CPU count                          | Memory                                          |
+| -------- | ---------------------------------------- | ----------------------------------------- | ---------------------------------- | ----------------------------------------------- |
+| Android  | `utime` + `stime` from `/proc/self/stat` | `SystemClock.elapsedRealtimeNanos()`      | `Runtime.availableProcessors()`    | `VmRSS` from `/proc/self/status`                |
+| iOS      | `getrusage(RUSAGE_SELF)` user + system   | `clock_gettime_nsec_np(CLOCK_UPTIME_RAW)` | `ProcessInfo.activeProcessorCount` | `phys_footprint` from `task_info(TASK_VM_INFO)` |
+
+CPU is `100 × CPU time used ÷ (window length × CPU count)`. Values outside 0–100 are dropped, not clamped.
+
+</details>
+
+**When samples are sent:**
+
+- Only while the app is visible. Nothing is sampled in the background.
+- Every `fetchVitalsInterval` the SDK sends one `app.cpu_usage` for the past window and one `app.memory`.
+- One extra `app.memory` is sent 2 seconds after the app starts or comes back to the foreground, so short visits still get a memory sample.
+- A window is dropped when the app goes to the background or when a reading fails. When a window ran much longer than expected (for example because a timer stalled), only its CPU sample is dropped; memory is still sent. Visits shorter than one interval have no CPU sample.
+
+Readings are taken on a background thread and never block the UI or JavaScript thread.
+
+**Events:**
+
+| Event           | Attributes                                                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `app.cpu_usage` | `value` (percent, at most 2 decimals), `unit: "percent"`, `cpu.logical_count`, `window_ms`, `cpu.basis: "process_utilization"` |
+| `app.memory`    | `value` (MB, at most 1 decimal), `unit: "MB"`, `memory.basis: "rss"` (Android) or `"phys_footprint"` (iOS)                     |
+
+All attribute values are strings, for example:
+
+```json
+[
+  {
+    "name": "app.cpu_usage",
+    "attributes": {
+      "value": "7.81",
+      "unit": "percent",
+      "cpu.logical_count": "8",
+      "window_ms": "30004",
+      "cpu.basis": "process_utilization"
+    }
+  },
+  {
+    "name": "app.memory",
+    "attributes": { "value": "212.4", "unit": "MB", "memory.basis": "phys_footprint" }
+  }
+]
+```
 
 **Example Grafana Queries (Loki):**
 
 ```logql
-# Average CPU usage over time
-{app_name="my-app", kind="measurement"}
-| json
-| type="app_cpu_usage"
-| unwrap cpu_usage
-| rate(1m)
+# Average app CPU
+avg(avg_over_time({service_name="my-app", kind="event"}
+| logfmt
+| event_name="app.cpu_usage"
+| unwrap event_data_value [5m]))
 
-# Memory usage spikes
-{app_name="my-app", kind="measurement"}
-| json
-| type="app_memory"
-| unwrap mem_usage
-| topk(10)
-
-# CPU usage during specific screen
-{app_name="my-app", kind="measurement"}
-| json
-| type="app_cpu_usage"
-| view_name="HomeScreen"
-| unwrap cpu_usage
-| avg
+# Highest app memory
+max(max_over_time({service_name="my-app", kind="event"}
+| logfmt
+| event_name="app.memory"
+| unwrap event_data_value [5m]))
 ```
 
 **Platform Requirements:**
 
 - **iOS**: Requires iOS 13.4+
-- **Android**: Requires API 21+ (Lollipop) for CPU monitoring, any version for memory
+- **Android**: Any version supported by React Native
 
 **No Manual Setup Required!**
 
@@ -1246,7 +1265,7 @@ The SDK automatically tracks app startup time from process start to Faro initial
 | avg
 ```
 
-#### Frame Monitoring (Refresh Rate, Slow & Frozen Frames)
+#### Frame Monitoring (Slow & Frozen Frames)
 
 Enable with `refreshRateVitals: true`. Uses native frame callbacks
 (`CADisplayLink` on iOS, `Choreographer` on Android).
@@ -1258,14 +1277,15 @@ Enable with `refreshRateVitals: true`. Uses native frame callbacks
 - **Poll interval**: 30s (`refreshRatePollingInterval`)
 
 Slow and frozen frames are **polled** on both platforms (no duplicate
-Android event stream). Refresh rate may also emit on Android between polls
-when `refreshRateVitals` is enabled.
+Android event stream). Refresh-rate values are not collected or sent.
+`refreshRateVitals` retains its name and still enables slow/frozen frame monitoring.
+`refreshRatePollingInterval` still sets the frame-count polling cadence.
+`normalizedRefreshRate` still controls iOS slow-frame classification on ProMotion.
 
 **Metrics:**
 
 | Type               | Values                             | Notes                                                 |
 | ------------------ | ---------------------------------- | ----------------------------------------------------- |
-| `app_refresh_rate` | `refresh_rate`                     | Current FPS                                           |
 | `app_frames_rate`  | `slow_frames`                      | Count of slow frame **events**, not individual frames |
 | `app_frozen_frame` | `frozen_frames`, `frozen_duration` | Frames above threshold; duration in ms                |
 

@@ -1,4 +1,4 @@
-import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 import { BaseInstrumentation, initializeFaro } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
@@ -12,15 +12,13 @@ jest.mock('react-native', () => ({
       startFrameMonitoring: jest.fn(),
       stopFrameMonitoring: jest.fn(),
       getFrameMetrics: jest.fn(),
-      getRefreshRate: jest.fn(),
     },
   },
-  NativeEventEmitter: jest.fn(),
 }));
 
 const nativeModule = NativeModules.FaroReactNativeModule;
 const instances: FrameMonitoringInstrumentation[] = [];
-const metrics = { refreshRate: 60, slowFrames: 1, frozenFrames: 1, frozenDurationMs: 1100 };
+const metrics = { slowFrames: 1, frozenFrames: 1, frozenDurationMs: 1100 };
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => {};
@@ -47,7 +45,6 @@ describe('frame monitoring cleanup', () => {
     jest.resetAllMocks();
     jest.useFakeTimers();
     nativeModule.getFrameMetrics.mockResolvedValue(null);
-    nativeModule.getRefreshRate.mockResolvedValue(null);
     NativeModules.FaroReactNativeModule = nativeModule;
     Platform.OS = 'ios';
   });
@@ -88,24 +85,9 @@ describe('frame monitoring cleanup', () => {
     }
   });
 
-  it.each([false, true])('does not drain metrics after a stale refresh-rate response (re-add: %s)', async (readd) => {
-    const pending = deferred<number>();
-    nativeModule.getRefreshRate.mockReturnValueOnce(pending.promise);
-    const { frame, faro, transport } = setup(true);
-    await jest.advanceTimersByTimeAsync(1000);
-    faro.instrumentations.remove(frame);
-    if (readd) {
-      faro.instrumentations.add(frame);
-    }
-    pending.resolve(60);
-    await jest.advanceTimersByTimeAsync(0);
-    expect(transport.items).toHaveLength(0);
-    expect(nativeModule.getFrameMetrics).not.toHaveBeenCalled();
-  });
-
-  it.each(['getRefreshRate', 'getFrameMetrics'])('ignores an old %s rejection after restart', async (method) => {
+  it('ignores an old getFrameMetrics rejection after restart', async () => {
     const pending = deferred<never>();
-    nativeModule[method].mockReturnValueOnce(pending.promise);
+    nativeModule.getFrameMetrics.mockReturnValueOnce(pending.promise);
     const { frame, faro } = setup(true);
     const logError = jest.spyOn(frame, 'logError');
     await jest.advanceTimersByTimeAsync(1000);
@@ -114,32 +96,6 @@ describe('frame monitoring cleanup', () => {
     pending.reject(new Error('old native request'));
     await jest.advanceTimersByTimeAsync(0);
     expect(logError).not.toHaveBeenCalled();
-  });
-
-  it('ignores a retained Android listener after removal and restart', () => {
-    Platform.OS = 'android';
-    const listeners: Array<(rate: number) => void> = [];
-    const remove = jest.fn();
-    jest.mocked(NativeEventEmitter).mockImplementation(
-      () =>
-        ({
-          addListener: (_name: string, listener: (rate: number) => void) => {
-            listeners.push(listener);
-            return { remove };
-          },
-        }) as unknown as NativeEventEmitter
-    );
-    const { frame, faro, transport } = setup(true);
-    listeners[0](60);
-    expect(transport.items).toHaveLength(1);
-    faro.instrumentations.remove(frame);
-    expect(remove).toHaveBeenCalledTimes(1);
-    listeners[0](60);
-    faro.instrumentations.add(frame);
-    listeners[0](60);
-    expect(transport.items).toHaveLength(1);
-    listeners[1](60);
-    expect(transport.items).toHaveLength(2);
   });
 
   it('does not create extra pollers or restart native monitoring on repeated initialization', async () => {
@@ -174,54 +130,6 @@ describe('frame monitoring cleanup', () => {
     expect(transport.items).toHaveLength(0);
     nextFaro.instrumentations.remove(frame);
     expect(nativeModule.stopFrameMonitoring).toHaveBeenCalledTimes(2);
-  });
-
-  it('does not drain metrics after an old refresh-rate response reaches a new Faro instance', async () => {
-    const pending = deferred<number>();
-    nativeModule.getRefreshRate.mockReturnValueOnce(pending.promise);
-    const { frame, transport } = setup(true);
-    await jest.advanceTimersByTimeAsync(1000);
-    const nextTransport = new MockTransport();
-    initializeFaro(
-      mockConfig({ isolate: true, refreshRateVitals: false, transports: [nextTransport], instrumentations: [frame] })
-    );
-    pending.resolve(60);
-    await jest.advanceTimersByTimeAsync(0);
-    expect(transport.items).toHaveLength(0);
-    expect(nextTransport.items).toHaveLength(0);
-    expect(nativeModule.getFrameMetrics).not.toHaveBeenCalled();
-    await jest.advanceTimersByTimeAsync(1000);
-    expect(nativeModule.getFrameMetrics).toHaveBeenCalledTimes(1);
-    expect(nativeModule.getRefreshRate).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([false, true])('replaces Android listeners for a new Faro (refresh rate: %s)', (refreshRateVitals) => {
-    Platform.OS = 'android';
-    const listeners: Array<(rate: number) => void> = [];
-    const remove = jest.fn();
-    jest.mocked(NativeEventEmitter).mockImplementation(
-      () =>
-        ({
-          addListener: (_name: string, listener: (rate: number) => void) => {
-            listeners.push(listener);
-            return { remove };
-          },
-        }) as unknown as NativeEventEmitter
-    );
-    const { frame, transport } = setup(true);
-    const nextTransport = new MockTransport();
-    initializeFaro(
-      mockConfig({ isolate: true, refreshRateVitals, transports: [nextTransport], instrumentations: [frame] })
-    );
-    expect(remove).toHaveBeenCalledTimes(1);
-    expect(listeners).toHaveLength(refreshRateVitals ? 2 : 1);
-    listeners[0](60);
-    expect(transport.items).toHaveLength(0);
-    expect(nextTransport.items).toHaveLength(0);
-    if (refreshRateVitals) {
-      listeners[1](60);
-      expect(nextTransport.items).toHaveLength(1);
-    }
   });
 
   it('ignores an old queued timer after rebinding without adding extra pollers', async () => {
@@ -315,32 +223,7 @@ describe('frame monitoring cleanup', () => {
     expect(nativeModule.stopFrameMonitoring).toHaveBeenCalledTimes(1);
   });
 
-  it('still stops native monitoring when removing an event listener throws', async () => {
-    Platform.OS = 'android';
-    const remove = jest.fn(() => {
-      throw new Error('listener removal failed');
-    });
-    jest
-      .mocked(NativeEventEmitter)
-      .mockImplementation(() => ({ addListener: () => ({ remove }) }) as unknown as NativeEventEmitter);
-    const { frame, faro } = setup(true);
-    const logError = jest.spyOn(frame, 'logError').mockImplementation(() => {});
-    expect(() => faro.instrumentations.remove(frame)).not.toThrow();
-    expect(logError).toHaveBeenCalledWith('Failed to remove frame event listener', expect.any(Error));
-    expect(nativeModule.stopFrameMonitoring).toHaveBeenCalledTimes(1);
-    await jest.advanceTimersByTimeAsync(2000);
-    expect(nativeModule.getRefreshRate).not.toHaveBeenCalled();
-    frame.destroy();
-    expect(remove).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([
-    ['getRefreshRate', false],
-    ['getRefreshRate', true],
-    ['getFrameMetrics', false],
-    ['getFrameMetrics', true],
-  ])('stops the current poll if a %s measurement removes it (re-add: %s)', async (method, readd) => {
-    nativeModule.getRefreshRate.mockResolvedValue(method === 'getRefreshRate' ? 60 : null);
+  it.each([false, true])('stops the current poll if a measurement removes it (re-add: %s)', async (readd) => {
     nativeModule.getFrameMetrics.mockResolvedValue(metrics);
     const { frame, faro, transport } = setup(true);
     const originalSend = transport.send.bind(transport);
@@ -353,9 +236,6 @@ describe('frame monitoring cleanup', () => {
     });
     await jest.advanceTimersByTimeAsync(1000);
     expect(transport.items).toHaveLength(1);
-    if (method === 'getRefreshRate') {
-      expect(nativeModule.getFrameMetrics).not.toHaveBeenCalled();
-    }
     if (readd) {
       expect(nativeModule.startFrameMonitoring).toHaveBeenCalledTimes(2);
     }

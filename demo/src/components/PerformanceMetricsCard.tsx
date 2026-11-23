@@ -36,26 +36,50 @@ export function PerformanceMetricsCard({
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
   const [memoryUsage, setMemoryUsage] = useState<number | null>(null);
 
-  const updatePerformanceMetrics = () => {
-    if (FaroReactNativeModule) {
+  useEffect(() => {
+    let stopped = false;
+    let previous: { cpuTimeMs: number; elapsedMs: number } | undefined;
+    let pending = false;
+    const update = async () => {
+      if (!FaroReactNativeModule?.getPerformanceSnapshot || pending) {
+        return;
+      }
+      pending = true;
       try {
-        const cpu = FaroReactNativeModule.getCpuUsage();
-        const memory = FaroReactNativeModule.getMemoryUsage();
-        setCpuUsage(cpu);
-        setMemoryUsage(memory);
+        const snapshot = await FaroReactNativeModule.getPerformanceSnapshot(
+          true,
+          true,
+        );
+        if (stopped) {
+          return;
+        }
+        const elapsed = previous ? snapshot.elapsedMs - previous.elapsedMs : 0;
+        const cpu =
+          previous && elapsed > 0 && snapshot.cpuTimeMs != null
+            ? (100 * (snapshot.cpuTimeMs - previous.cpuTimeMs)) /
+              (elapsed * snapshot.logicalCount)
+            : null;
+        setCpuUsage(
+          cpu != null && Number.isFinite(cpu) && cpu >= 0 && cpu <= 100
+            ? cpu
+            : null,
+        );
+        setMemoryUsage(snapshot.memoryBytes);
+        previous = snapshot.cpuTimeMs == null ? undefined : snapshot;
       } catch (err) {
         console.error('Failed to get performance metrics', err);
+      } finally {
+        pending = false;
       }
-    }
-  };
-
-  useEffect(() => {
-    updatePerformanceMetrics();
-
-    // Update performance metrics at specified interval
-    const interval = setInterval(updatePerformanceMetrics, intervalMs);
-
-    return () => clearInterval(interval);
+    };
+    void update();
+    const interval = setInterval(() => {
+      void update();
+    }, intervalMs);
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
   }, [intervalMs]);
 
   return (
@@ -63,9 +87,11 @@ export function PerformanceMetricsCard({
       {title && <Text style={styles.title}>{title}</Text>}
       <View style={styles.performanceGrid}>
         <View style={styles.performanceCard}>
-          <Text style={styles.performanceLabel}>CPU Usage</Text>
+          <Text style={styles.performanceLabel}>
+            App CPU (% of available CPU time)
+          </Text>
           <Text style={styles.performanceValue}>
-            {cpuUsage !== null && cpuUsage > 0
+            {cpuUsage !== null && cpuUsage >= 0
               ? `${cpuUsage.toFixed(1)}%`
               : 'Calculating...'}
           </Text>
@@ -74,7 +100,7 @@ export function PerformanceMetricsCard({
           <Text style={styles.performanceLabel}>Memory Usage</Text>
           <Text style={styles.performanceValue}>
             {memoryUsage !== null && memoryUsage > 0
-              ? `${(memoryUsage / 1024).toFixed(1)} MB`
+              ? `${(memoryUsage / 1048576).toFixed(1)} MB`
               : 'Calculating...'}
           </Text>
         </View>

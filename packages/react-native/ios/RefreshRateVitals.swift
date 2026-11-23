@@ -1,13 +1,13 @@
 import Foundation
 import UIKit
 
-/// Provides frame rate and refresh rate monitoring using CADisplayLink.
+/// Detects slow and frozen frames using CADisplayLink. It does not report a refresh rate.
 ///
 /// Implementation ported from Faro Flutter SDK:
 /// https://github.com/grafana/faro-flutter-sdk/blob/main/ios/Classes/RefreshRateVitals.swift
 ///
-/// Uses CADisplayLink to measure actual frame durations and calculate FPS.
-/// Handles ProMotion displays (120Hz) by normalizing to 60 FPS baseline.
+/// Uses CADisplayLink to measure actual frame durations. The per-frame rate is used only for slow
+/// frame detection and is normalized to a 60 FPS baseline on ProMotion displays (120Hz).
 @objc public class RefreshRateVitals: NSObject {
     @objc public static let defaultTargetFps: Double = 60.0
     @objc public static let defaultFrozenFrameThresholdMs: Double = 700.0
@@ -25,9 +25,6 @@ import UIKit
     
     /// Threshold in seconds for frozen frame detection
     private var frozenFrameThreshold: Double = RefreshRateVitals.defaultFrozenFrameThresholdMs / 1000.0
-    
-    /// Last calculated refresh rate
-    @objc public private(set) var lastRefreshRate: Double = 0.0
     
     /// Count of slow frame events since last reset (not individual frames)
     @objc public private(set) var slowFrameEventCount: Int = 0
@@ -105,11 +102,6 @@ import UIKit
         isMonitoring = false
     }
     
-    /// Get current refresh rate
-    @objc public func getRefreshRate() -> Double {
-        return lastRefreshRate
-    }
-    
     /// Get and reset slow frame event count
     @objc public func getAndResetSlowFrames() -> Int {
         let count = slowFrameEventCount
@@ -150,9 +142,7 @@ import UIKit
         }
         
         guard let fps = calculateFPS(provider: link) else { return }
-        
-        lastRefreshRate = fps
-        
+
         // Check for slow frames using event-based detection
         // A slow frame "event" is a period of consecutive frames below target FPS
         // This groups consecutive slow frames to report meaningful jank, not microsecond variations

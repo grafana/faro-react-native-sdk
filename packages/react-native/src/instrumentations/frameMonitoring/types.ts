@@ -21,15 +21,16 @@ export interface FrameMonitoringOptions {
   frozenFrameThresholdMs?: number;
 
   /**
-   * Interval in milliseconds for collecting and sending frame metrics.
-   * Default: 30000 (30 seconds, aligned with fetchVitalsInterval)
+   * Interval in milliseconds for polling and sending slow and frozen frame counts.
+   * The name is historical: no refresh rate is collected or sent.
+   * Default: 30000 (30 seconds)
    */
   refreshRatePollingInterval?: number;
 
   /**
-   * Normalized refresh rate for ProMotion displays (120Hz, etc.).
-   * Used to normalize frame rates for high-refresh-rate displays to a standard baseline.
-   * Default: 60
+   * Normalized frame rate for ProMotion displays (120Hz, etc.) on iOS.
+   * iOS scales measured frame rates to this baseline before comparing them with `targetFps`
+   * for slow frame detection. Default: 60
    */
   normalizedRefreshRate?: number;
 }
@@ -38,11 +39,6 @@ export interface FrameMonitoringOptions {
  * Frame metrics collected by the instrumentation.
  */
 export interface FrameMetrics {
-  /**
-   * Current refresh rate in FPS.
-   */
-  refreshRate: number;
-
   /**
    * Number of slow frames since last measurement.
    */
@@ -81,9 +77,4 @@ export interface FrameMonitoringNativeModule {
    * Get current frame metrics.
    */
   getFrameMetrics(): Promise<FrameMetrics | null>;
-
-  /**
-   * Get current refresh rate.
-   */
-  getRefreshRate(): Promise<number | null>;
 }
