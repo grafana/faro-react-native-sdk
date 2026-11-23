@@ -4,18 +4,14 @@
 
 ### Features
 
-- **meta:** add battery, thermal and network opt-out groups ([3eb49ad](https://github.com/grafana/faro-react-native-sdk/commit/3eb49adced9587fd5d294e603923a4fe04bba3fc))
 - **meta:** add battery, thermal and network opt-out groups ([60630cb](https://github.com/grafana/faro-react-native-sdk/commit/60630cb0ca950dbde1dd2eafa8b1d43f68f3186b))
 - **meta:** drop network.reachable from the dynamic fields ([3dda50e](https://github.com/grafana/faro-react-native-sdk/commit/3dda50e767c252e8361fd2b69727251ef0d6b292))
-- **meta:** keep dynamic device fields current ([ed06012](https://github.com/grafana/faro-react-native-sdk/commit/ed06012873c07f3ce5997f215a77ebd67c6d2570))
 - **meta:** keep dynamic device fields current ([87f582b](https://github.com/grafana/faro-react-native-sdk/commit/87f582b7e01e28a1b40fae9139d99d0f0fd7221b))
 - **meta:** read the connection subtype with READ_BASIC_PHONE_STATE on Android 13+ ([557ac9d](https://github.com/grafana/faro-react-native-sdk/commit/557ac9d459e67a7afd07a754c7e1c2c01c6d2f1a))
 
 ### Bug Fixes
 
-- clear connectivity timeouts and isolate test requests ([3caf7ac](https://github.com/grafana/faro-react-native-sdk/commit/3caf7ac772a8857cea614524b77af096984019e3))
 - clear connectivity timeouts and isolate test requests ([c71551b](https://github.com/grafana/faro-react-native-sdk/commit/c71551b53e44eec105be648a292e1c2cf8c12b75))
-- **deps:** update dependency com.google.protobuf:protobuf-gradle-plugin to v0.10.1 ([1943950](https://github.com/grafana/faro-react-native-sdk/commit/19439503fab17e0e216f03f60b5fbfcee1d8e67e))
 - **deps:** update dependency com.google.protobuf:protobuf-gradle-plugin to v0.10.1 ([39e557c](https://github.com/grafana/faro-react-native-sdk/commit/39e557cfb52a328075b92958bbeefed90b03bc50))
 - **frames:** stop monitoring when instrumentation is removed ([d233f00](https://github.com/grafana/faro-react-native-sdk/commit/d233f00cd56f39d464975878055aefc9b05295e1))
 - **meta:** address review findings ([ca857b1](https://github.com/grafana/faro-react-native-sdk/commit/ca857b1b265591d6997cb6661c0836ce57936795))
@@ -30,11 +26,14 @@
 - **react-native:** find the Swift header when built as a framework ([#243](https://github.com/grafana/faro-react-native-sdk/issues/243)) ([7730381](https://github.com/grafana/faro-react-native-sdk/commit/77303818e0036140e1d591d69611aadc592157c3)), closes [#135](https://github.com/grafana/faro-react-native-sdk/issues/135)
 - **react-native:** report React Native prerelease versions correctly ([#268](https://github.com/grafana/faro-react-native-sdk/issues/268)) ([aec9d65](https://github.com/grafana/faro-react-native-sdk/commit/aec9d65d4510b40a288d9241faa151262f8389b4))
 - **react-native:** skip resource PerformanceObserver registration on affected React Native versions ([#267](https://github.com/grafana/faro-react-native-sdk/issues/267)) ([baaf317](https://github.com/grafana/faro-react-native-sdk/commit/baaf3173f87ffac86c4de051a9dd67ae888e1a26))
-- **startup:** handle interruptions and lifecycle cleanup ([d509c8e](https://github.com/grafana/faro-react-native-sdk/commit/d509c8ecbfcd304dfcf4d0d74c29622031d4b198))
 - **startup:** handle interruptions and lifecycle cleanup ([16d8d14](https://github.com/grafana/faro-react-native-sdk/commit/16d8d14a3f32cc2626d889dd52af5ab1f404b949))
 - **startup:** rebind reused instrumentation ([65df7fd](https://github.com/grafana/faro-react-native-sdk/commit/65df7fd8ae858fb986f86aaa14c3578ef0f443e8))
-- **startup:** validate durations and use performance.now for warm starts ([cc1677c](https://github.com/grafana/faro-react-native-sdk/commit/cc1677cf086ef36e221e1ef329728dfef83ba4ee))
 - **startup:** validate durations and use performance.now for warm starts ([3971d63](https://github.com/grafana/faro-react-native-sdk/commit/3971d63b41dc139fc7cc5a54e9bf9212f38d249d))
+
+### Upgrade Notes
+
+- Rebuild the iOS and Android apps after upgrading to include the new native code (`pod install` on iOS, a Gradle build on Android).
+- On Android, the SDK manifest now adds the normal, install-time `ACCESS_NETWORK_STATE` and `READ_BASIC_PHONE_STATE` permissions for dynamic network metadata. Apps that remove these permissions may omit the corresponding fields.
 
 ## [1.5.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.4.3...faro-react-native-v1.5.0) (2026-10-28)
 
