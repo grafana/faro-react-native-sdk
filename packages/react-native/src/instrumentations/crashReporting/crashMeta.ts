@@ -6,6 +6,7 @@ import type {
   MetaOS,
   MetaPage,
   MetaSDK,
+  MetaUser,
   MetaView,
 } from '@grafana/faro-core';
 
@@ -16,10 +17,10 @@ import { DYNAMIC_SESSION_ATTRIBUTE_KEYS } from '../session/sessionAttributes';
 /**
  * The metadata of the crashed process that native storage keeps with a crash.
  *
- * `meta.user` is not saved: it can hold an ID, name or email, and the SDK does not write those to
- * disk. Dynamic device and network values are not saved here either. Native code captures them at
- * crash time. `dynamicGroups` records which groups of them the session collects, so a replay never
- * adds a group that the session turned off.
+ * `meta.user` can hold an ID, name or email, so it is saved only when the app turned on user
+ * persistence, which already stores the user on disk. Dynamic device and network values are not
+ * saved here. Native code captures them at crash time. `dynamicGroups` records which groups of them
+ * the session collects, so a replay never adds a group that the session turned off.
  */
 export interface SavedCrashMeta {
   sdk?: MetaSDK;
@@ -29,8 +30,11 @@ export interface SavedCrashMeta {
   page?: MetaPage;
   view?: MetaView;
   sessionAttributes?: MetaAttributes;
+  user?: MetaUser;
   dynamicGroups?: DynamicDeviceStateGroups;
 }
+
+const USER_STRING_KEYS = ['id', 'email', 'username', 'fullName', 'roles', 'hash'] as const;
 
 const OBJECT_KEYS = ['sdk', 'app', 'os', 'device', 'page'] as const;
 
@@ -58,11 +62,33 @@ function stringAttributes(value: unknown): MetaAttributes | undefined {
   return withoutEmpty(attributes);
 }
 
+function restoreUser(value: unknown): MetaUser | undefined {
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  const user: MetaUser = {};
+  for (const key of USER_STRING_KEYS) {
+    const field = value[key];
+    if (typeof field === 'string' && field !== '') {
+      user[key] = field;
+    }
+  }
+  const attributes = stringAttributes(value['attributes']);
+  if (attributes) {
+    user.attributes = attributes;
+  }
+  return withoutEmpty(user);
+}
+
 /**
  * Serializes the parts of `meta` that describe the running process and do not change on their own.
- * Returns `undefined` when there is nothing to save.
+ * Saves `meta.user` only when `includeUser` is true. Returns `undefined` when there is nothing to save.
  */
-export function serializeCrashMeta(meta: Meta, dynamicGroups: DynamicDeviceStateGroups): string | undefined {
+export function serializeCrashMeta(
+  meta: Meta,
+  dynamicGroups: DynamicDeviceStateGroups,
+  includeUser: boolean
+): string | undefined {
   const snapshot: Record<string, unknown> = {};
   for (const key of OBJECT_KEYS) {
     const value = meta[key];
@@ -76,6 +102,10 @@ export function serializeCrashMeta(meta: Meta, dynamicGroups: DynamicDeviceState
   const sessionAttributes = stringAttributes(meta.session?.attributes);
   if (sessionAttributes) {
     snapshot['sessionAttributes'] = sessionAttributes;
+  }
+  const user = includeUser ? restoreUser(meta.user) : undefined;
+  if (user) {
+    snapshot['user'] = user;
   }
 
   const populated = Object.fromEntries(
@@ -117,6 +147,10 @@ export function restoreCrashMeta(raw: unknown): SavedCrashMeta | undefined {
   const sessionAttributes = stringAttributes(raw['sessionAttributes']);
   if (sessionAttributes) {
     restored.sessionAttributes = sessionAttributes;
+  }
+  const user = restoreUser(raw['user']);
+  if (user) {
+    restored.user = user;
   }
   const dynamicGroups = restoreDynamicGroups(raw['dynamicGroups']);
   if (dynamicGroups) {

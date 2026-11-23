@@ -138,13 +138,14 @@ public class FaroCrashReporter: NSObject {
         }
         let meta = sanitizedContext.removeValue(forKey: "meta") as? [String: Any]
 
-        let dynamicState = FaroDynamicDeviceState.current()
         stateLock.lock()
         defer { stateLock.unlock() }
         guard enableLocked(), let reporter = crashReporter else {
             return false
         }
         FaroDynamicDeviceState.setChangeHandler { refreshDynamicState() }
+        // Read after the handler is set and under the lock, so no change is missed and no older value overwrites a newer one.
+        let dynamicState = FaroDynamicDeviceState.current()
         latestSessionContext = sanitizedContext
         latestMeta = meta
         writeMetadataFileLocked(dynamicState: dynamicState)
@@ -154,12 +155,12 @@ public class FaroCrashReporter: NSObject {
     /// Writes the current dynamic device and network values to the metadata file.
     /// Runs when a cached value changes. It rewrites the file only when the content differs.
     static func refreshDynamicState() {
-        let dynamicState = FaroDynamicDeviceState.current()
         stateLock.lock()
         defer { stateLock.unlock() }
         guard latestSessionContext != nil else {
             return
         }
+        let dynamicState = FaroDynamicDeviceState.current()
         writeMetadataFileLocked(dynamicState: dynamicState)
     }
 

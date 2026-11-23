@@ -17,7 +17,6 @@ internal class FaroUncaughtExceptionHandler(
 ) : Thread.UncaughtExceptionHandler {
 
     override fun uncaughtException(thread: Thread, throwable: Throwable) {
-        recordDynamicDeviceState()
         try {
             val trace = Log.getStackTraceString(throwable).trim()
             if (trace.isNotEmpty()) {
@@ -26,6 +25,7 @@ internal class FaroUncaughtExceptionHandler(
         } catch (_: Throwable) {
             // Never interfere with the original crash path.
         } finally {
+            recordDynamicDeviceState()
             originalHandler?.uncaughtException(thread, throwable)
                 ?: run {
                     @Suppress("DEPRECATION")

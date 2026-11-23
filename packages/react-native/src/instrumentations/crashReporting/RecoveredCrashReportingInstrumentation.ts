@@ -5,6 +5,7 @@ import type { ExceptionEvent, Meta, TransportItem } from '@grafana/faro-core';
 
 import { getActiveDynamicDeviceStateGroups } from '../../metas/dynamicDeviceState';
 import { FetchTransport } from '../../transports/fetch';
+import { getUserPersistence } from '../../userPersistence';
 import { captureSessionItem } from '../session/sessionCapture';
 
 import { BaseCrashReportingInstrumentation } from './BaseCrashReportingInstrumentation';
@@ -153,7 +154,7 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
       this.activeSessionIsSampled = incomingIsSampled;
     }
     const isSampled = incomingIsSampled ?? this.activeSessionIsSampled;
-    const crashMeta = serializeCrashMeta(meta, getActiveDynamicDeviceStateGroups());
+    const crashMeta = serializeCrashMeta(meta, getActiveDynamicDeviceStateGroups(), getUserPersistence() !== null);
     const sessionContext = {
       sessionId,
       activatedAt: this.activeSessionActivatedAtMs,
@@ -241,6 +242,7 @@ export abstract class RecoveredCrashReportingInstrumentation extends BaseCrashRe
       ...(dynamicState && Object.keys(dynamicState.network).length > 0 ? { network: dynamicState.network } : {}),
       ...(saved?.page ? { page: saved.page } : {}),
       ...(saved?.view ? { view: saved.view } : {}),
+      ...(saved?.user ? { user: saved.user } : {}),
       session: {
         id: crash.sessionId,
         ...(Object.keys(sessionAttributes).length > 0 ? { attributes: sessionAttributes } : {}),

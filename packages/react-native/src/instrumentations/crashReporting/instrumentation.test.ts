@@ -8,6 +8,7 @@ import {
   getDynamicDeviceStateMeta,
 } from '../../metas/dynamicDeviceState';
 import { FetchTransport } from '../../transports/fetch';
+import { createUserPersistence, setUserPersistence } from '../../userPersistence';
 import { SessionInstrumentation } from '../session';
 import { VolatileSessionsManager } from '../session/sessionManager/VolatileSessionManager';
 
@@ -668,6 +669,10 @@ describe('CrashReportingInstrumentation', () => {
     };
     const relaunchSessionAttributes = { device_battery_level: '9', device_brand: 'Apple', plan: 'free' };
 
+    afterEach(() => {
+      setUserPersistence(null);
+    });
+
     function setupRelaunchedReplay(report: CrashReport) {
       const transport = new FetchTransport({ url: 'http://example.com/collect' });
       const instrumentation = new AndroidCrashReportingInstrumentation({ enabled: false });
@@ -711,7 +716,7 @@ describe('CrashReportingInstrumentation', () => {
       return setup.sendSpy.mock.calls[0]?.[0]?.[0] as TransportItem<ExceptionEvent>;
     }
 
-    it('saves the static metadata of the running process and leaves out the user and dynamic values', () => {
+    it('saves the static metadata of the running process and leaves out the user and dynamic values when user persistence is off', () => {
       const setup = setupRelaunchedReplay(createCrashReport());
 
       const saved = setup.nativeModule.recordCrashSessionContext.mock.lastCall?.[0] as { meta?: string };
@@ -729,6 +734,30 @@ describe('CrashReportingInstrumentation', () => {
       expect(meta.device).not.toHaveProperty('battery_level');
       expect(meta.sessionAttributes).toEqual({ device_brand: 'Apple', plan: 'free' });
       expect(saved.meta).not.toContain('user-b');
+    });
+
+    it('saves the user of the running process when user persistence is on', () => {
+      setUserPersistence(createUserPersistence());
+      const setup = setupRelaunchedReplay(createCrashReport());
+
+      const saved = setup.nativeModule.recordCrashSessionContext.mock.lastCall?.[0] as { meta?: string };
+      expect(JSON.parse(saved.meta ?? '{}').user).toEqual({ id: 'user-b' });
+    });
+
+    it('replays the user that was saved with the crash instead of the relaunch user', async () => {
+      const item = await replay(
+        createCrashReport({
+          meta: { ...savedMeta, user: { id: 'user-a', email: 'a@example.com', attributes: { plan: 'pro', n: 1 } } },
+        })
+      );
+
+      expect(item.meta.user).toEqual({ id: 'user-a', email: 'a@example.com', attributes: { plan: 'pro' } });
+    });
+
+    it('omits the user when the crashed process saved none', async () => {
+      const item = await replay(createCrashReport({ meta: savedMeta }));
+
+      expect(item.meta).not.toHaveProperty('user');
     });
 
     it('replays the metadata that was saved with the crash instead of the relaunch metadata', async () => {
@@ -813,6 +842,7 @@ describe('CrashReportingInstrumentation', () => {
             sdk: 'bad',
             os: savedMeta.os,
             view: { name: 5 },
+            user: { id: 5 },
             sessionAttributes: { plan: 'pro', n: 1 },
             dynamicGroups: savedMeta.dynamicGroups,
           },
@@ -822,6 +852,7 @@ describe('CrashReportingInstrumentation', () => {
 
       expect(item.meta).not.toHaveProperty('sdk');
       expect(item.meta).not.toHaveProperty('view');
+      expect(item.meta).not.toHaveProperty('user');
       expect(item.meta.os).toEqual(savedMeta.os);
       expect(item.meta.session?.attributes).toEqual({ plan: 'pro' });
       expect(item.meta).not.toHaveProperty('device');
