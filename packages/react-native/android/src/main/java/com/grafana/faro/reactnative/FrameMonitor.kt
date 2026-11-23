@@ -20,10 +20,6 @@ object FrameMonitor {
     private const val NANOSECONDS_IN_SECOND = 1_000_000_000L
     private const val NANOSECONDS_IN_MILLISECOND = 1_000_000L
 
-    // Throttle refresh rate emits to avoid flooding the JS bridge (was ~60/sec).
-    // Aligns with refreshRatePollingInterval (30s) on iOS.
-    private const val REFRESH_RATE_EMIT_INTERVAL_MS = 30_000L
-
     const val DEFAULT_TARGET_FPS = 60.0
     const val DEFAULT_FROZEN_FRAME_THRESHOLD_MS = 700.0
     const val DEFAULT_NORMALIZED_REFRESH_RATE = 60.0
@@ -31,7 +27,6 @@ object FrameMonitor {
     data class FrozenFrameMetrics(val count: Int, val durationMs: Double)
 
     data class FrameMetrics(
-        val refreshRate: Double,
         val slowFrames: Int,
         val frozenFrames: Int,
         val frozenDurationMs: Double
@@ -45,8 +40,6 @@ object FrameMonitor {
 
     // State
     private var lastFrameTimeNanos: Long = 0
-    private var lastRefreshRate: Double = 0.0
-    private var lastRefreshRateEmitTimeMs: Long = 0
     private val slowFrameEventCount = AtomicInteger(0)
     private var frozenFrameCount: Int = 0
     private var frozenFrameDurationMs: Double = 0.0
@@ -63,7 +56,6 @@ object FrameMonitor {
     private var frameCallback: Choreographer.FrameCallback? = null
     private var onSlowFrames: ((Int) -> Unit)? = null
     private var onFrozenFrame: ((Int, Double) -> Unit)? = null
-    private var onRefreshRate: ((Double) -> Unit)? = null
 
     /**
      * Configure monitoring parameters.
@@ -87,12 +79,10 @@ object FrameMonitor {
      */
     fun setCallbacks(
         onSlowFrames: ((Int) -> Unit)? = null,
-        onFrozenFrame: ((Int, Double) -> Unit)? = null,
-        onRefreshRate: ((Double) -> Unit)? = null
+        onFrozenFrame: ((Int, Double) -> Unit)? = null
     ) {
         this.onSlowFrames = onSlowFrames
         this.onFrozenFrame = onFrozenFrame
-        this.onRefreshRate = onRefreshRate
     }
 
     /**
@@ -106,7 +96,6 @@ object FrameMonitor {
             if (isMonitoring.get()) return@post
             isMonitoring.set(true)
             lastFrameTimeNanos = 0
-            lastRefreshRateEmitTimeMs = 0
             slowFrameEventCount.set(0)
             getAndResetFrozenMetrics()
             inSlowFrameEvent = false
@@ -145,18 +134,11 @@ object FrameMonitor {
         }
     }
 
-    /**
-     * Get current refresh rate.
-     */
-    fun getRefreshRate(): Double {
-        return lastRefreshRate
-    }
-
     fun getFrameMetrics(callback: (FrameMetrics) -> Unit) {
         // A poll must not overtake a queued stop or restart and drain the previous run.
         mainHandler.post {
             val frozen = getAndResetFrozenMetrics()
-            callback(FrameMetrics(lastRefreshRate, getAndResetSlowFrames(), frozen.count, frozen.durationMs))
+            callback(FrameMetrics(getAndResetSlowFrames(), frozen.count, frozen.durationMs))
         }
     }
 
@@ -206,17 +188,8 @@ object FrameMonitor {
             return
         }
 
-        // Calculate refresh rate
+        // Frame rate of this frame, used only for slow frame detection
         val fps = NANOSECONDS_IN_SECOND.toDouble() / frameDuration
-        lastRefreshRate = fps
-
-        // Throttle: only emit refresh rate every 30 seconds to avoid flooding
-        val nowMs = System.currentTimeMillis()
-        val refreshRateCallback = onRefreshRate
-        if (refreshRateCallback != null && nowMs - lastRefreshRateEmitTimeMs >= REFRESH_RATE_EMIT_INTERVAL_MS) {
-            lastRefreshRateEmitTimeMs = nowMs
-            refreshRateCallback.invoke(fps)
-        }
 
         // Check for slow frames using event-based detection
         // A slow frame "event" is a period of consecutive frames below target FPS

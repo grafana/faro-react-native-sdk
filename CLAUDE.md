@@ -414,7 +414,7 @@ When implementing new features, check the Faro Web SDK and Grafana mobile RUM co
 
 Native OS-level APIs are used for accurate metrics:
 
-- **iOS:** `host_statistics()` for CPU, `task_info()` for memory
+- **iOS:** `getrusage(RUSAGE_SELF)` for process CPU, `task_info()` for memory
 - **Android:** `/proc/[pid]/stat` for CPU, `/proc/[pid]/status` for memory
 
 These implementations use native OS-level APIs for accurate mobile metrics.

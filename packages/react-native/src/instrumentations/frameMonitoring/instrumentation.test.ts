@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
 import { initializeFaro, type MeasurementEvent, type TransportItem } from '@grafana/faro-core';
 import { mockConfig, MockTransport } from '@grafana/faro-test-utils';
@@ -153,3 +153,34 @@ describe('FrameMonitoringInstrumentation', () => {
     expect(getNativeModule().startFrameMonitoring).toHaveBeenCalledTimes(1);
   });
 });
+
+it.each(['android', 'ios'] as const)(
+  'never polls or subscribes to refresh values on %s, retaining slow/frozen counts',
+  async (platform) => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    Platform.OS = platform;
+    getNativeModule().getRefreshRate.mockResolvedValue(120);
+    getNativeModule().getFrameMetrics.mockResolvedValue({
+      refreshRate: 120,
+      slowFrames: 2,
+      frozenFrames: 1,
+      frozenDurationMs: 900,
+    });
+    const transport = new MockTransport();
+    const frame = new FrameMonitoringInstrumentation({ refreshRatePollingInterval: 1000 });
+    initializeFaro(
+      mockConfig({ isolate: true, refreshRateVitals: true, transports: [transport], instrumentations: [frame] })
+    );
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(getNativeModule().getRefreshRate).not.toHaveBeenCalled();
+    expect(NativeEventEmitter).not.toHaveBeenCalled();
+    expect(transport.items.map((item) => (item.payload as MeasurementEvent).type)).toEqual([
+      'app_frames_rate',
+      'app_frozen_frame',
+    ]);
+    expect(transport.items[0].payload).toEqual(expect.objectContaining({ values: { slow_frames: 2 } }));
+    frame.unpatch();
+    jest.useRealTimers();
+  }
+);
