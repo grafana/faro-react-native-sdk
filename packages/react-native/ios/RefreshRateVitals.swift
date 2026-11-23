@@ -55,9 +55,15 @@ import UIKit
     /// Minimum duration (in seconds) for a slow frame event to be counted (prevents noise)
     private let slowFrameEventMinDuration: Double = 0.050  // ~3 frames at 60fps
     
-    private override init() {
+    init(notificationCenter: NotificationCenter = .default,
+         isApplicationActive: @escaping () -> Bool = { UIApplication.shared.applicationState == .active }) {
+        self.notificationCenter = notificationCenter
+        self.isApplicationActive = isApplicationActive
         super.init()
     }
+
+    private let notificationCenter: NotificationCenter
+    private let isApplicationActive: () -> Bool
     
     // MARK: - Public Methods
     
@@ -81,8 +87,15 @@ import UIKit
         guard !isMonitoring else { return }
         
         displayLink = CADisplayLink(target: self, selector: #selector(displayTick(link:)))
+        displayLink?.isPaused = !isApplicationActive()
         displayLink?.add(to: .main, forMode: .common)
         isMonitoring = true
+        notificationCenter.addObserver(self, selector: #selector(pauseSampling),
+                                       name: UIApplication.willResignActiveNotification, object: nil)
+        notificationCenter.addObserver(self, selector: #selector(pauseSampling),
+                                       name: UIApplication.didEnterBackgroundNotification, object: nil)
+        notificationCenter.addObserver(self, selector: #selector(resumeSampling),
+                                       name: UIApplication.didBecomeActiveNotification, object: nil)
         
         // Reset counters
         slowFrameEventCount = 0
@@ -90,19 +103,38 @@ import UIKit
         frozenFrameCount = 0
         frozenFrameDurationMs = 0
         frozenMetricsLock.unlock()
+        resetFrameTiming()
+    }
+    
+    /// Stop frame monitoring
+    @objc public func stop() {
+        notificationCenter.removeObserver(self, name: UIApplication.willResignActiveNotification, object: nil)
+        notificationCenter.removeObserver(self, name: UIApplication.didEnterBackgroundNotification, object: nil)
+        notificationCenter.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
+        displayLink?.invalidate()
+        displayLink = nil
+        resetFrameTiming()
+        isMonitoring = false
+    }
+
+    private func resetFrameTiming() {
         lastFrameTimestamp = nil
         nextFrameDuration = nil
         inSlowFrameEvent = false
         slowFrameEventStartTime = 0
     }
-    
-    /// Stop frame monitoring
-    @objc public func stop() {
-        displayLink?.invalidate()
-        displayLink = nil
-        lastFrameTimestamp = nil
-        nextFrameDuration = nil
-        isMonitoring = false
+
+    @objc private func pauseSampling() {
+        guard let link = displayLink, !link.isPaused else { return }
+        link.isPaused = true
+        // An inactive interval cannot complete a slow-frame episode.
+        resetFrameTiming()
+    }
+
+    @objc private func resumeSampling() {
+        guard isMonitoring, let link = displayLink, link.isPaused else { return }
+        resetFrameTiming()
+        link.isPaused = false
     }
     
     /// Get current refresh rate
@@ -141,15 +173,24 @@ import UIKit
     // MARK: - Private Methods
     
     @objc private func displayTick(link: CADisplayLink) {
+        guard link === displayLink else { return }
+        recordFrame(timestamp: link.timestamp, targetTimestamp: link.targetTimestamp,
+                    maximumFramesPerSecond: UIScreen.main.maximumFramesPerSecond)
+    }
+
+    func recordFrame(timestamp: CFTimeInterval, targetTimestamp: CFTimeInterval,
+                     maximumFramesPerSecond: Int) {
+        guard isMonitoring, let link = displayLink, !link.isPaused else { return }
         // Check for frozen frames FIRST (before calculateFPS updates lastFrameTimestamp)
         if let lastTimestamp = lastFrameTimestamp {
-            let frameDuration = link.timestamp - lastTimestamp
+            let frameDuration = timestamp - lastTimestamp
             if frameDuration > frozenFrameThreshold {
                 recordFrozenFrame(durationMs: frameDuration * 1000)
             }
         }
         
-        guard let fps = calculateFPS(provider: link) else { return }
+        guard let fps = calculateFPS(timestamp: timestamp, targetTimestamp: targetTimestamp,
+                                     maximumFramesPerSecond: maximumFramesPerSecond) else { return }
         
         lastRefreshRate = fps
         
@@ -162,12 +203,12 @@ import UIKit
             if !inSlowFrameEvent {
                 // Start new slow frame event
                 inSlowFrameEvent = true
-                slowFrameEventStartTime = link.timestamp
+                slowFrameEventStartTime = timestamp
             }
         } else {
             // Frame is good - check if we should end the current slow frame event
             if inSlowFrameEvent {
-                let eventDuration = link.timestamp - slowFrameEventStartTime
+                let eventDuration = timestamp - slowFrameEventStartTime
 
                 // Only count as a slow frame event if it lasted long enough to be user-perceptible
                 // This filters out single-frame dips that don't affect user experience
@@ -182,15 +223,16 @@ import UIKit
     }
     
     /// Calculate frames per second from display link timing
-    private func calculateFPS(provider: CADisplayLink) -> Double? {
+    private func calculateFPS(timestamp: CFTimeInterval, targetTimestamp: CFTimeInterval,
+                              maximumFramesPerSecond: Int) -> Double? {
         guard let lastTimestamp = lastFrameTimestamp else {
             // First frame - just record timestamp
-            lastFrameTimestamp = provider.timestamp
-            nextFrameDuration = provider.targetTimestamp - provider.timestamp
+            lastFrameTimestamp = timestamp
+            nextFrameDuration = targetTimestamp - timestamp
             return nil
         }
         
-        let currentFrameDuration = provider.timestamp - lastTimestamp
+        let currentFrameDuration = timestamp - lastTimestamp
         guard currentFrameDuration > 0 else { return nil }
         
         let currentFPS = 1.0 / currentFrameDuration
@@ -200,7 +242,7 @@ import UIKit
         // Normalize to backend-supported rate for consistent metrics
         if let expectedFrameDuration = nextFrameDuration,
            expectedFrameDuration > 0,
-           UIScreen.main.maximumFramesPerSecond > 60 {
+           maximumFramesPerSecond > 60 {
             let expectedFPS = 1.0 / expectedFrameDuration
             fps = currentFPS * (normalizedRefreshRate / expectedFPS)
         } else {
@@ -208,8 +250,8 @@ import UIKit
         }
         
         // Update timestamps for next frame
-        lastFrameTimestamp = provider.timestamp
-        nextFrameDuration = provider.targetTimestamp - provider.timestamp
+        lastFrameTimestamp = timestamp
+        nextFrameDuration = targetTimestamp - timestamp
         
         return fps
     }
