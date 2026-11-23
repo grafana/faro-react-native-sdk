@@ -152,15 +152,19 @@ it('cancels early memory and discards partial windows across hide/show', async (
   await jest.advanceTimersByTimeAsync(28000);
   expect(transport.items).toHaveLength(3);
 });
-it('discards >2x stalled windows including memory, then uses a fresh baseline', async () => {
+it('drops CPU but still sends memory for a >2x stalled window, then uses a fresh baseline', async () => {
   read
     .mockResolvedValueOnce(sample())
     .mockResolvedValueOnce(sample(2000))
-    .mockResolvedValueOnce(sample(90000, 10000))
+    .mockResolvedValueOnce(sample(90000, 10000, 1048576 * 40))
     .mockResolvedValueOnce(sample(120000, 40000));
   await setup();
   await jest.advanceTimersByTimeAsync(30000);
-  expect(transport.items).toHaveLength(1);
+  expect(events().map((event) => event.name)).toEqual(['app.memory', 'app.memory']);
+  expect(events()[1]).toMatchObject({
+    attributes: { value: '40', unit: 'MB' },
+    timestamp: new Date(1700000090000).toISOString(),
+  });
   await jest.advanceTimersByTimeAsync(30000);
   expect(events()).toContainEqual(
     expect.objectContaining({
@@ -168,6 +172,7 @@ it('discards >2x stalled windows including memory, then uses a fresh baseline', 
       attributes: expect.objectContaining({ value: '12.5', window_ms: '30000' }),
     })
   );
+  expect(events().filter((event) => event.name === 'app.cpu_usage')).toHaveLength(1);
 });
 it.each(['hide', 'unpatch', 'reinit'])('ignores pending async results after %s', async (action) => {
   await setup();

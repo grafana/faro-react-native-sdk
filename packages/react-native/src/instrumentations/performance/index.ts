@@ -14,7 +14,8 @@ const MAX_READ_TIMEOUT_MS = 10000;
  * visible window (30s by default); memory is also read 2s after visibility/start.
  * Sequential ticks subtract native/bridge read latency from the next delay.
  * iOS inactive remains visible. Unknown/extension/null wait for known visibility.
- * Hidden, stale and >2x-interval windows are discarded. Short visits have no CPU sample.
+ * Hidden and stale windows are discarded. A >2x-interval window sends memory but no CPU.
+ * Short visits have no CPU sample.
  * A native read that does not settle within min(interval, 10s) counts as failed.
  */
 export class PerformanceInstrumentation extends BaseInstrumentation {
@@ -156,6 +157,8 @@ export class PerformanceInstrumentation extends BaseInstrumentation {
       this.baseline = end;
       if (start) {
         const elapsed = end.elapsedMs - start.elapsedMs;
+        // A window over 2x the interval (stalled timer or blocked JS thread) has no usable CPU value.
+        // The memory reading is still a valid sample of this moment, so it is sent either way.
         if (Number.isFinite(elapsed) && elapsed > 0 && elapsed <= 2 * this.options.fetchVitalsInterval) {
           const value = cpuUtilization(start, end);
           if (this.options.cpuUsageVitals && value !== null) {
@@ -172,9 +175,9 @@ export class PerformanceInstrumentation extends BaseInstrumentation {
               { timestampOverwriteMs: end.timestampMs, skipDedupe: true }
             );
           }
-          if (this.options.memoryUsageVitals && this.current(generation)) {
-            this.emitMemory(end);
-          }
+        }
+        if (this.options.memoryUsageVitals && this.current(generation)) {
+          this.emitMemory(end);
         }
       }
     } catch (error) {

@@ -1183,7 +1183,7 @@ CPU is `100 × CPU time used ÷ (window length × CPU count)`. Values outside 0�
 - Only while the app is visible. Nothing is sampled in the background.
 - Every `fetchVitalsInterval` the SDK sends one `app.cpu_usage` for the past window and one `app.memory`.
 - One extra `app.memory` is sent 2 seconds after the app starts or comes back to the foreground, so short visits still get a memory sample.
-- A window is dropped when the app goes to the background, when it ran much longer than expected (for example because the device was asleep), or when a reading fails. Visits shorter than one interval have no CPU sample.
+- A window is dropped when the app goes to the background or when a reading fails. When a window ran much longer than expected (for example because a timer stalled), only its CPU sample is dropped; memory is still sent. Visits shorter than one interval have no CPU sample.
 
 Readings are taken on a background thread and never block the UI or JavaScript thread.
 
