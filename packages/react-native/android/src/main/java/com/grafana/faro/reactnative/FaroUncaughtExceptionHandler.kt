@@ -2,6 +2,7 @@ package com.grafana.faro.reactnative
 
 import android.content.Context
 import android.util.Log
+import org.json.JSONObject
 
 /**
  * Captures Java/Kotlin stack traces for fatal crashes before the process exits.
@@ -24,12 +25,24 @@ internal class FaroUncaughtExceptionHandler(
         } catch (_: Throwable) {
             // Never interfere with the original crash path.
         } finally {
+            recordDynamicDeviceState()
             originalHandler?.uncaughtException(thread, throwable)
                 ?: run {
                     @Suppress("DEPRECATION")
                     android.os.Process.killProcess(android.os.Process.myPid())
                     System.exit(10)
                 }
+        }
+    }
+
+    private fun recordDynamicDeviceState() {
+        try {
+            val state = FaroDynamicDeviceState.current(context)
+            if (state.isNotEmpty()) {
+                FaroCrashSessionStore.recordCrashTimeDynamicState(context, JSONObject(state).toString())
+            }
+        } catch (_: Throwable) {
+            // Never interfere with the original crash path.
         }
     }
 

@@ -412,6 +412,7 @@ class FaroReactNativeModule(reactContext: ReactApplicationContext) :
                 appVersion = sessionContext.getOptionalString("appVersion"),
                 appRelease = sessionContext.getOptionalString("appRelease"),
                 appBundleId = sessionContext.getOptionalString("appBundleId"),
+                metaJson = sessionContext.getOptionalString("meta"),
             )
         } catch (_: Exception) {
             false
