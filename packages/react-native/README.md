@@ -1218,17 +1218,17 @@ All attribute values are strings, for example:
 **Example Grafana Queries (Loki):**
 
 ```logql
-# Average app CPU per window
-avg_over_time({app_name="my-app", kind="event"}
+# Average app CPU
+avg(avg_over_time({service_name="my-app", kind="event"}
 | logfmt
 | event_name="app.cpu_usage"
-| unwrap event_data_value [5m])
+| unwrap event_data_value [5m]))
 
-# Highest app memory samples
-max_over_time({app_name="my-app", kind="event"}
+# Highest app memory
+max(max_over_time({service_name="my-app", kind="event"}
 | logfmt
 | event_name="app.memory"
-| unwrap event_data_value [5m])
+| unwrap event_data_value [5m]))
 ```
 
 **Platform Requirements:**
