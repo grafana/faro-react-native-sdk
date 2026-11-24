@@ -2,21 +2,19 @@
 
 ## [4.0.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v3.0.0...faro-react-native-tracing-v4.0.0) (2026-11-24)
 
-
 ### ⚠ BREAKING CHANGES
 
-* **react-native-tracing:** Tracing 4 requires @grafana/faro-react-native 2.x. Apps on supported core 1.x versions should stay on tracing 3.x.
+- **react-native-tracing:** Tracing 4 requires @grafana/faro-react-native 2.x. Apps on supported core 1.x versions should stay on tracing 3.x.
 
 ### Bug Fixes
 
-* **react-native-tracing:** pair tracing with core 2 ([#289](https://github.com/grafana/faro-react-native-sdk/issues/289)) ([8ce4a18](https://github.com/grafana/faro-react-native-sdk/commit/8ce4a1859505d78720c54d4cd2929f2c5306c0af))
-
+- **react-native-tracing:** pair tracing with core 2 ([#289](https://github.com/grafana/faro-react-native-sdk/issues/289)) ([8ce4a18](https://github.com/grafana/faro-react-native-sdk/commit/8ce4a1859505d78720c54d4cd2929f2c5306c0af))
 
 ### Dependencies
 
-* The following workspace dependencies were updated
-  * dependencies
-    * @grafana/faro-react-native bumped to 2.0.0
+- The following workspace dependencies were updated
+  - dependencies
+    - @grafana/faro-react-native bumped to 2.0.0
 
 ## [3.0.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-tracing-v2.0.4...faro-react-native-tracing-v3.0.0) (2026-11-23)
 
