@@ -15,6 +15,13 @@ yarn add @grafana/faro-react-native-tracing
 - `@grafana/faro-react-native` - Core Faro SDK for React Native
 - React Native 0.70 or higher
 
+### Version compatibility
+
+- Tracing 3.x requires `@grafana/faro-react-native` `^1.6.0` (1.6.0 or later in 1.x).
+- Tracing 4.x requires `@grafana/faro-react-native` `^2.0.0` (2.0.0 or later in 2.x).
+
+When moving from tracing 3.x to 4.x, upgrade both packages together to avoid installing a second copy of `@grafana/faro-react-native`.
+
 ## Quick Start
 
 Enable tracing via the `enableTracing` flag—no need to add `TracingInstrumentation` to `instrumentations`:
