@@ -1,4 +1,4 @@
 {
-  "packages/react-native": "1.6.0",
-  "packages/react-native-tracing": "3.0.0"
+  "packages/react-native": "2.0.0",
+  "packages/react-native-tracing": "4.0.0"
 }

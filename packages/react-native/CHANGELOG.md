@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.6.0...faro-react-native-v2.0.0) (2026-11-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **performance:** report visible process CPU and memory events ([#284](https://github.com/grafana/faro-react-native-sdk/issues/284))
+
+### Features
+
+* **performance:** report visible process CPU and memory events ([#284](https://github.com/grafana/faro-react-native-sdk/issues/284)) ([76e12d5](https://github.com/grafana/faro-react-native-sdk/commit/76e12d52b19f02e7d7be029826c04488ca487a97))
+
+
+### Bug Fixes
+
+* **meta:** send the metadata from the time of the crash with a recovered crash ([570a41a](https://github.com/grafana/faro-react-native-sdk/commit/570a41a891002adc2d90871c36bf9c93d0e1a9e5))
+* **react-native:** exclude inactive time from iOS frame counts ([#285](https://github.com/grafana/faro-react-native-sdk/issues/285)) ([76303d7](https://github.com/grafana/faro-react-native-sdk/commit/76303d70d53f7c345e8a3aa3174e24df60fd84cb))
+
 ## [1.6.0](https://github.com/grafana/faro-react-native-sdk/compare/faro-react-native-v1.5.0...faro-react-native-v1.6.0) (2026-11-23)
 
 ### Features
