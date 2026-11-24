@@ -17,7 +17,10 @@ yarn add @grafana/faro-react-native-tracing
 
 ### Version compatibility
 
-When moving from a supported core 1.x version to core 2.x, move from tracing 3.x to tracing 4.x in the same dependency update. Each tracing release declares the core versions it supports; mixing these major lines can install two copies of the native SDK.
+- Tracing 3.x requires `@grafana/faro-react-native` `^1.6.0` (1.6.0 or later in 1.x).
+- Tracing 4.x requires `@grafana/faro-react-native` `^2.0.0` (2.0.0 or later in 2.x).
+
+When moving from tracing 3.x to 4.x, upgrade both packages together to avoid installing a second copy of `@grafana/faro-react-native`.
 
 ## Quick Start
 
