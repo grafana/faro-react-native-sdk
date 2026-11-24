@@ -1,4 +1,4 @@
-import { context, propagation, trace } from '@opentelemetry/api';
+import { context, propagation, ROOT_CONTEXT, trace } from '@opentelemetry/api';
 import type { Attributes, Context, ContextManager } from '@opentelemetry/api';
 import { CompositePropagator, W3CBaggagePropagator, W3CTraceContextPropagator } from '@opentelemetry/core';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
@@ -49,6 +49,12 @@ import { getSamplingDecision } from './utils/sampler';
 type FaroWithOtel = Faro & { otel?: unknown };
 const detachedInstrumentations = new WeakSet<Instrumentation>();
 
+// Faro core has no unset API. With no prior registration, keep correlation inactive after teardown.
+const inactiveFaroOtel: OTELApi = {
+  trace,
+  context: Object.create(context, { active: { value: () => ROOT_CONTEXT } }) as typeof context,
+};
+
 /**
  * Keeps a caller-supplied processor reusable across Faro remove/add cycles.
  * Explicit TracingInstrumentation.shutdown() remains responsible for the
@@ -89,6 +95,7 @@ interface TracingRegistration {
   ownsTracerProvider: boolean;
   previousFaroOtel?: unknown;
   provider: BasicTracerProvider;
+  restoreFaroApi?: VoidFunction;
   shutdownPromise?: Promise<void>;
   unregisterInstrumentations?: VoidFunction;
 }
@@ -335,6 +342,16 @@ export class TracingInstrumentation extends BaseInstrumentation {
         registration.previousFaroOtel = globalFaroInstance.otel;
         globalFaroInstance.otel = faroOtel;
       }
+
+      const api = this.api;
+      const previousOtel = api.getOTEL() ?? inactiveFaroOtel;
+      api.initOTEL(trace, context);
+      const registeredOtel = api.getOTEL();
+      registration.restoreFaroApi = () => {
+        if (api.getOTEL() === registeredOtel) {
+          api.initOTEL(previousOtel.trace, previousOtel.context);
+        }
+      };
     } catch (error) {
       this.destroy();
       throw error;
@@ -387,6 +404,10 @@ export class TracingInstrumentation extends BaseInstrumentation {
       registration.instrumentations.forEach((instrumentation) => {
         this.runCleanup(`disable ${instrumentation.instrumentationName}`, () => instrumentation.disable());
       });
+    }
+
+    if (registration.restoreFaroApi) {
+      this.runCleanup('restore the Faro OpenTelemetry API', registration.restoreFaroApi);
     }
 
     const { faro, faroOtel } = registration;
